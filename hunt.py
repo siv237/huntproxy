@@ -71,6 +71,8 @@ class ProxyRating:
     first_seen: float = 0.0
     in_blacklist: bool = False
     blacklist_reason: str = ""
+    supports_connect: bool = False
+    mitm_suspect: bool = False
 
     @property
     def latency_avg(self) -> float:
@@ -82,14 +84,20 @@ class ProxyRating:
 
     @property
     def score(self) -> float:
-        """Rating: high success, low latency, more checks = higher score."""
         if self.checks_total == 0 or self.last_status != "ok":
             return 0.0
         sr = self.success_rate
+        base = sr * 50
         if self.latency_count == 0:
-            return sr * 50
-        lat_score = max(0, 100 - self.latency_avg * 10)
-        return sr * 50 + lat_score * 0.5
+            lat_score = 50
+        else:
+            lat_score = max(0, 100 - self.latency_avg * 10)
+        result = base + lat_score * 0.5
+        if self.supports_connect:
+            result += 20
+        if self.mitm_suspect:
+            result -= 30
+        return max(0, result)
 
     def to_dict(self) -> dict:
         return {
@@ -108,6 +116,9 @@ class ProxyRating:
             "first_seen": self.first_seen,
             "in_blacklist": self.in_blacklist,
             "blacklist_reason": self.blacklist_reason,
+            "supports_connect": self.supports_connect,
+            "mitm_suspect": self.mitm_suspect,
+            "last_check_ago": round(time.time() - self.last_check, 1) if self.last_check else 0,
         }
 
 
@@ -336,7 +347,7 @@ class HuntState:
                 return
             async with sem:
                 start = time.monotonic()
-                ok, country = await self._check_proxy(addr)
+                ok, country, supports_connect, mitm_suspect = await self._check_proxy(addr)
                 latency = time.monotonic() - start
                 async with lock:
                     self.checked += 1
@@ -348,7 +359,7 @@ class HuntState:
                     else:
                         fail_count += 1
                         self.failed = fail_count
-                    self._update_rating(addr, ok, country, latency)
+                    self._update_rating(addr, ok, country, latency, supports_connect, mitm_suspect)
                     if self.checked % 25 == 0 or ok:
                         pct = int(100 * self.checked / max(1, self.checking_total))
                         self._emit(
@@ -367,7 +378,7 @@ class HuntState:
         try:
             port = int(port_str)
         except ValueError:
-            return False, ""
+            return False, "", False, False
         is_socks = port in (1080, 10808, 9050, 4145)
 
         try:
@@ -376,10 +387,12 @@ class HuntState:
                 timeout=self.timeout,
             )
         except (asyncio.TimeoutError, OSError):
-            return False, ""
+            return False, "", False, False
 
         country = ""
         country_code = ""
+        supports_connect = False
+        mitm_suspect = False
 
         if is_socks:
             if port == 4145:
@@ -389,9 +402,10 @@ class HuntState:
             if not ok:
                 try: writer.close()
                 except: pass
-                return False, ""
+                return False, "", False, False
             country = "United States"
             country_code = "US"
+            supports_connect = True
         else:
             try:
                 req = (
@@ -415,7 +429,7 @@ class HuntState:
                     if buf.count(b"}") >= 1 and len(buf) > 200:
                         break
             except Exception:
-                return False, ""
+                return False, "", False, False
             finally:
                 try:
                     writer.close()
@@ -426,57 +440,134 @@ class HuntState:
             if sep == -1:
                 sep = buf.find(b"\n\n")
             if sep == -1:
-                return False, ""
+                return False, "", False, False
             try:
                 data = json.loads(buf[sep:].strip())
             except Exception:
-                return False, ""
+                return False, "", False, False
             country = data.get("country", "")
             country_code = data.get("countryCode", "")
 
         if self.country_filter and country_code != self.country_filter:
-            return False, country
+            return False, country, False, False
         if self.us_only and country != "United States":
-            return False, country
+            return False, country, False, False
 
-        connect_ok = await self._check_proxy_connect(host, port, is_socks)
+        connect_ok, mitm_suspect = await self._check_proxy_connect(host, port, is_socks)
+        supports_connect = connect_ok
+
+        if not connect_ok and not is_socks:
+            return True, country, False, mitm_suspect
+
         if not connect_ok:
-            return False, country
-        return True, country
+            return False, country, False, mitm_suspect
+        return True, country, True, mitm_suspect
 
-    async def _check_proxy_connect(self, host: str, port: int, is_socks: bool = False) -> bool:
+    async def _check_proxy_connect(self, host: str, port: int, is_socks: bool = False) -> tuple:
         try:
             r, w = await asyncio.wait_for(
                 asyncio.open_connection(host, port), timeout=self.timeout)
         except Exception:
-            return False
+            return False, False
         try:
             if is_socks:
                 if port == 4145:
                     ok = await self._socks4_test(r, w)
                 else:
                     ok = await self._socks5_test(r, w)
-                return ok
+                if ok:
+                    mitm = await self._check_mitm_socks(r, w, port)
+                    return ok, mitm
+                return ok, False
             else:
-                req = f"CONNECT httpbin.org:443 HTTP/1.1\r\nHost: httpbin.org:443\r\n\r\n"
+                req = f"CONNECT 2ip.ru:443 HTTP/1.1\r\nHost: 2ip.ru:443\r\n\r\n"
                 w.write(req.encode())
                 await asyncio.wait_for(w.drain(), timeout=self.timeout)
-                resp = await asyncio.wait_for(r.readuntil(b"\r\n\r\n"), timeout=12)
-                return b"200" in resp.split(b"\r\n")[0]
+                try:
+                    resp = await asyncio.wait_for(r.readuntil(b"\r\n\r\n"), timeout=15)
+                    if b"200" not in resp.split(b"\r\n")[0]:
+                        return False, False
+                except (asyncio.IncompleteReadError, asyncio.TimeoutError):
+                    return False, False
+
+                mitm = await self._check_mitm_http(r, w)
+                return True, mitm
         except Exception:
-            return False
+            return False, False
         finally:
             try:
                 w.close()
             except Exception:
                 pass
 
+    async def _check_mitm_http(self, r, w) -> bool:
+        try:
+            addr = w.transport.get_extra_info('peername')
+            if not addr: return False
+            host, port = addr
+            proc = await asyncio.create_subprocess_exec(
+                "curl", "-sSf", "--max-time", "10",
+                "-o", "/dev/null", "-w", "%{ssl_verify_result}",
+                "-x", f"http://{host}:{port}",
+                "https://2ip.ru",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            stdout, _ = await proc.communicate()
+            if proc.returncode != 0:
+                return True
+            verify = stdout.decode().strip()
+            return verify != "0"
+        except Exception:
+            return False
+
+    async def _check_mitm_socks(self, r, w, port: int = 0) -> bool:
+        try:
+            addr = r._transport.get_extra_info('peername')
+            if not addr: return False
+            host, _ = addr
+            if port in (4145,):
+                proto = "socks4a"
+            else:
+                proto = "socks5h"
+            proc = await asyncio.create_subprocess_exec(
+                "curl", "-sSf", "--max-time", "10",
+                "-o", "/dev/null", "-w", "%{ssl_verify_result}",
+                "-x", f"{proto}://{host}:{port}",
+                "https://2ip.ru",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            stdout, _ = await proc.communicate()
+            if proc.returncode != 0:
+                return True
+            verify = stdout.decode().strip()
+            return verify != "0"
+        except Exception:
+            return False
+
     async def _socks5_test(self, r, w) -> bool:
         try:
             w.write(bytes([5, 1, 0])); await w.drain()
             resp = await asyncio.wait_for(r.readexactly(2), timeout=8)
-            if resp[1] != 0:
+            if resp[1] != 0: return False
+            req = bytes([5, 1, 0, 3, 13]) + b"httpbin.org" + b"\x01\xbb"
+            w.write(req); await w.drain()
+            hdr = await asyncio.wait_for(r.readexactly(4), timeout=8)
+            if hdr[1] != 0: return False
+            atyp = hdr[3]
+            if atyp == 1:
+                await asyncio.wait_for(r.readexactly(6), timeout=8)
+            elif atyp == 3:
+                dl = await asyncio.wait_for(r.readexactly(1), timeout=8)
+                await asyncio.wait_for(r.readexactly(dl[0] + 2), timeout=8)
+            elif atyp == 4:
+                await asyncio.wait_for(r.readexactly(18), timeout=8)
+            else:
                 return False
+            return True
+        except Exception:
+            return False
             req = bytes([5, 1, 0, 3, 13]) + b"httpbin.org" + b"\x01\xbb"
             w.write(req); await w.drain()
             resp = await asyncio.wait_for(r.readexactly(10), timeout=8)
@@ -493,7 +584,8 @@ class HuntState:
         except Exception:
             return False
 
-    def _update_rating(self, addr: str, ok: bool, country: str, latency: float):
+    def _update_rating(self, addr: str, ok: bool, country: str, latency: float,
+                        supports_connect: bool = False, mitm_suspect: bool = False):
         r = self.ratings.get(addr)
         if not r:
             r = ProxyRating(
@@ -502,7 +594,6 @@ class HuntState:
                 country_code=country_code_from_name(country),
                 first_seen=time.time(),
             )
-            # Guess protocol by port
             try:
                 p = int(addr.rsplit(":", 1)[1])
                 if p in (1080, 10808, 9050):
@@ -522,6 +613,9 @@ class HuntState:
             if country and not r.country:
                 r.country = country
                 r.country_code = country_code_from_name(country)
+            r.supports_connect = supports_connect
+            if mitm_suspect:
+                r.mitm_suspect = True
         else:
             r.last_status = "failed"
         self.ratings[addr] = r
@@ -555,7 +649,7 @@ class HuntState:
             nonlocal ok_count, fail_count
             async with sem:
                 start = time.monotonic()
-                ok, country = await self._check_proxy(r.address)
+                ok, country, supports_connect, mitm_suspect = await self._check_proxy(r.address)
                 latency = time.monotonic() - start
                 async with lock:
                     self.checked += 1
@@ -565,7 +659,7 @@ class HuntState:
                     else:
                         fail_count += 1
                         self.failed = fail_count
-                    self._update_rating(r.address, ok, country, latency)
+                    self._update_rating(r.address, ok, country, latency, supports_connect, mitm_suspect)
 
         tasks = [asyncio.create_task(check(r)) for r in candidates]
         await asyncio.gather(*tasks)
@@ -622,7 +716,16 @@ class HuntState:
             return
         try:
             data = json.loads(sf.read_text())
-            for d in data:
+            if isinstance(data, dict):
+                proxies = data.get("proxies", [])
+                pr = data.get("proxy_runner", {})
+                self._proxy_direct_mode = pr.get("direct_mode", False)
+                self._proxy_active_addr = pr.get("active_proxy_addr")
+            elif isinstance(data, list):
+                proxies = data
+            else:
+                return
+            for d in proxies:
                 r = ProxyRating(
                     address=d["address"],
                     country=d.get("country", ""),
@@ -635,6 +738,8 @@ class HuntState:
                     last_check=d.get("last_check", 0),
                     last_status=d.get("last_status", "untested"),
                     first_seen=d.get("first_seen", 0),
+                    supports_connect=d.get("supports_connect", False),
+                    mitm_suspect=d.get("mitm_suspect", False),
                 )
                 self.ratings[r.address] = r
             logger.info(f"Loaded {len(self.ratings)} ratings from state file")
@@ -642,8 +747,15 @@ class HuntState:
             logger.warning(f"State load failed: {e}")
 
     def _save_state(self):
+        data = {
+            "proxies": [r.to_dict() for r in self.ratings.values()],
+            "proxy_runner": {
+                "direct_mode": getattr(self, '_proxy_direct_mode', False),
+                "active_proxy_addr": getattr(self, '_proxy_active_addr', None),
+            }
+        }
         with open(self.state_file, "w") as f:
-            json.dump([r.to_dict() for r in self.ratings.values()], f, indent=2)
+            json.dump(data, f, indent=2)
 
     def _load_working_file(self):
         if not self.working_file.exists():
@@ -810,11 +922,11 @@ class ProxyRunner:
                     self._log(peer, target_host, "502 no upstream")
                     return
 
-                up_r, up_w = upstream
+                up_r, up_w, up_addr = upstream
                 writer.write(b"HTTP/1.1 200 Connection Established\r\n\r\n")
                 await writer.drain()
                 await self._relay(reader, up_w, up_r, writer)
-                self._log(peer, target_host, "ok")
+                self._log(peer, target_host, "ok", up_addr)
             else:
                 await self._handle_http_forward(reader, writer, method, parts[1], peer)
         except Exception as e:
@@ -858,7 +970,7 @@ class ProxyRunner:
             writer.write(b"HTTP/1.1 502 Bad Gateway\r\n\r\n"); await writer.drain()
             self._log(peer, target_host, "502 no upstream"); return
 
-        up_r, up_w = upstream
+        up_r, up_w, up_addr = upstream
 
         if self.direct_mode and not target.startswith("/"):
             parsed = urlparse(target)
@@ -885,17 +997,17 @@ class ProxyRunner:
             writer.write(line)
         await writer.drain()
         await self._relay(up_r, writer, reader, up_w)
-        self._log(peer, target_host, "ok")
+        self._log(peer, target_host, "ok", up_addr)
 
     async def _connect_upstream(self, host: str, port: int):
         if self.direct_mode:
             try:
                 reader, writer = await asyncio.wait_for(
                     asyncio.open_connection(host, port), timeout=15)
-                self._log(None, f"direct connect ok", f"{host}:{port}")
-                return reader, writer
+                self._log(None, f"direct connect ok", f"{host}:{port}", "direct")
+                return reader, writer, "direct"
             except Exception as e:
-                self._log(None, f"direct connect fail", str(e)[:40])
+                self._log(None, f"direct connect fail", str(e)[:40], "direct")
                 return None
 
         if self.active_proxy_addr:
@@ -924,7 +1036,7 @@ class ProxyRunner:
                 reader, writer = await asyncio.wait_for(
                     asyncio.open_connection(phost, int(pport_str)), timeout=10)
             except Exception as e:
-                self._log(None, f"upstream {p.address} connect fail", str(e)[:40])
+                self._log(None, f"upstream {p.address} connect fail", str(e)[:40], p.address)
                 continue
 
             ok = False
@@ -936,13 +1048,14 @@ class ProxyRunner:
                 ok = await self._http_connect_cmd(reader, writer, host, port)
 
             if not ok:
-                self._log(None, f"upstream {p.address} CONNECT fail", f"{host}:{port}")
+                self._log(None, f"upstream {p.address} CONNECT fail", f"{host}:{port}", p.address)
                 try: writer.close()
                 except: pass
                 continue
 
             self._failover_idx = (attempt + 1) % len(pool)
-            return reader, writer
+            self._log(None, f"upstream {p.address} ok", f"{host}:{port}", p.address)
+            return reader, writer, p.address
 
         self._log(None, "502: no working upstream", f"{host}:{port}")
         return None
@@ -975,8 +1088,19 @@ class ProxyRunner:
                 req = bytes([5, 1, 0, 3, len(raw)]) + raw
             req += struct.pack(">H", p)
             w.write(req); await w.drain()
-            resp = await asyncio.wait_for(r.readexactly(10), timeout=8)
-            return resp[1] == 0
+            hdr = await asyncio.wait_for(r.readexactly(4), timeout=8)
+            if hdr[1] != 0: return False
+            atyp = hdr[3]
+            if atyp == 1:
+                await asyncio.wait_for(r.readexactly(4 + 2), timeout=8)
+            elif atyp == 3:
+                dl = await asyncio.wait_for(r.readexactly(1), timeout=8)
+                await asyncio.wait_for(r.readexactly(dl[0] + 2), timeout=8)
+            elif atyp == 4:
+                await asyncio.wait_for(r.readexactly(16 + 2), timeout=8)
+            else:
+                return False
+            return True
         except Exception:
             return False
 
@@ -1012,8 +1136,8 @@ class ProxyRunner:
                 except: pass
         await asyncio.gather(pipe(r1, w1, "c2u"), pipe(r2, w2, "u2c"))
 
-    def _log(self, peer, target, status):
-        entry = {"ts": time.time(), "client": f"{peer[0]}:{peer[1]}" if peer else "?", "target": target, "status": status}
+    def _log(self, peer, target, status, upstream=""):
+        entry = {"ts": time.time(), "client": f"{peer[0]}:{peer[1]}" if peer else "?", "target": target, "status": status, "upstream": upstream}
         self.log.append(entry)
         if len(self.log) > 200:
             self.log = self.log[-150:]
@@ -1194,7 +1318,7 @@ input[type=text]:focus,input[type=number]:focus{outline:none;border-color:#0969d
 <div class="tbl-wrap">
 <table>
 <thead><tr>
-<th>#</th><th>proxy</th><th>country</th><th>latency</th><th>success</th><th>checks</th><th>score</th><th></th>
+<th>#</th><th>proxy</th><th>country</th><th>latency</th><th>success</th><th>checks</th><th>score</th><th>flags</th><th></th>
 </tr></thead>
 <tbody id="top-body"></tbody>
 </table>
@@ -1274,7 +1398,7 @@ input[type=text]:focus,input[type=number]:focus{outline:none;border-color:#0969d
 <div class="tbl-wrap" style="max-height:500px">
 <table>
 <thead><tr>
-<th>#</th><th>proxy</th><th>country</th><th>latency</th><th>success</th><th>score</th><th></th>
+<th>#</th><th>proxy</th><th>country</th><th>latency</th><th>success</th><th>score</th><th>flags</th><th></th>
 </tr></thead>
 <tbody id="proxy-list-body"></tbody>
 </table>
@@ -1366,7 +1490,7 @@ if(p.last_proxy){lp.style.visibility='visible';document.getElementById('last-add
 
 // top table
 var tb=document.getElementById('top-body');
-tb.innerHTML=s.top_proxies.length?s.top_proxies.map(function(p,i){var sc=Math.min(100,Math.max(0,p.score));return'<tr><td style="color:#656d76">'+(i+1)+'</td><td class="addr">'+p.address+'</td><td>'+flag(p.country_code)+' '+p.country+'</td><td>'+p.last_latency.toFixed(2)+'s</td><td>'+(p.success_rate*100).toFixed(0)+'%</td><td>'+p.checks_ok+'/'+p.checks_total+'</td><td><div class="score-bar"><div class="s" style="width:'+sc+'%"></div></div></td><td><button class="danger" style="padding:2px 6px;font-size:10px" onclick="blRemove(\''+p.address+'\')">bl</button></td></tr>'}).join(''):'<tr><td colspan="8" class="empty">no alive proxies</td></tr>';
+tb.innerHTML=s.top_proxies.length?s.top_proxies.map(function(p,i){var sc=Math.min(100,Math.max(0,p.score));var flags=[];if(p.supports_connect)flags.push('<span style="color:#1a7f37;font-weight:600">HTTPS</span>');else flags.push('<span style="color:#656d76">HTTP</span>');if(p.mitm_suspect)flags.push('<span style="color:#cf222e;font-weight:600">MITM!</span>');var proto=p.protocol||'http';return'<tr><td style="color:#656d76">'+(i+1)+'</td><td class="addr">'+p.address+'</td><td>'+flag(p.country_code)+' '+p.country+'</td><td>'+p.last_latency.toFixed(2)+'s</td><td>'+(p.success_rate*100).toFixed(0)+'%</td><td>'+p.checks_ok+'/'+p.checks_total+'</td><td><div class="score-bar"><div class="s" style="width:'+sc+'%"></div></div></td><td style="font-size:11px"><span style="color:#8250df">'+proto+'</span> '+flags.join(' ')+'</td><td><button class="danger" style="padding:2px 6px;font-size:10px" onclick="blRemove(\''+p.address+'\')">bl</button></td></tr>'}).join(''):'<tr><td colspan="9" class="empty">no alive proxies</td></tr>';
 
 // blacklist
 var bb=document.getElementById('bl-body');
@@ -1375,7 +1499,7 @@ bb.innerHTML=s.blacklist.length?s.blacklist.map(function(b){return'<tr><td class
 
 function renderProxyList(alive){
 var tb=document.getElementById('proxy-list-body');
-tb.innerHTML=alive.length?alive.map(function(p,i){var sc=Math.min(100,Math.max(0,p.score));return'<tr><td style="color:#656d76">'+(i+1)+'</td><td class="addr">'+p.address+'</td><td>'+flag(p.country_code)+' '+p.country+'</td><td>'+p.last_latency.toFixed(2)+'s</td><td>'+(p.success_rate*100).toFixed(0)+'%</td><td><div class="score-bar"><div class="s" style="width:'+sc+'%"></div></div></td><td><button style="padding:3px 8px;font-size:11px" onclick="proxySelect(\''+p.address+'\')">select</button></td></tr>'}).join(''):'<tr><td colspan="7" class="empty">no proxies available</td></tr>';
+tb.innerHTML=alive.length?alive.map(function(p,i){var sc=Math.min(100,Math.max(0,p.score));var flags=[];if(p.supports_connect)flags.push('<span style="color:#1a7f37;font-weight:600">HTTPS</span>');else flags.push('<span style="color:#656d76">HTTP</span>');if(p.mitm_suspect)flags.push('<span style="color:#cf222e;font-weight:600">MITM!</span>');var proto=p.protocol||'http';return'<tr><td style="color:#656d76">'+(i+1)+'</td><td class="addr">'+p.address+'</td><td>'+flag(p.country_code)+' '+p.country+'</td><td>'+p.last_latency.toFixed(2)+'s</td><td>'+(p.success_rate*100).toFixed(0)+'%</td><td><div class="score-bar"><div class="s" style="width:'+sc+'%"></div></div></td><td style="font-size:11px"><span style="color:#8250df">'+proto+'</span> '+flags.join(' ')+'</td><td><button style="padding:3px 8px;font-size:11px" onclick="proxySelect(\''+p.address+'\')">select</button></td></tr>'}).join(''):'<tr><td colspan="8" class="empty">no proxies available</td></tr>';
 }
 
 function renderLog(ev){
@@ -1411,6 +1535,10 @@ class HuntServer:
         self.port = port
         self.proxy = ProxyRunner(state)
         self._server: Optional[asyncio.AbstractServer] = None
+        if hasattr(state, '_proxy_direct_mode'):
+            self.proxy.direct_mode = state._proxy_direct_mode
+        if hasattr(state, '_proxy_active_addr') and state._proxy_active_addr:
+            self.proxy.active_proxy_addr = state._proxy_active_addr
 
     async def start(self):
         self._server = await asyncio.start_server(
@@ -1551,6 +1679,9 @@ class HuntServer:
             qs = _qs(path)
             address = qs.get("address") or None
             self.proxy.select(address)
+            self.state._proxy_active_addr = self.proxy.active_proxy_addr
+            self.state._proxy_direct_mode = self.proxy.direct_mode
+            self.state._save_state()
             return json.dumps({"ok": True, "address": address}), 200, "application/json"
 
         if path.startswith("/api/proxy/direct"):
@@ -1559,7 +1690,10 @@ class HuntServer:
             self.proxy.direct_mode = en
             if en:
                 self.proxy.active_proxy_addr = None
+            self.state._proxy_direct_mode = en
+            self.state._proxy_active_addr = self.proxy.active_proxy_addr
             self.state._emit(f"Direct mode: {'ON' if en else 'OFF'}", "info")
+            self.state._save_state()
             return json.dumps({"ok": True, "direct_mode": en}), 200, "application/json"
 
         if path.startswith("/api/settings/country_filter") and method == "POST":

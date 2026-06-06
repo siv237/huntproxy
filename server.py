@@ -317,8 +317,20 @@ class ProxyServer:
 
             writer.write(req)
             await writer.drain()
-            resp = await asyncio.wait_for(reader.readexactly(10), timeout=10)
-            return resp[1] == SOCKS5_REP_OK
+            hdr = await asyncio.wait_for(reader.readexactly(4), timeout=10)
+            if hdr[1] != SOCKS5_REP_OK:
+                return False
+            atyp = hdr[3]
+            if atyp == SOCKS5_ATYP_IPV4:
+                await asyncio.wait_for(reader.readexactly(4 + 2), timeout=10)
+            elif atyp == SOCKS5_ATYP_DOMAIN:
+                dl = await asyncio.wait_for(reader.readexactly(1), timeout=10)
+                await asyncio.wait_for(reader.readexactly(dl[0] + 2), timeout=10)
+            elif atyp == SOCKS5_ATYP_IPV6:
+                await asyncio.wait_for(reader.readexactly(16 + 2), timeout=10)
+            else:
+                return False
+            return True
         except Exception:
             return False
 
