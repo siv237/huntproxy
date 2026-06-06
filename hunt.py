@@ -846,7 +846,6 @@ class ProxyRunner:
             elif host_hdr:
                 target_host = host_hdr
         else:
-            from urllib.parse import urlparse
             parsed = urlparse(target)
             target_host = parsed.hostname or ""
             target_port = parsed.port or 80
@@ -862,7 +861,6 @@ class ProxyRunner:
         up_r, up_w = upstream
 
         if self.direct_mode and not target.startswith("/"):
-            from urllib.parse import urlparse
             parsed = urlparse(target)
             rel_path = parsed.path or "/"
             if parsed.query:
@@ -904,79 +902,64 @@ class ProxyRunner:
             r = self.state.ratings.get(self.active_proxy_addr)
             if not r or r.in_blacklist:
                 self._log(None, f"selected proxy {self.active_proxy_addr} not available", "")
-                return None
-            proxy = r
+                r = None
         else:
-            pool = [r for r in self.state.ratings.values()
-                    if r.last_status == "ok" and not r.in_blacklist]
-            if not pool:
-                return None
-            pool.sort(key=lambda r: r.score, reverse=True)
+            r = None
 
-            proxy = None
-            for attempt in range(min(len(pool), 8)):
-                idx = (self._failover_idx + attempt) % len(pool)
-                p = pool[idx]
-
-                phost, pport_str = p.address.rsplit(":", 1)
-                try:
-                    reader, writer = await asyncio.wait_for(
-                        asyncio.open_connection(phost, int(pport_str)), timeout=2)
-                except Exception as e:
-                    self._log(None, f"upstream {p.address} connect fail", str(e)[:40])
-                    continue
-
-                ok = False
-                if p.protocol == "socks4":
-                    ok = await self._socks4_cmd(reader, writer, host, port)
-                elif p.protocol == "socks5":
-                    ok = await self._socks5_cmd(reader, writer, host, port)
-                else:
-                    ok = await self._http_connect_cmd(reader, writer, host, port)
-
-                if not ok:
-                    self._log(None, f"upstream {p.address} CONNECT fail", f"{host}:{port}")
-                    try: writer.close()
-                    except: pass
-                    continue
-
-                self._failover_idx = (idx + 1) % len(pool)
-                return reader, writer
-
-            self._log(None, "502: no working upstream", f"{host}:{port}")
+        pool = [r for r in self.state.ratings.values()
+                if r.last_status == "ok" and not r.in_blacklist]
+        if not pool:
             return None
+        pool.sort(key=lambda r: r.score, reverse=True)
 
-        phost, pport_str = proxy.address.rsplit(":", 1)
-        try:
-            reader, writer = await asyncio.wait_for(
-                asyncio.open_connection(phost, int(pport_str)), timeout=2)
-        except Exception as e:
-            self._log(None, f"selected proxy {proxy.address} connect fail", str(e)[:40])
-            return None
+        if r and r in pool:
+            pool.remove(r)
+            pool.insert(0, r)
 
-        ok = False
-        if proxy.protocol == "socks4":
-            ok = await self._socks4_cmd(reader, writer, host, port)
-        elif proxy.protocol == "socks5":
-            ok = await self._socks5_cmd(reader, writer, host, port)
-        else:
-            ok = await self._http_connect_cmd(reader, writer, host, port)
+        for attempt in range(min(len(pool), 8)):
+            p = pool[attempt]
 
-        if not ok:
-            self._log(None, f"selected proxy {proxy.address} CONNECT fail", f"{host}:{port}")
-            try: writer.close()
-            except: pass
-            return None
+            phost, pport_str = p.address.rsplit(":", 1)
+            try:
+                reader, writer = await asyncio.wait_for(
+                    asyncio.open_connection(phost, int(pport_str)), timeout=10)
+            except Exception as e:
+                self._log(None, f"upstream {p.address} connect fail", str(e)[:40])
+                continue
 
-        return reader, writer
+            ok = False
+            if p.protocol == "socks4":
+                ok = await self._socks4_cmd(reader, writer, host, port)
+            elif p.protocol == "socks5":
+                ok = await self._socks5_cmd(reader, writer, host, port)
+            else:
+                ok = await self._http_connect_cmd(reader, writer, host, port)
+
+            if not ok:
+                self._log(None, f"upstream {p.address} CONNECT fail", f"{host}:{port}")
+                try: writer.close()
+                except: pass
+                continue
+
+            self._failover_idx = (attempt + 1) % len(pool)
+            return reader, writer
+
+        self._log(None, "502: no working upstream", f"{host}:{port}")
+        return None
 
     async def _http_connect_cmd(self, r, w, h, p):
         req = f"CONNECT {h}:{p} HTTP/1.1\r\nHost: {h}:{p}\r\n\r\n"
         w.write(req.encode()); await w.drain()
         try:
-            resp = await asyncio.wait_for(r.readuntil(b"\r\n\r\n"), timeout=4)
-            return b"200" in resp.split(b"\r\n")[0]
-        except Exception:
+            resp = await asyncio.wait_for(r.readuntil(b"\r\n\r\n"), timeout=15)
+            status_line = resp.split(b"\r\n")[0]
+            self._log(None, f"CONNECT response", status_line.decode(errors="replace"))
+            return b"200" in status_line
+        except asyncio.TimeoutError:
+            self._log(None, f"CONNECT timeout (15s)", f"{h}:{p}")
+            return False
+        except Exception as e:
+            self._log(None, f"CONNECT error", str(e)[:60])
             return False
 
     async def _socks5_cmd(self, r, w, h, p):
@@ -1555,12 +1538,8 @@ class HuntServer:
             return json.dumps([r.to_dict() for r in ratings]), 200, "application/json"
 
         if path.startswith("/api/proxy/start"):
-            port = 17277
-            if "?" in path:
-                for p in path.split("?")[1].split("&"):
-                    if p.startswith("port="):
-                        try: port = int(p.split("=")[1])
-                        except: pass
+            qs = _qs(path)
+            port = int(qs.get("port", 17277))
             await self.proxy.start(port)
             return json.dumps(self.proxy.get_status()), 200, "application/json"
 
@@ -1569,21 +1548,14 @@ class HuntServer:
             return json.dumps({"ok": True}), 200, "application/json"
 
         if path.startswith("/api/proxy/select"):
-            address = None
-            if "?" in path:
-                for p in path.split("?")[1].split("&"):
-                    if p.startswith("address="):
-                        from urllib.parse import unquote
-                        address = unquote(p.split("=", 1)[1])
+            qs = _qs(path)
+            address = qs.get("address") or None
             self.proxy.select(address)
             return json.dumps({"ok": True, "address": address}), 200, "application/json"
 
         if path.startswith("/api/proxy/direct"):
-            en = True
-            if "?" in path:
-                for p in path.split("?")[1].split("&"):
-                    if p.startswith("on="):
-                        en = p.split("=", 1)[1].lower() != "false"
+            qs = _qs(path)
+            en = qs.get("on", "true").lower() != "false"
             self.proxy.direct_mode = en
             if en:
                 self.proxy.active_proxy_addr = None
@@ -1591,12 +1563,9 @@ class HuntServer:
             return json.dumps({"ok": True, "direct_mode": en}), 200, "application/json"
 
         if path.startswith("/api/settings/country_filter") and method == "POST":
-            code = ""
-            if "?" in path:
-                for p in path.split("?")[1].split("&"):
-                    if p.startswith("code="):
-                        code = p.split("=", 1)[1]
-            self.state.country_filter = code.upper()
+            qs = _qs(path)
+            code = qs.get("code", "").upper()
+            self.state.country_filter = code
             self.state._emit(f"Country filter set to: {code or 'ALL'}", "info")
             return json.dumps({"ok": True, "country_filter": self.state.country_filter}), 200, "application/json"
 
