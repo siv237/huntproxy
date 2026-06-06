@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+data/working.txt
+data/ratings.json
+data/blacklist.txt
+data/hunt.log
+data/.working.tmp
+*.log

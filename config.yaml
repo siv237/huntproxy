@@ -1,0 +1,65 @@
+# setproxy configuration
+# All paths are relative to the project directory.
+# Non-obvious default ports chosen to avoid conflicts and recognizability.
+
+server:
+  # Web dashboard (port 17177)
+  web_listen: "127.0.0.1:17177"
+  web_enabled: true
+
+  # HTTP CONNECT proxy (port 17277)
+  http_listen: "127.0.0.1:17277"
+  http_enabled: true
+
+  # SOCKS5 proxy (port 17377)
+  socks5_listen: "127.0.0.1:17377"
+  socks5_enabled: true
+
+  # Transparent proxy (port 17477)
+  # Used with iptables REDIRECT for full-system transparent mode
+  transparent_listen: "127.0.0.1:17477"
+  transparent_enabled: false  # turn on before running setup_iptables.sh
+
+  upstream_timeout: 15
+  connect_timeout: 8
+
+proxies:
+  data_dir: "./data"  # all state stored here inside the project
+
+  # Pool refresh — fetches fresh lists, validates, atomic-replace working.txt
+  validate_interval: 300      # seconds between full refresh cycles
+  validate_parallel: 100      # concurrent checks during refresh
+
+  # Health check — verifies already-known good proxies
+  health_interval: 120       # seconds
+  health_parallel: 30
+  health_timeout: 10
+
+  # Blacklist policy
+  max_failures: 3             # failures before blacklisting
+  cooldown: 300               # seconds before retrying a failed proxy
+
+  # Selection
+  strategy: round_robin       # round_robin | random
+
+  # Validation
+  us_only: true
+  timeout: 10
+
+logging:
+  level: "INFO"
+  file: "./data/setproxy.log"
+  max_size_mb: 5
+  backup_count: 3
+
+hunt:
+  # Web UI for proxy discovery + health-check
+  web_listen_host: "127.0.0.1"
+  web_listen_port: 17177
+
+  # Hunt settings
+  parallel: 30                # concurrent proxy checks during hunt
+  timeout: 8                  # per-proxy connect/response timeout
+  us_only: true               # filter to US only (false = all countries)
+  health_interval: 180        # seconds between health-checks of alive pool
+  health_parallel: 20
