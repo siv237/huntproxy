@@ -339,7 +339,7 @@ class ProxyServer:
                 except Exception:
                     pass
 
-        await asyncio.gather(pipe(r1, w2), pipe(r2, w1))
+        await asyncio.gather(pipe(r1, w1), pipe(r2, w2))
 
     async def _handle_http(self, reader, writer):
         try:
@@ -379,6 +379,16 @@ class ProxyServer:
             port = int(port_str)
         except ValueError:
             port = 443
+
+        while True:
+            try:
+                line = await asyncio.wait_for(reader.readline(), timeout=30)
+            except (asyncio.TimeoutError, ConnectionError):
+                writer.write(b"HTTP/1.1 408 Request Timeout\r\n\r\n")
+                await writer.drain()
+                return
+            if line in (b"\r\n", b"\n", b""):
+                break
 
         upstream = await self._connect_upstream(host, port)
         if not upstream:
