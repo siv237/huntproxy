@@ -17,6 +17,15 @@ if [ ! -f "$VENV/installed.flag" ]; then
     touch "$VENV/installed.flag"
 fi
 
+PID_FILE="$DIR/.hunt.pid"
+if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
+    echo "[*] Stopping existing daemon (pid $(cat "$PID_FILE"))..."
+    kill "$(cat "$PID_FILE")" 2>/dev/null || true
+    sleep 0.5
+    rm -f "$PID_FILE"
+    echo "[*] Daemon stopped."
+fi
+
 echo "[*] Starting hunt web UI at http://$HOST:$PORT/"
 echo "[*] Press Ctrl+C to stop."
 exec "$VENV/bin/python" "$DIR/hunt.py" --host "$HOST" --port "$PORT"

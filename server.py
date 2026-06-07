@@ -53,6 +53,7 @@ h2{font-size:14px;margin:16px 0 8px;color:var(--muted);text-transform:uppercase;
 table{width:100%;border-collapse:collapse;font-size:12px}
 th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--border)}
 th{color:var(--muted);font-weight:600}
+th.srt{cursor:pointer;user-select:none}th.srt:hover{color:var(--accent)}
 tr:hover{background:rgba(255,255,255,.03)}
 .badge{display:inline-block;padding:2px 6px;border-radius:3px;font-size:11px;font-weight:600}
 .badge-ok{background:#1a3a1a;color:var(--green)}
@@ -103,7 +104,7 @@ tr:hover{background:rgba(255,255,255,.03)}
 <h2>pool</h2>
 <div class="card" style="max-height:450px;overflow-y:auto">
   <table>
-    <thead><tr><th>proxy</th><th>type</th><th>country</th><th>latency</th><th>status</th></tr></thead>
+    <thead><tr><th class="srt" onclick="sortPool('address')">proxy</th><th class="srt" onclick="sortPool('protocol')">type</th><th class="srt" onclick="sortPool('country')">country</th><th class="srt" onclick="sortPool('latency')">latency</th><th class="srt" onclick="sortPool('speed')">KB/s</th><th class="srt" onclick="sortPool('status')">status</th></tr></thead>
     <tbody id="pool-body"></tbody>
   </table>
 </div>
@@ -124,6 +125,7 @@ tr:hover{background:rgba(255,255,255,.03)}
 <script>
 let logLines=[];
 let lastSeq=0;
+let poolSortKey='address',poolSortDir=1;
 
 function fmtTime(ts){return new Date(ts*1000).toLocaleTimeString()}
 function statusBadge(p){
@@ -134,6 +136,29 @@ function statusBadge(p){
   if(p.failures>0)return'<span class="badge badge-fail">'+p.failures+' fails</span>';
   return'<span class="badge badge-ok">ready</span>';
 }
+
+function sortPool(k){if(poolSortKey===k)poolSortDir*=-1;else{poolSortKey=k;poolSortDir=k==='latency'?1:-1};renderPool()}
+function renderPool(){
+  if(!_poolCache)return;
+  var sorted=_poolCache.slice().sort(function(a,b){
+    var va=a[poolSortKey],vb=b[poolSortKey];
+    if(poolSortKey==='address'||poolSortKey==='country'||poolSortKey==='protocol')return poolSortDir*va.localeCompare(vb);
+    if(poolSortKey==='latency'||poolSortKey==='speed')return poolSortDir*((va||0)-(vb||0));
+    return 0;
+  });
+  var tb=document.getElementById('pool-body');
+  tb.innerHTML=sorted.map(p=>
+    '<tr>'+
+    '<td>'+p.address+'</td>'+
+    '<td>'+p.protocol+'</td>'+
+    '<td>'+p.country+'</td>'+
+    '<td>'+(p.latency?p.latency.toFixed(3)+'s':'?')+'</td>'+
+    '<td>'+(p.speed?p.speed.toFixed(0):'?')+'</td>'+
+    '<td>'+statusBadge(p)+'</td>'+
+    '</tr>'
+  ).join('');
+}
+var _poolCache=null;
 
 async function poll(){
   try{
@@ -166,16 +191,8 @@ async function poll(){
   try{
     let r=await fetch('/api/proxies');
     let proxies=await r.json();
-    let tbody=document.getElementById('pool-body');
-    tbody.innerHTML=proxies.map(p=>
-      '<tr>'+
-      '<td>'+p.address+'</td>'+
-      '<td>'+p.protocol+'</td>'+
-      '<td>'+p.country+'</td>'+
-      '<td>'+(p.latency||'?')+'</td>'+
-      '<td>'+statusBadge(p)+'</td>'+
-      '</tr>'
-    ).join('');
+    _poolCache=proxies;
+    renderPool();
   }catch(e){}
 
   try{

@@ -83,6 +83,13 @@ class ProxyRating:
     listen_isp: str = ""
     egress_http_ip: str = ""
     egress_http_country: str = ""
+    speed_sum: float = 0.0
+    speed_count: int = 0
+    last_speed: float = 0.0
+
+    @property
+    def speed_avg(self) -> float:
+        return self.speed_sum / self.speed_count if self.speed_count else 0.0
 
     @property
     def latency_avg(self) -> float:
@@ -104,9 +111,11 @@ class ProxyRating:
             lat_score = max(0, 100 - self.latency_avg * 10)
         result = base + lat_score * 0.5
         if self.supports_connect:
-            result += 20
+            result += 15
         if self.mitm_suspect:
             result -= 30
+        if self.speed_count > 0:
+            result += min(20, self.speed_avg / 50)
         return max(0, result)
 
     def to_dict(self) -> dict:
@@ -121,6 +130,8 @@ class ProxyRating:
             "checks_ok": self.checks_ok,
             "success_rate": round(self.success_rate, 3),
             "score": round(self.score, 2),
+            "speed_avg": round(self.speed_avg, 1),
+            "last_speed": round(self.last_speed, 1),
             "last_check": self.last_check,
             "last_status": self.last_status,
             "first_seen": self.first_seen,
@@ -365,9 +376,15 @@ class HuntState:
                     self.checked += 1
                 return
             async with sem:
-                start = time.monotonic()
-                ok, country, supports_connect, mitm_suspect, egress, listen = await self._check_proxy(addr)
-                latency = time.monotonic() - start
+                ok, country, supports_connect, mitm_suspect, egress, listen, http_latency = await self._check_proxy(addr)
+                speed = 0.0
+                if ok:
+                    host, port_str = addr.rsplit(":", 1)
+                    try:
+                        speed = await self._measure_speed(host, int(port_str),
+                                                           port_str.isdigit() and int(port_str) in (1080, 10808, 9050, 4145))
+                    except Exception:
+                        speed = 0.0
                 async with lock:
                     self.checked += 1
                     if ok:
@@ -378,7 +395,7 @@ class HuntState:
                     else:
                         fail_count += 1
                         self.failed = fail_count
-                    self._update_rating(addr, ok, country, latency, supports_connect, mitm_suspect, egress, listen)
+                    self._update_rating(addr, ok, country, http_latency, supports_connect, mitm_suspect, egress, listen, speed)
                     if self.checked % 25 == 0 or ok:
                         pct = int(100 * self.checked / max(1, self.checking_total))
                         self._emit(
@@ -397,16 +414,17 @@ class HuntState:
         try:
             port = int(port_str)
         except ValueError:
-            return False, "", False, False, {}, {}
+            return False, "", False, False, {}, {}, 0.0
         is_socks = port in (1080, 10808, 9050, 4145)
 
+        t0 = time.monotonic()
         try:
             reader, writer = await asyncio.wait_for(
                 asyncio.open_connection(host, port),
                 timeout=self.timeout,
             )
         except (asyncio.TimeoutError, OSError):
-            return False, "", False, False, {}, {}
+            return False, "", False, False, {}, {}, 0.0
 
         listen_task = asyncio.create_task(self._resolve_geo(host))
         country = ""
@@ -424,7 +442,7 @@ class HuntState:
             except: pass
             if not ok:
                 listen = await listen_task
-                return False, "", False, False, {}, listen
+                return False, "", False, False, {}, listen, 0.0
             egress = await self._socks_egress(host, port)
             if egress:
                 country = egress.get("egress_country", "")
@@ -432,6 +450,7 @@ class HuntState:
             if not country:
                 country = "Unknown"
             supports_connect = True
+            http_latency = time.monotonic() - t0
         else:
             try:
                 req = (
@@ -456,7 +475,7 @@ class HuntState:
                         break
             except Exception:
                 listen = await listen_task
-                return False, "", False, False, {}, listen
+                return False, "", False, False, {}, listen, 0.0
             finally:
                 try:
                     writer.close()
@@ -468,14 +487,15 @@ class HuntState:
                 sep = buf.find(b"\n\n")
             if sep == -1:
                 listen = await listen_task
-                return False, "", False, False, {}, listen
+                return False, "", False, False, {}, listen, 0.0
             try:
                 data = json.loads(buf[sep:].strip())
             except Exception:
                 listen = await listen_task
-                return False, "", False, False, {}, listen
+                return False, "", False, False, {}, listen, 0.0
             country = data.get("country", "")
             country_code = data.get("countryCode", "")
+            http_latency = time.monotonic() - t0
             egress = {
                 "egress_ip": data.get("query", ""),
                 "egress_city": data.get("city", ""),
@@ -485,19 +505,19 @@ class HuntState:
 
         listen = await listen_task
         if self.country_filter and country_code != self.country_filter:
-            return False, country, False, False, egress, listen
+            return False, country, False, False, egress, listen, 0.0
         if self.us_only and country != "United States":
-            return False, country, False, False, egress, listen
+            return False, country, False, False, egress, listen, 0.0
 
         connect_ok, mitm_suspect = await self._check_proxy_connect(host, port, is_socks)
         supports_connect = connect_ok
 
         if not connect_ok and not is_socks:
-            return True, country, False, mitm_suspect, egress, listen
+            return True, country, False, mitm_suspect, egress, listen, http_latency
 
         if not connect_ok:
-            return False, country, False, mitm_suspect, egress, listen
-        return True, country, True, mitm_suspect, egress, listen
+            return False, country, False, mitm_suspect, egress, listen, http_latency
+        return True, country, True, mitm_suspect, egress, listen, http_latency
 
     async def _check_proxy_connect(self, host: str, port: int, is_socks: bool = False) -> tuple:
         try:
@@ -530,6 +550,50 @@ class HuntState:
                 return True, mitm
         except Exception:
             return False, False
+        finally:
+            try:
+                w.close()
+            except Exception:
+                pass
+
+    async def _measure_speed(self, host: str, port: int, is_socks: bool = False) -> float:
+        try:
+            r, w = await asyncio.wait_for(
+                asyncio.open_connection(host, port), timeout=self.timeout)
+        except Exception:
+            return 0.0
+        try:
+            if is_socks:
+                if port == 4145:
+                    ok = await self._socks4_test(r, w)
+                else:
+                    ok = await self._socks5_test(r, w)
+                if not ok:
+                    return 0.0
+            t0 = time.monotonic()
+            req = (
+                "GET http://httpbin.org/bytes/65536 HTTP/1.0\r\n"
+                "Host: httpbin.org\r\n"
+                "Connection: close\r\n"
+                "\r\n"
+            )
+            w.write(req.encode())
+            await asyncio.wait_for(w.drain(), timeout=10)
+            total = 0
+            while True:
+                try:
+                    chunk = await asyncio.wait_for(r.read(65536), timeout=15)
+                except (asyncio.TimeoutError, asyncio.IncompleteReadError):
+                    break
+                if not chunk:
+                    break
+                total += len(chunk)
+            elapsed = time.monotonic() - t0
+            if elapsed > 0 and total > 1000:
+                return total / elapsed / 1024.0
+            return 0.0
+        except Exception:
+            return 0.0
         finally:
             try:
                 w.close()
@@ -738,7 +802,8 @@ class HuntState:
 
     def _update_rating(self, addr: str, ok: bool, country: str, latency: float,
                         supports_connect: bool = False, mitm_suspect: bool = False,
-                        egress: dict = None, listen: dict = None):
+                        egress: dict = None, listen: dict = None,
+                        speed: float = 0.0):
         r = self.ratings.get(addr)
         if not r:
             r = ProxyRating(
@@ -764,6 +829,10 @@ class HuntState:
             r.latency_count += 1
             r.last_status = "ok"
             r.last_ok = time.time()
+            if speed > 0:
+                r.speed_sum += speed
+                r.speed_count += 1
+                r.last_speed = speed
             if country and not r.country:
                 r.country = country
                 r.country_code = country_code_from_name(country)
@@ -811,9 +880,15 @@ class HuntState:
         async def check(r: ProxyRating):
             nonlocal ok_count, fail_count
             async with sem:
-                start = time.monotonic()
-                ok, country, supports_connect, mitm_suspect, egress, listen = await self._check_proxy(r.address)
-                latency = time.monotonic() - start
+                ok, country, supports_connect, mitm_suspect, egress, listen, http_latency = await self._check_proxy(r.address)
+                speed = 0.0
+                if ok:
+                    host, port_str = r.address.rsplit(":", 1)
+                    try:
+                        speed = await self._measure_speed(host, int(port_str),
+                                                           port_str.isdigit() and int(port_str) in (1080, 10808, 9050, 4145))
+                    except Exception:
+                        speed = 0.0
                 async with lock:
                     self.checked += 1
                     if ok:
@@ -822,7 +897,7 @@ class HuntState:
                     else:
                         fail_count += 1
                         self.failed = fail_count
-                    self._update_rating(r.address, ok, country, latency, supports_connect, mitm_suspect, egress, listen)
+                    self._update_rating(r.address, ok, country, http_latency, supports_connect, mitm_suspect, egress, listen, speed)
 
         tasks = [asyncio.create_task(check(r)) for r in candidates]
         await asyncio.gather(*tasks)
@@ -1504,7 +1579,7 @@ input[type=text]:focus,input[type=number]:focus{outline:none;border-color:#0969d
 <div class="tbl-wrap">
 <table>
 <thead><tr>
-<th>#</th><th class="sortable" onclick="sortTop('address')">proxy</th><th class="sortable" onclick="sortTop('country')">country</th><th class="sortable" onclick="sortTop('last_latency')">latency</th><th class="sortable" onclick="sortTop('success_rate')">success</th><th class="sortable" onclick="sortTop('checks_ok')">checks</th><th class="sortable" onclick="sortTop('score')">score</th><th class="sortable" onclick="sortTop('supports_connect')">flags</th><th class="sortable" onclick="sortTop('last_ok')" style="width:48px">ok</th><th></th>
+<th>#</th><th class="sortable" onclick="sortTop('address')">proxy</th><th class="sortable" onclick="sortTop('country')">country</th>      <th class="sortable" onclick="sortTop('last_latency')">latency</th><th class="sortable" onclick="sortTop('latency_avg')">avg</th><th class="sortable" onclick="sortTop('speed_avg')" title="KB/s">KB/s</th><th class="sortable" onclick="sortTop('success_rate')">success</th><th class="sortable" onclick="sortTop('checks_ok')">checks</th><th class="sortable" onclick="sortTop('score')">score</th><th class="sortable" onclick="sortTop('supports_connect')">flags</th><th class="sortable" onclick="sortTop('last_ok')" style="width:48px">ok</th><th></th>
 </tr></thead>
 <tbody id="top-body"></tbody>
 </table>
@@ -1563,12 +1638,14 @@ input[type=text]:focus,input[type=number]:focus{outline:none;border-color:#0969d
   <div class="sel-badges" id="sel-badges"></div>
   <div class="sel-geo" id="sel-geo" style="font-size:11px;color:#656d76;margin-bottom:8px;line-height:1.6"></div>
   <div class="sel-stats" id="sel-stats">
-    <div class="metric"><div class="v" id="sel-score">-</div><div class="l">score</div></div>
-    <div class="metric"><div class="v" id="sel-lat">-</div><div class="l">latency</div></div>
-    <div class="metric"><div class="v" id="sel-sr">-</div><div class="l">success rate</div></div>
-    <div class="metric"><div class="v" id="sel-checks">-</div><div class="l">checks</div></div>
-  </div>
-  <button onclick="proxySelect('')" style="margin-top:6px;font-size:11px">clear selection</button>
+     <div class="metric"><div class="v" id="sel-score">-</div><div class="l">score</div></div>
+     <div class="metric"><div class="v" id="sel-lat">-</div><div class="l">latency</div></div>
+     <div class="metric"><div class="v" id="sel-speed">-</div><div class="l">KB/s</div></div>
+     <div class="metric"><div class="v" id="sel-sr">-</div><div class="l">success rate</div></div>
+     <div class="metric"><div class="v" id="sel-checks">-</div><div class="l">checks</div></div>
+   </div>
+   <button onclick="recheckProxy()" style="margin-top:6px;font-size:11px">recheck</button>
+   <button onclick="proxySelect('')" style="margin-top:6px;font-size:11px">clear selection</button>
 </div>
 </div>
 
@@ -1585,7 +1662,7 @@ input[type=text]:focus,input[type=number]:focus{outline:none;border-color:#0969d
 <div class="tbl-wrap" style="max-height:500px">
 <table>
  <thead><tr>
-<th>#</th><th class="sortable" onclick="sortProxy('address')">proxy</th><th class="sortable" onclick="sortProxy('country')">country</th><th class="sortable" onclick="sortProxy('last_latency')">latency</th><th class="sortable" onclick="sortProxy('success_rate')">success</th><th class="sortable" onclick="sortProxy('score')">score</th><th class="sortable" onclick="sortProxy('supports_connect')">flags</th><th class="sortable" onclick="sortProxy('last_ok')" style="width:48px">ok</th><th></th>
+<th>#</th><th class="sortable" onclick="sortProxy('address')">proxy</th><th class="sortable" onclick="sortProxy('country')">country</th>      <th class="sortable" onclick="sortProxy('last_latency')">latency</th><th class="sortable" onclick="sortProxy('latency_avg')">avg</th><th class="sortable" onclick="sortProxy('speed_avg')" title="KB/s">KB/s</th><th class="sortable" onclick="sortProxy('success_rate')">success</th><th class="sortable" onclick="sortProxy('score')">score</th><th class="sortable" onclick="sortProxy('supports_connect')">flags</th><th class="sortable" onclick="sortProxy('last_ok')" style="width:48px">ok</th><th></th>
 </tr></thead>
 <tbody id="proxy-list-body"></tbody>
 </table>
@@ -1635,6 +1712,7 @@ function renderSelected(ap){
   document.getElementById('sel-badges').innerHTML=badges;
   document.getElementById('sel-score').textContent=ap.score.toFixed(0);
   document.getElementById('sel-lat').textContent=(ap.last_latency||0).toFixed(2)+'s';
+  document.getElementById('sel-speed').textContent=(ap.speed_avg||0).toFixed(0);
   document.getElementById('sel-sr').textContent=(ap.success_rate*100).toFixed(0)+'%';
   document.getElementById('sel-checks').textContent=ap.checks_ok+'/'+ap.checks_total;
 }
@@ -1643,6 +1721,14 @@ async function proxySelect(a){
   await api('/api/proxy/select?address='+encodeURIComponent(a||''),'POST');
   if(!a){document.getElementById('selected-card').style.display='none';_selectedAddr=null}
   else{var ps=await api('/api/proxy/status');renderSelected(ps.active_proxy)}
+}
+
+async function recheckProxy(){
+  if(!_selectedAddr)return;
+  var btn=event.target; btn.disabled=true; btn.textContent='checking...';
+  var r=await api('/api/proxy/recheck?address='+encodeURIComponent(_selectedAddr),'POST');
+  btn.disabled=false; btn.textContent='recheck';
+  if(r && r.ok){var ps=await api('/api/proxy/status');renderSelected(ps.active_proxy)}
 }
 
 function toggleDirect(on){fetch('/api/proxy/direct?on='+(on?'true':'false'),{method:'POST'})}
@@ -1691,7 +1777,7 @@ if(p.last_proxy){lp.style.visibility='visible';document.getElementById('last-add
 // top table
 var tb=document.getElementById('top-body');
 var sorted=s.top_proxies.slice().sort(function(a,b){var va=a[topSortKey],vb=b[topSortKey];if(topSortKey==='address'||topSortKey==='country')return topSortDir*va.localeCompare(vb);return topSortDir*(va-vb)});
-tb.innerHTML=sorted.length?sorted.map(function(p,i){var sc=Math.min(100,Math.max(0,p.score));var flags=[];if(p.supports_connect)flags.push('<span style="color:#1a7f37;font-weight:600">HTTPS</span>');else flags.push('<span style="color:#656d76">HTTP</span>');if(p.mitm_suspect)flags.push('<span style="color:#cf222e;font-weight:600">MITM!</span>');var proto=p.protocol||'http';return'<tr><td style="color:#656d76">'+(i+1)+'</td><td class="addr">'+p.address+'</td><td>'+flag(p.country_code)+' '+shortCountry(p.country)+(p.listen_country&&p.listen_country!==p.country?' \u2192 '+shortCountry(p.listen_country):'')+'</td><td>'+p.last_latency.toFixed(2)+'s</td><td>'+(p.success_rate*100).toFixed(0)+'%</td><td>'+p.checks_ok+'/'+p.checks_total+'</td><td><div class="score-bar"><div class="s" style="width:'+sc+'%"></div></div></td><td style="font-size:11px"><span style="color:#8250df">'+proto+'</span> '+flags.join(' ')+'</td><td style="font-size:11px;white-space:nowrap">'+ago(p.last_ok)+'</td><td><button class="danger" style="padding:2px 6px;font-size:10px" onclick="blRemove(\''+p.address+'\')">bl</button></td></tr>'}).join(''):'<tr><td colspan="10" class="empty">no alive proxies</td></tr>';
+tb.innerHTML=sorted.length?sorted.map(function(p,i){var sc=Math.min(100,Math.max(0,p.score));var flags=[];if(p.supports_connect)flags.push('<span style="color:#1a7f37;font-weight:600">HTTPS</span>');else flags.push('<span style="color:#656d76">HTTP</span>');if(p.mitm_suspect)flags.push('<span style="color:#cf222e;font-weight:600">MITM!</span>');var proto=p.protocol||'http';return'<tr><td style="color:#656d76">'+(i+1)+'</td><td class="addr">'+p.address+'</td><td>'+flag(p.country_code)+' '+shortCountry(p.country)+(p.listen_country&&p.listen_country!==p.country?' \u2192 '+shortCountry(p.listen_country):'')+'</td><td>'+p.last_latency.toFixed(2)+'s</td><td>'+(p.latency_avg.toFixed(2))+'s</td><td>'+(p.speed_avg||0).toFixed(0)+'</td><td>'+(p.success_rate*100).toFixed(0)+'%</td><td>'+p.checks_ok+'/'+p.checks_total+'</td><td><div class="score-bar"><div class="s" style="width:'+sc+'%"></div></div></td><td style="font-size:11px"><span style="color:#8250df">'+proto+'</span> '+flags.join(' ')+'</td><td style="font-size:11px;white-space:nowrap">'+ago(p.last_ok)+'</td><td><button class="danger" style="padding:2px 6px;font-size:10px" onclick="blRemove(\''+p.address+'\')">bl</button></td></tr>'}).join(''):'<tr><td colspan="12" class="empty">no alive proxies</td></tr>';
 
 // blacklist
 var bb=document.getElementById('bl-body');
@@ -1701,7 +1787,7 @@ bb.innerHTML=s.blacklist.length?s.blacklist.map(function(b){return'<tr><td class
 function renderProxyList(alive){
 var tb=document.getElementById('proxy-list-body');
 var sorted=alive.slice().sort(function(a,b){var va=a[proxySortKey],vb=b[proxySortKey];if(proxySortKey==='address'||proxySortKey==='country')return proxySortDir*va.localeCompare(vb);return proxySortDir*(va-vb)});
-tb.innerHTML=sorted.length?sorted.map(function(p,i){var sc=Math.min(100,Math.max(0,p.score));var flags=[];if(p.supports_connect)flags.push('<span style="color:#1a7f37;font-weight:600">HTTPS</span>');else flags.push('<span style="color:#656d76">HTTP</span>');if(p.mitm_suspect)flags.push('<span style="color:#cf222e;font-weight:600">MITM!</span>');var proto=p.protocol||'http';return'<tr><td style="color:#656d76">'+(i+1)+'</td><td class="addr">'+p.address+'</td><td>'+flag(p.country_code)+' '+shortCountry(p.country)+(p.listen_country&&p.listen_country!==p.country?' \u2192 '+shortCountry(p.listen_country):'')+'</td><td>'+p.last_latency.toFixed(2)+'s</td><td>'+(p.success_rate*100).toFixed(0)+'%</td><td><div class="score-bar"><div class="s" style="width:'+sc+'%"></div></div></td><td style="font-size:11px"><span style="color:#8250df">'+proto+'</span> '+flags.join(' ')+'</td><td style="font-size:11px;white-space:nowrap">'+ago(p.last_ok)+'</td><td><button style="padding:3px 8px;font-size:11px" onclick="proxySelect(\''+p.address+'\')">select</button></td></tr>'}).join(''):'<tr><td colspan="9" class="empty">no proxies available</td></tr>';
+tb.innerHTML=sorted.length?sorted.map(function(p,i){var sc=Math.min(100,Math.max(0,p.score));var flags=[];if(p.supports_connect)flags.push('<span style="color:#1a7f37;font-weight:600">HTTPS</span>');else flags.push('<span style="color:#656d76">HTTP</span>');if(p.mitm_suspect)flags.push('<span style="color:#cf222e;font-weight:600">MITM!</span>');var proto=p.protocol||'http';return'<tr><td style="color:#656d76">'+(i+1)+'</td><td class="addr">'+p.address+'</td><td>'+flag(p.country_code)+' '+shortCountry(p.country)+(p.listen_country&&p.listen_country!==p.country?' \u2192 '+shortCountry(p.listen_country):'')+'</td><td>'+p.last_latency.toFixed(2)+'s</td><td>'+(p.latency_avg.toFixed(2))+'s</td><td>'+(p.speed_avg||0).toFixed(0)+'</td><td>'+(p.success_rate*100).toFixed(0)+'%</td><td><div class="score-bar"><div class="s" style="width:'+sc+'%"></div></div></td><td style="font-size:11px"><span style="color:#8250df">'+proto+'</span> '+flags.join(' ')+'</td><td style="font-size:11px;white-space:nowrap">'+ago(p.last_ok)+'</td><td><button style="padding:3px 8px;font-size:11px" onclick="proxySelect(\''+p.address+'\')">select</button></td></tr>'}).join(''):'<tr><td colspan="11" class="empty">no proxies available</td></tr>';
 }
 
 function renderLog(ev){
@@ -1885,6 +1971,26 @@ class HuntServer:
             self.state._proxy_direct_mode = self.proxy.direct_mode
             self.state._save_state()
             return json.dumps({"ok": True, "address": address}), 200, "application/json"
+
+        if path.startswith("/api/proxy/recheck"):
+            qs = _qs(path)
+            address = qs.get("address", "").strip()
+            if address:
+                host, port_str = address.rsplit(":", 1)
+                port = int(port_str)
+                is_socks = port in (1080, 10808, 9050, 4145)
+                ok, country, supports_connect, mitm_suspect, egress, listen, http_latency = await self.state._check_proxy(address)
+                speed = 0.0
+                if ok:
+                    try:
+                        speed = await self.state._measure_speed(host, port, is_socks)
+                    except Exception:
+                        speed = 0.0
+                self.state._update_rating(address, ok, country, http_latency, supports_connect, mitm_suspect, egress, listen, speed)
+                self.state._save_state()
+                self.state._save_working_file()
+                return json.dumps({"ok": ok, "address": address}), 200, "application/json"
+            return json.dumps({"ok": False, "error": "no address"}), 400, "application/json"
 
         if path.startswith("/api/proxy/direct"):
             qs = _qs(path)

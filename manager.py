@@ -24,6 +24,7 @@ class ProxyInfo:
     country: str = ""
     protocol: str = "http"
     latency: float = 0.0
+    speed: float = 0.0
     failures: int = 0
     last_checked: float = 0.0
     last_used: float = 0.0
@@ -198,7 +199,7 @@ class ProxyManager:
                 self._save_stats()
                 break
 
-    def report_success(self, address: str, latency: float = 0.0):
+    def report_success(self, address: str, latency: float = 0.0, speed: float = 0.0):
         for p in self.pool:
             if p.address == address:
                 p.failures = 0
@@ -206,6 +207,8 @@ class ProxyManager:
                 p.cooldown_until = 0.0
                 if latency > 0:
                     p.latency = latency
+                if speed > 0:
+                    p.speed = speed
                 break
 
     async def force_refresh(self):
@@ -305,6 +308,50 @@ class ProxyManager:
                 logger.error(f"Health check error: {e}")
             await self._sleep_interruptible(self._health_interval)
 
+    async def _measure_speed(self, addr: str) -> float:
+        host, port_str = addr.rsplit(":", 1)
+        try:
+            port = int(port_str)
+        except ValueError:
+            return 0.0
+        try:
+            r, w = await asyncio.wait_for(
+                asyncio.open_connection(host, port),
+                timeout=self._health_timeout,
+            )
+        except Exception:
+            return 0.0
+        try:
+            t0 = time.monotonic()
+            req = (
+                "GET http://httpbin.org/bytes/65536 HTTP/1.0\r\n"
+                "Host: httpbin.org\r\n"
+                "Connection: close\r\n"
+                "\r\n"
+            )
+            w.write(req.encode())
+            await asyncio.wait_for(w.drain(), timeout=10)
+            total = 0
+            while True:
+                try:
+                    chunk = await asyncio.wait_for(r.read(65536), timeout=15)
+                except (asyncio.TimeoutError, asyncio.IncompleteReadError):
+                    break
+                if not chunk:
+                    break
+                total += len(chunk)
+            elapsed = time.monotonic() - t0
+            if elapsed > 0 and total > 1000:
+                return total / elapsed / 1024.0
+            return 0.0
+        except Exception:
+            return 0.0
+        finally:
+            try:
+                w.close()
+            except Exception:
+                pass
+
     async def _run_health_check(self):
         now = time.time()
         candidates = [p for p in self.pool if not p.blacklisted]
@@ -325,11 +372,17 @@ class ProxyManager:
                 start = time.monotonic()
                 ok = await self.fetcher._check_proxy(p.address)
                 latency = time.monotonic() - start
+                speed = 0.0
+                if ok:
+                    try:
+                        speed = await self._measure_speed(p.address)
+                    except Exception:
+                        speed = 0.0
                 async with lock:
                     checked += 1
                     if ok:
                         alive += 1
-                        self.report_success(p.address, latency)
+                        self.report_success(p.address, latency, speed)
                     else:
                         self.report_failure(p.address, "health check")
                     self._emit("health_check_progress", checked=checked,
@@ -451,6 +504,7 @@ class ProxyManager:
                 "protocol": p.protocol,
                 "country": p.country,
                 "latency": round(p.latency, 3),
+                "speed": round(p.speed, 1),
                 "failures": p.failures,
                 "last_used": p.last_used,
             })
@@ -464,6 +518,7 @@ class ProxyManager:
                 "protocol": p.protocol,
                 "country": p.country,
                 "latency": round(p.latency, 3),
+                "speed": round(p.speed, 1),
                 "failures": p.failures,
                 "blacklisted": p.blacklisted,
                 "blacklist_reason": p.blacklist_reason,
