@@ -22,7 +22,7 @@ CONFIG_PATH = PROJECT_DIR / "config.yaml"
 DATA_DIR = PROJECT_DIR / "data"
 HUNT_HTML_PATH = PROJECT_DIR / "hunt.html"
 
-logger = logging.getLogger("setproxy.hunt")
+logger = logging.getLogger("huntproxy.hunt")
 
 DEFAULT_SOURCES = [
     "https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/all/socks5.txt",
@@ -464,7 +464,7 @@ class HuntState:
                 req = (
                     "GET http://ip-api.com/json/ HTTP/1.0\r\n"
                     "Host: ip-api.com\r\n"
-                    "User-Agent: setproxy\r\n"
+                    "User-Agent: huntproxy\r\n"
                     "Connection: close\r\n"
                     "\r\n"
                 )
@@ -717,7 +717,7 @@ class HuntState:
         except Exception:
             return {}
         try:
-            req = f"GET /json/{ip} HTTP/1.0\r\nHost: ip-api.com\r\nUser-Agent: setproxy\r\nConnection: close\r\n\r\n"
+            req = f"GET /json/{ip} HTTP/1.0\r\nHost: ip-api.com\r\nUser-Agent: huntproxy\r\nConnection: close\r\n\r\n"
             w.write(req.encode())
             await asyncio.wait_for(w.drain(), timeout=5)
             buf = b""
@@ -788,7 +788,7 @@ class HuntState:
                     await asyncio.wait_for(r.readexactly(18), timeout=8)
                 else:
                     return {}
-            w.write(b"GET /json/ HTTP/1.0\r\nHost: ip-api.com\r\nUser-Agent: setproxy\r\nConnection: close\r\n\r\n")
+            w.write(b"GET /json/ HTTP/1.0\r\nHost: ip-api.com\r\nUser-Agent: huntproxy\r\nConnection: close\r\n\r\n")
             await asyncio.wait_for(w.drain(), timeout=8)
             buf = b""
             while True:
@@ -971,7 +971,7 @@ class HuntState:
 
     def _save_blacklist(self):
         with open(self.blacklist_file, "w") as f:
-            f.write(f"# setproxy blacklist (operator-curated, NOT dead proxies)\n")
+            f.write(f"# huntproxy blacklist (operator-curated, NOT dead proxies)\n")
             for addr, reason in sorted(self.blacklist.items()):
                 f.write(f"{addr}  {reason}\n")
 
@@ -1456,7 +1456,7 @@ WEB_HTML = r"""<!DOCTYPE html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>setproxy</title>
+<title>huntproxy</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font:14px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;background:#fff;color:#222;padding:0;max-width:1400px;margin:0 auto}
@@ -1537,7 +1537,7 @@ input[type=text]:focus,input[type=number]:focus{outline:none;border-color:#0969d
 </head>
 <body>
 
-<h1>setproxy</h1>
+<h1>huntproxy</h1>
 <div class="sub">
   <span class="pulse off" id="live-dot" style="margin-right:8px"></span>
   <span id="last-event">ready</span>
@@ -2049,7 +2049,7 @@ class HuntServer:
 
 
 def setup_logging():
-    level = os.environ.get("SETPROXY_LOG_LEVEL", "INFO")
+    level = os.environ.get("HUNTPROXY_LOG_LEVEL", "INFO")
     fmt = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
     logging.basicConfig(level=level, format=fmt, datefmt="%H:%M:%S")
 
@@ -2063,7 +2063,7 @@ async def amain(config: dict):
     server = HuntServer(state, host, port)
 
     print("=" * 56)
-    print(f"  setproxy HUNT — web UI: http://{host}:{port}/")
+    print(f"  huntproxy HUNT — web UI: http://{host}:{port}/")
     print(f"  data dir: {DATA_DIR}")
     print("  Ctrl+C to stop")
     print("=" * 56)

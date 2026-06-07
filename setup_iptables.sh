@@ -15,7 +15,7 @@ REDIRECT_PORTS="${REDIRECT_PORTS:-80 443}"
 OWN_IP="${OWN_IP:-}"
 EXCLUDE_UID="${EXCLUDE_UID:-}"
 
-CHAIN_NAME="SETPROXY_REDIRECT"
+CHAIN_NAME="HUNTPROXY_REDIRECT"
 IPTABLES="iptables"
 command -v iptables-legacy &>/dev/null && IPTABLES="iptables-legacy"
 

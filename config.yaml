@@ -1,4 +1,4 @@
-# setproxy configuration
+# huntproxy configuration
 # All paths are relative to the project directory.
 # Non-obvious default ports chosen to avoid conflicts and recognizability.
 
@@ -48,7 +48,7 @@ proxies:
 
 logging:
   level: "INFO"
-  file: "./data/setproxy.log"
+  file: "./data/huntproxy.log"
   max_size_mb: 5
   backup_count: 3
 

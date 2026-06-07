@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# setproxy daemon — manage hunt proxy server as a background daemon
+# huntproxy daemon — manage hunt proxy server as a background daemon
 set -euo pipefail
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

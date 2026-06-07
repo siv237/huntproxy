@@ -1,4 +1,4 @@
-# setproxy
+# huntproxy
 
 Локальный каскадный прокси-сервер с прозрачным режимом.
 
@@ -8,7 +8,7 @@
 
 ```bash
 # 1. Запуск
-./setproxy start
+./huntproxy start
 
 # 2. Проверить, что работает
 curl --proxy http://127.0.0.1:8080 http://httpbin.org/ip
@@ -23,13 +23,13 @@ curl --socks5 127.0.0.1:1080 http://httpbin.org/ip
 
 | Команда | Описание |
 |---|---|
-| `./setproxy start` | Запустить сервер + менеджер пула |
-| `./setproxy status` | Показать состояние пула |
-| `./setproxy list` | Список живых прокси |
-| `./setproxy refresh` | Принудительно обновить пул прокси |
-| `./setproxy blacklist` | Показать заблокированные прокси |
-| `./setproxy blacklist --add IP:PORT --reason "медленный"` | Заблокировать прокси |
-| `./setproxy blacklist --remove IP:PORT` | Разблокировать |
+| `./huntproxy start` | Запустить сервер + менеджер пула |
+| `./huntproxy status` | Показать состояние пула |
+| `./huntproxy list` | Список живых прокси |
+| `./huntproxy refresh` | Принудительно обновить пул прокси |
+| `./huntproxy blacklist` | Показать заблокированные прокси |
+| `./huntproxy blacklist --add IP:PORT --reason "медленный"` | Заблокировать прокси |
+| `./huntproxy blacklist --remove IP:PORT` | Разблокировать |
 
 ## Порты (по умолчанию)
 
@@ -75,8 +75,8 @@ sudo OWN_IP=10.8.0.2 ./setup_iptables.sh start
 
 ```bash
 sudo ./install.sh
-systemctl status setproxy
-journalctl -u setproxy -f
+systemctl status huntproxy
+journalctl -u huntproxy -f
 ```
 
 ## Конфигурация
@@ -108,4 +108,4 @@ proxies:
 | `~/proxychain/proxies/working.txt` | Живые US-прокси (IP:PORT COUNTRY) |
 | `~/proxychain/proxies/blacklist.txt` | Заблокированные прокси |
 | `~/proxychain/proxies/stats.json` | Статистика по каждому прокси |
-| `~/.local/share/setproxy/setproxy.log` | Логи |
+| `~/.local/share/huntproxy/huntproxy.log` | Логи |
