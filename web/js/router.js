@@ -2,7 +2,8 @@ const router = {
   routes: {},
   current: '',
   titles: {
-    overview: ['Overview', 'Real-time overview of your proxy pool and system status'],
+    overview: ['Overview', 'Dashboard — key metrics from all systems'],
+    hunt: ['Hunt', 'Pool harvesting, validation and progress'],
     proxies: ['Proxies', 'Manage and monitor your proxy pool'],
     'proxy-control': ['Proxy Control', 'Monitor and control internal proxy performance and traffic'],
     'proxy-pool': ['Proxy Pool', 'Browse and select upstream proxies'],
