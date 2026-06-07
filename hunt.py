@@ -86,6 +86,7 @@ class ProxyRating:
     speed_sum: float = 0.0
     speed_count: int = 0
     last_speed: float = 0.0
+    speed_fails: int = 0
 
     @property
     def speed_avg(self) -> float:
@@ -116,6 +117,8 @@ class ProxyRating:
             result -= 30
         if self.speed_count > 0:
             result += min(20, self.speed_avg / 50)
+        if self.speed_fails >= 3:
+            result -= 40
         return max(0, result)
 
     def to_dict(self) -> dict:
@@ -132,6 +135,9 @@ class ProxyRating:
             "score": round(self.score, 2),
             "speed_avg": round(self.speed_avg, 1),
             "last_speed": round(self.last_speed, 1),
+            "speed_sum": round(self.speed_sum, 1),
+            "speed_count": self.speed_count,
+            "speed_fails": self.speed_fails,
             "last_check": self.last_check,
             "last_status": self.last_status,
             "first_seen": self.first_seen,
@@ -556,7 +562,21 @@ class HuntState:
             except Exception:
                 pass
 
+    SPEED_SERVERS = [
+        ("speedtest.tele2.net", "/512KB.zip", 524288),
+        ("ipv4.download.thinkbroadband.com", "/512KB.zip", 524288),
+        ("testdebit.info", "/1M.iso", 1048576),
+    ]
+
     async def _measure_speed(self, host: str, port: int, is_socks: bool = False) -> float:
+        for srv_host, srv_path, expected_size in self.SPEED_SERVERS:
+            speed = await self._speed_single(host, port, is_socks, srv_host, srv_path, expected_size)
+            if speed > 0:
+                return speed
+        return 0.0
+
+    async def _speed_single(self, host: str, port: int, is_socks: bool,
+                             srv_host: str, srv_path: str, expected_size: int) -> float:
         try:
             r, w = await asyncio.wait_for(
                 asyncio.open_connection(host, port), timeout=self.timeout)
@@ -572,8 +592,8 @@ class HuntState:
                     return 0.0
             t0 = time.monotonic()
             req = (
-                "GET http://httpbin.org/bytes/65536 HTTP/1.0\r\n"
-                "Host: httpbin.org\r\n"
+                f"GET http://{srv_host}{srv_path} HTTP/1.0\r\n"
+                f"Host: {srv_host}\r\n"
                 "Connection: close\r\n"
                 "\r\n"
             )
@@ -582,14 +602,16 @@ class HuntState:
             total = 0
             while True:
                 try:
-                    chunk = await asyncio.wait_for(r.read(65536), timeout=15)
+                    chunk = await asyncio.wait_for(r.read(65536), timeout=30)
                 except (asyncio.TimeoutError, asyncio.IncompleteReadError):
                     break
                 if not chunk:
                     break
                 total += len(chunk)
+                if total >= expected_size:
+                    break
             elapsed = time.monotonic() - t0
-            if elapsed > 0 and total > 1000:
+            if elapsed > 0 and total >= expected_size * 0.8:
                 return total / elapsed / 1024.0
             return 0.0
         except Exception:
@@ -833,6 +855,9 @@ class HuntState:
                 r.speed_sum += speed
                 r.speed_count += 1
                 r.last_speed = speed
+                r.speed_fails = 0
+            else:
+                r.speed_fails += 1
             if country and not r.country:
                 r.country = country
                 r.country_code = country_code_from_name(country)
@@ -971,6 +996,7 @@ class HuntState:
                     protocol=d.get("protocol", "http"),
                     latency_sum=d.get("latency_avg", 0) * d.get("checks_ok", 0),
                     latency_count=d.get("checks_ok", 0),
+                    last_latency=d.get("last_latency", 0),
                     checks_total=d.get("checks_total", 0),
                     checks_ok=d.get("checks_ok", 0),
                     last_check=d.get("last_check", 0),
@@ -979,6 +1005,9 @@ class HuntState:
                     first_seen=d.get("first_seen", 0),
                     supports_connect=d.get("supports_connect", False),
                     mitm_suspect=d.get("mitm_suspect", False),
+                    speed_sum=d.get("speed_sum", 0),
+                    speed_count=d.get("speed_count", 0),
+                    speed_fails=d.get("speed_fails", 0),
                     egress_ip=d.get("egress_ip", ""),
                     egress_city=d.get("egress_city", ""),
                     egress_isp=d.get("egress_isp", ""),

@@ -308,12 +308,26 @@ class ProxyManager:
                 logger.error(f"Health check error: {e}")
             await self._sleep_interruptible(self._health_interval)
 
+    SPEED_SERVERS = [
+        ("speedtest.tele2.net", "/512KB.zip", 524288),
+        ("ipv4.download.thinkbroadband.com", "/512KB.zip", 524288),
+        ("testdebit.info", "/1M.iso", 1048576),
+    ]
+
     async def _measure_speed(self, addr: str) -> float:
         host, port_str = addr.rsplit(":", 1)
         try:
             port = int(port_str)
         except ValueError:
             return 0.0
+        for srv_host, srv_path, expected_size in self.SPEED_SERVERS:
+            speed = await self._speed_single(host, port, srv_host, srv_path, expected_size)
+            if speed > 0:
+                return speed
+        return 0.0
+
+    async def _speed_single(self, host: str, port: int,
+                             srv_host: str, srv_path: str, expected_size: int) -> float:
         try:
             r, w = await asyncio.wait_for(
                 asyncio.open_connection(host, port),
@@ -324,8 +338,8 @@ class ProxyManager:
         try:
             t0 = time.monotonic()
             req = (
-                "GET http://httpbin.org/bytes/65536 HTTP/1.0\r\n"
-                "Host: httpbin.org\r\n"
+                f"GET http://{srv_host}{srv_path} HTTP/1.0\r\n"
+                f"Host: {srv_host}\r\n"
                 "Connection: close\r\n"
                 "\r\n"
             )
@@ -334,14 +348,16 @@ class ProxyManager:
             total = 0
             while True:
                 try:
-                    chunk = await asyncio.wait_for(r.read(65536), timeout=15)
+                    chunk = await asyncio.wait_for(r.read(65536), timeout=30)
                 except (asyncio.TimeoutError, asyncio.IncompleteReadError):
                     break
                 if not chunk:
                     break
                 total += len(chunk)
+                if total >= expected_size:
+                    break
             elapsed = time.monotonic() - t0
-            if elapsed > 0 and total > 1000:
+            if elapsed > 0 and total >= expected_size * 0.8:
                 return total / elapsed / 1024.0
             return 0.0
         except Exception:
