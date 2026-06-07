@@ -301,6 +301,8 @@ class HuntState:
         if self.task and not self.task.done():
             self.task.cancel()
         self.phase = self.PHASE_IDLE
+        self._save_state()
+        self._save_working_file()
         self._emit("Hunt stopped by user", "warn")
 
     async def _hunt_cycle(self):
@@ -1005,9 +1007,12 @@ class HuntState:
                     first_seen=d.get("first_seen", 0),
                     supports_connect=d.get("supports_connect", False),
                     mitm_suspect=d.get("mitm_suspect", False),
+                    last_speed=d.get("last_speed", 0.0),
                     speed_sum=d.get("speed_sum", 0),
                     speed_count=d.get("speed_count", 0),
                     speed_fails=d.get("speed_fails", 0),
+                    egress_http_ip=d.get("egress_http_ip", ""),
+                    egress_http_country=d.get("egress_http_country", ""),
                     egress_ip=d.get("egress_ip", ""),
                     egress_city=d.get("egress_city", ""),
                     egress_isp=d.get("egress_isp", ""),
@@ -2068,6 +2073,8 @@ async def amain(config: dict):
     except asyncio.CancelledError:
         pass
     finally:
+        state._save_state()
+        state._save_working_file()
         await server.stop()
 
 
