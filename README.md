@@ -1,43 +1,42 @@
 # huntproxy
 
-Локальный каскадный прокси-сервер с прозрачным режимом.
+Инструмент поиска, проверки и управления пулом прокси с Web UI.
 
-**Суть:** поднимает HTTP/SOCKS5 прокси на `127.0.0.1`, который ходит наружу через живые US-прокси из пула. Умеет прозрачно перехватывать трафик через iptables.
+**Суть:** скачивает списки прокси из открытых источников, проверяет их на доступность и скорость, фильтрует по стране (US), и предоставляет Web-панель для мониторинга и управления пулом. Поддерживает настройку HTTP/SOCKS5/transparent прокси через `config.yaml`.
 
 ## Быстрый старт
 
 ```bash
-# 1. Запуск
-./huntproxy start
+# 1. Запуск Web UI (foreground)
+./hunt.sh
 
-# 2. Проверить, что работает
-curl --proxy http://127.0.0.1:8080 http://httpbin.org/ip
+# 2. Или как демонона
+./daemon.sh start
 
-# 3. Или через SOCKS5
-curl --socks5 127.0.0.1:1080 http://httpbin.org/ip
+# 3. Открыть Web-панель
+# http://127.0.0.1:17177/
 ```
 
-В системе выставить прокси `127.0.0.1:8080` (HTTP) или `127.0.0.1:1080` (SOCKS5).
-
-## Команды
+## Команды (daemon.sh)
 
 | Команда | Описание |
 |---|---|
-| `./huntproxy start` | Запустить сервер + менеджер пула |
-| `./huntproxy status` | Показать состояние пула |
-| `./huntproxy list` | Список живых прокси |
-| `./huntproxy refresh` | Принудительно обновить пул прокси |
-| `./huntproxy blacklist` | Показать заблокированные прокси |
-| `./huntproxy blacklist --add IP:PORT --reason "медленный"` | Заблокировать прокси |
-| `./huntproxy blacklist --remove IP:PORT` | Разблокировать |
+| `./daemon.sh start` | Запустить hunt-демон |
+| `./daemon.sh stop` | Остановить демон |
+| `./daemon.sh restart` | Перезапустить демон |
+| `./daemon.sh status` | Показать состояние демона |
+| `./daemon.sh log [N]` | Показать последние N строк лога (по умолчанию 20) |
+
+Управление пулом прокси (список, refresh, blacklist) — через Web-панель на `http://127.0.0.1:17177/`.
 
 ## Порты (по умолчанию)
 
 | Порт | Тип | Назначение |
 |---|---|---|
-| `8080` | HTTP proxy | Для браузера / curl |
-| `1080` | SOCKS5 proxy | Для приложений с SOCKS |
-| `9090` | Transparent | Для iptables-редиректа (выключен по умолчанию) |
+| `17177` | Web UI | Панель управления пулом прокси |
+| `17277` | HTTP proxy | HTTP CONNECT прокси |
+| `17377` | SOCKS5 proxy | SOCKS5 прокси |
+| `17477` | Transparent | Для iptables-редиректа (выключен по умолчанию) |
 
 ## Прозрачный режим
 
@@ -54,7 +53,7 @@ sudo ./setup_iptables.sh status
 sudo ./setup_iptables.sh stop
 ```
 
-**Перед включением:** раскомментируй `transparent` → `enabled: true` в `config.yaml`.
+**Перед включением:** установи `transparent_enabled: true` в `config.yaml`.
 
 Исключаются из редиректа: локальные сети (10.x, 192.168.x, 172.16.x), localhost, мультикаст.
 
@@ -66,9 +65,9 @@ sudo OWN_IP=10.8.0.2 ./setup_iptables.sh start
 
 ## Как работает пул прокси
 
-1. `proxy_refresh.sh` скачивает списки с GitHub (8 источников) и проверяет каждый прокси — оставляет только живые US.
-2. `proxy_manager.py` переодически (раз в 10 минут) запускает refresh и (раз в 2 минуты) делает health-check всего пула.
-3. 3 фейла подряд → прокси уходит в blacklist на 5 минут. После 3-го фейла остаётся в blacklist-файле навсегда.
+1. `hunt.py` скачивает списки с GitHub (8 источников) и проверяет каждый прокси — оставляет только живые US.
+2. Периодически (раз в 5 минут) запускает refresh пула и (раз в 2 минуты) делает health-check живых прокси.
+3. 3 фейла подряд → прокси уходит в blacklist. Cooldown — 5 минут.
 4. Выбор прокси — round-robin по живому пулу.
 
 ## Установка как сервис
@@ -85,27 +84,25 @@ journalctl -u huntproxy -f
 
 ```yaml
 server:
-  http:
-    listen: "127.0.0.1:8080"    # Поменять порт если занят
-  transparent:
-    enabled: true                # Включить прозрачный режим
+  web_listen: "127.0.0.1:17177"
+  http_listen: "127.0.0.1:17277"
+  socks5_listen: "127.0.0.1:17377"
+  transparent_listen: "127.0.0.1:17477"
+  transparent_enabled: false
 
 proxies:
-  refresh:
-    interval: 600                # Интервал обновления пула (сек)
-  health_check:
-    interval: 120                # Интервал проверки живых прокси (сек)
-  selection:
-    strategy: round_robin        # round_robin | random
-    max_failures: 3              # Фейлов до blacklist
-    cooldown: 300                # Время доступа после фейла (сек)
+  validate_interval: 300          # Интервал обновления пула (сек)
+  health_interval: 120            # Интервал health-check (сек)
+  strategy: round_robin           # round_robin | random
+  max_failures: 3                 # Фейлов до blacklist
+  cooldown: 300                   # Cooldown после фейла (сек)
 ```
 
 ## Файлы состояния
 
 | Файл | Описание |
 |---|---|
-| `~/proxychain/proxies/working.txt` | Живые US-прокси (IP:PORT COUNTRY) |
-| `~/proxychain/proxies/blacklist.txt` | Заблокированные прокси |
-| `~/proxychain/proxies/stats.json` | Статистика по каждому прокси |
-| `~/.local/share/huntproxy/huntproxy.log` | Логи |
+| `data/working.txt` | Живые US-прокси (IP:PORT COUNTRY) |
+| `data/blacklist.txt` | Заблокированные прокси |
+| `data/ratings.json` | Рейтинги и статистика по каждому прокси |
+| `data/huntproxy.log` | Логи |
