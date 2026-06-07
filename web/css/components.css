@@ -3,7 +3,7 @@
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 12px;
+  padding: 16px;
   box-shadow: var(--shadow-sm);
   transition: var(--transition);
 }
@@ -16,15 +16,13 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
 }
 
 .card-title {
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: var(--text-secondary);
+  color: var(--text-primary);
 }
 
 .card-action {
@@ -40,10 +38,29 @@
 
 /* Stat card */
 .stat-card {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  box-shadow: var(--shadow-sm);
+  transition: var(--transition);
 }
+
+.stat-card:hover {
+  box-shadow: var(--shadow);
+}
+
+.stat-icon-wrap {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.stat-icon-wrap svg { width: 18px; height: 18px; }
 
 .stat-label {
   font-size: 11px;
@@ -64,14 +81,18 @@
   display: flex;
   align-items: center;
   gap: 4px;
+  margin-top: 2px;
 }
 
 .stat-delta.up { color: var(--success); }
 .stat-delta.down { color: var(--danger); }
+.stat-delta.neutral { color: var(--text-muted); }
 
 .stat-sparkline {
+  width: 70px;
   height: 28px;
-  margin-top: 2px;
+  flex-shrink: 0;
+  align-self: flex-end;
 }
 
 /* Buttons */
@@ -343,9 +364,9 @@
 .qa-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px;
-  border-radius: var(--radius-xs);
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   background: var(--surface);
   cursor: pointer;
@@ -356,11 +377,12 @@
 .qa-item:hover {
   border-color: var(--accent);
   background: var(--accent-light);
+  box-shadow: var(--shadow-sm);
 }
 
 .qa-icon {
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   border-radius: var(--radius-xs);
   display: flex;
   align-items: center;
@@ -370,7 +392,7 @@
   color: var(--accent);
 }
 
-.qa-icon svg { width: 14px; height: 14px; }
+.qa-icon svg { width: 16px; height: 16px; }
 
 .qa-text { flex: 1; min-width: 0; }
 .qa-title { font-size: 12px; font-weight: 600; color: var(--text-primary); }
