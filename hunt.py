@@ -66,6 +66,7 @@ class ProxyRating:
     checks_total: int = 0
     checks_ok: int = 0
     last_check: float = 0.0
+    last_ok: float = 0.0
     last_latency: float = 0.0
     last_status: str = "untested"  # ok / failed / untested
     first_seen: float = 0.0
@@ -119,6 +120,7 @@ class ProxyRating:
             "supports_connect": self.supports_connect,
             "mitm_suspect": self.mitm_suspect,
             "last_check_ago": round(time.time() - self.last_check, 1) if self.last_check else 0,
+            "last_ok": self.last_ok,
         }
 
 
@@ -610,6 +612,7 @@ class HuntState:
             r.latency_sum += latency
             r.latency_count += 1
             r.last_status = "ok"
+            r.last_ok = time.time()
             if country and not r.country:
                 r.country = country
                 r.country_code = country_code_from_name(country)
@@ -736,6 +739,7 @@ class HuntState:
                     checks_total=d.get("checks_total", 0),
                     checks_ok=d.get("checks_ok", 0),
                     last_check=d.get("last_check", 0),
+                    last_ok=d.get("last_ok", 0),
                     last_status=d.get("last_status", "untested"),
                     first_seen=d.get("first_seen", 0),
                     supports_connect=d.get("supports_connect", False),
@@ -1207,11 +1211,12 @@ button.danger:hover{background:#fff0f0}
 .last-proxy{font:12px/1.4 Menlo,Consolas,monospace;color:#1a7f37;margin-top:6px;display:flex;align-items:center;gap:6px}
 .flag{font-size:16px}
 table{width:100%;border-collapse:collapse;font-size:12px}
-th,td{text-align:left;padding:6px 8px;border-bottom:1px solid #d0d7de}
+th,td{text-align:left;padding:4px 6px;border-bottom:1px solid #d0d7de}
 th{color:#656d76;font-weight:500;font-size:10px;text-transform:uppercase;letter-spacing:.5px;position:sticky;top:0;background:#f6f8fa}
+th.sortable{cursor:pointer;user-select:none}th.sortable:hover{color:#0969da}
 tbody tr:hover{background:#eef1f5}
 .tbl-wrap{max-height:400px;overflow-y:auto;border-radius:6px}
-.addr{font-family:Menlo,Consolas,monospace;color:#0969da}
+.addr{font-family:Menlo,Consolas,monospace;color:#0969da;max-width:125px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .live{font:11px/1.4 Menlo,Consolas,monospace;max-height:200px;overflow-y:auto;background:#f6f8fa;border:1px solid #d0d7de;border-radius:5px;padding:6px}
 .live div{padding:1px 0}
 .live-ts{color:#888;margin-right:6px}
@@ -1220,7 +1225,7 @@ input[type=text]:focus,input[type=number]:focus{outline:none;border-color:#0969d
 .bl-form{display:flex;gap:6px;margin-bottom:8px}
 .empty{color:#888;font-style:italic;padding:14px;text-align:center}
 .empty.small{padding:6px;font-size:11px}
-.score-bar{display:inline-block;width:50px;height:5px;background:#e8eaed;border-radius:3px;vertical-align:middle;overflow:hidden}
+.score-bar{display:inline-block;width:40px;height:5px;background:#e8eaed;border-radius:3px;vertical-align:middle;overflow:hidden}
 .score-bar .s{height:100%;background:linear-gradient(90deg,#0969da,#8250df)}
 .pulse{display:inline-block;width:8px;height:8px;border-radius:50%;background:#1a7f37;box-shadow:0 0 0 0 rgba(26,127,55,.5);animation:pulse 1.5s infinite;vertical-align:middle}
 .pulse.off{background:#bbb;animation:none;box-shadow:none}
@@ -1311,14 +1316,14 @@ input[type=text]:focus,input[type=number]:focus{outline:none;border-color:#0969d
 </div>
 </div>
 
-<div class="col" style="min-width:480px">
+<div class="col" style="min-width:540px">
 
 <div class="card">
-<h2>top rated alive</h2>
+ <h2>top rated alive</h2>
 <div class="tbl-wrap">
 <table>
 <thead><tr>
-<th>#</th><th>proxy</th><th>country</th><th>latency</th><th>success</th><th>checks</th><th>score</th><th>flags</th><th></th>
+<th>#</th><th class="sortable" onclick="sortTop('address')">proxy</th><th class="sortable" onclick="sortTop('country')">country</th><th class="sortable" onclick="sortTop('last_latency')">latency</th><th class="sortable" onclick="sortTop('success_rate')">success</th><th class="sortable" onclick="sortTop('checks_ok')">checks</th><th class="sortable" onclick="sortTop('score')">score</th><th class="sortable" onclick="sortTop('supports_connect')">flags</th><th class="sortable" onclick="sortTop('last_ok')" style="width:48px">ok</th><th></th>
 </tr></thead>
 <tbody id="top-body"></tbody>
 </table>
@@ -1391,14 +1396,14 @@ input[type=text]:focus,input[type=number]:focus{outline:none;border-color:#0969d
 </div>
 </div>
 
-<div class="col" style="min-width:480px">
+<div class="col" style="min-width:540px">
 
 <div class="card">
 <h2>select upstream proxy</h2>
 <div class="tbl-wrap" style="max-height:500px">
 <table>
-<thead><tr>
-<th>#</th><th>proxy</th><th>country</th><th>latency</th><th>success</th><th>score</th><th>flags</th><th></th>
+ <thead><tr>
+<th>#</th><th class="sortable" onclick="sortProxy('address')">proxy</th><th class="sortable" onclick="sortProxy('country')">country</th><th class="sortable" onclick="sortProxy('last_latency')">latency</th><th class="sortable" onclick="sortProxy('success_rate')">success</th><th class="sortable" onclick="sortProxy('score')">score</th><th class="sortable" onclick="sortProxy('supports_connect')">flags</th><th class="sortable" onclick="sortProxy('last_ok')" style="width:48px">ok</th><th></th>
 </tr></thead>
 <tbody id="proxy-list-body"></tbody>
 </table>
@@ -1413,6 +1418,7 @@ input[type=text]:focus,input[type=number]:focus{outline:none;border-color:#0969d
 let lastEventSeq=0, huntLogLines=[], proxyLogLines=[];
 
 function flag(c){if(!c||c.length!==2)return'\u{1F3F3}';var b=0x1F1E6-'A'.charCodeAt(0);return String.fromCodePoint(b+c.charCodeAt(0),b+c.charCodeAt(1))}
+function shortCountry(n){return n&&n.length>10?n.substring(0,9)+'\u2026':n}
 function fmtTime(t){return new Date(t*1e3).toLocaleTimeString()}
 
 async function api(p,m,g){var o={method:m||'GET',headers:{}};if(g){o.headers['Content-Type']='application/json';o.body=JSON.stringify(g)}return(await fetch(p,o)).json()}
@@ -1471,6 +1477,10 @@ pl.innerHTML=proxyLogLines.join('<br>');
 } else if(!s.running) {pl.innerHTML='<div class="empty small">proxy not started</div>'}
 }
 
+function ago(ts){if(!ts)return '\u2014';var d=Date.now()/1000-ts;if(d<60)return Math.floor(d)+'s';if(d<3600)return Math.floor(d/60)+'m';if(d<86400)return Math.floor(d/3600)+'h';return Math.floor(d/86400)+'d'}
+var topSortKey='score',topSortDir=-1,proxySortKey='score',proxySortDir=-1;
+function sortTop(k){if(topSortKey===k)topSortDir*=-1;else{topSortKey=k;topSortDir=k==='score'||k==='success_rate'?-1:1};poll()}
+function sortProxy(k){if(proxySortKey===k)proxySortDir*=-1;else{proxySortKey=k;proxySortDir=k==='score'||k==='success_rate'?-1:1};poll()}
 function renderHunt(s){
 ['m-alive','m-dead','m-bl','m-total'].forEach(function(k,i){document.getElementById(k).textContent=[s.counts.alive,s.counts.dead,s.counts.blacklist,s.counts.ratings][i]});
 var b=document.getElementById('phase-badge');if(b){b.textContent=s.phase;b.className='phase phase-'+s.phase}
@@ -1490,7 +1500,8 @@ if(p.last_proxy){lp.style.visibility='visible';document.getElementById('last-add
 
 // top table
 var tb=document.getElementById('top-body');
-tb.innerHTML=s.top_proxies.length?s.top_proxies.map(function(p,i){var sc=Math.min(100,Math.max(0,p.score));var flags=[];if(p.supports_connect)flags.push('<span style="color:#1a7f37;font-weight:600">HTTPS</span>');else flags.push('<span style="color:#656d76">HTTP</span>');if(p.mitm_suspect)flags.push('<span style="color:#cf222e;font-weight:600">MITM!</span>');var proto=p.protocol||'http';return'<tr><td style="color:#656d76">'+(i+1)+'</td><td class="addr">'+p.address+'</td><td>'+flag(p.country_code)+' '+p.country+'</td><td>'+p.last_latency.toFixed(2)+'s</td><td>'+(p.success_rate*100).toFixed(0)+'%</td><td>'+p.checks_ok+'/'+p.checks_total+'</td><td><div class="score-bar"><div class="s" style="width:'+sc+'%"></div></div></td><td style="font-size:11px"><span style="color:#8250df">'+proto+'</span> '+flags.join(' ')+'</td><td><button class="danger" style="padding:2px 6px;font-size:10px" onclick="blRemove(\''+p.address+'\')">bl</button></td></tr>'}).join(''):'<tr><td colspan="9" class="empty">no alive proxies</td></tr>';
+var sorted=s.top_proxies.slice().sort(function(a,b){var va=a[topSortKey],vb=b[topSortKey];if(topSortKey==='address'||topSortKey==='country')return topSortDir*va.localeCompare(vb);return topSortDir*(va-vb)});
+tb.innerHTML=sorted.length?sorted.map(function(p,i){var sc=Math.min(100,Math.max(0,p.score));var flags=[];if(p.supports_connect)flags.push('<span style="color:#1a7f37;font-weight:600">HTTPS</span>');else flags.push('<span style="color:#656d76">HTTP</span>');if(p.mitm_suspect)flags.push('<span style="color:#cf222e;font-weight:600">MITM!</span>');var proto=p.protocol||'http';return'<tr><td style="color:#656d76">'+(i+1)+'</td><td class="addr">'+p.address+'</td><td>'+flag(p.country_code)+' '+shortCountry(p.country)+'</td><td>'+p.last_latency.toFixed(2)+'s</td><td>'+(p.success_rate*100).toFixed(0)+'%</td><td>'+p.checks_ok+'/'+p.checks_total+'</td><td><div class="score-bar"><div class="s" style="width:'+sc+'%"></div></div></td><td style="font-size:11px"><span style="color:#8250df">'+proto+'</span> '+flags.join(' ')+'</td><td style="font-size:11px;white-space:nowrap">'+ago(p.last_ok)+'</td><td><button class="danger" style="padding:2px 6px;font-size:10px" onclick="blRemove(\''+p.address+'\')">bl</button></td></tr>'}).join(''):'<tr><td colspan="10" class="empty">no alive proxies</td></tr>';
 
 // blacklist
 var bb=document.getElementById('bl-body');
@@ -1499,7 +1510,8 @@ bb.innerHTML=s.blacklist.length?s.blacklist.map(function(b){return'<tr><td class
 
 function renderProxyList(alive){
 var tb=document.getElementById('proxy-list-body');
-tb.innerHTML=alive.length?alive.map(function(p,i){var sc=Math.min(100,Math.max(0,p.score));var flags=[];if(p.supports_connect)flags.push('<span style="color:#1a7f37;font-weight:600">HTTPS</span>');else flags.push('<span style="color:#656d76">HTTP</span>');if(p.mitm_suspect)flags.push('<span style="color:#cf222e;font-weight:600">MITM!</span>');var proto=p.protocol||'http';return'<tr><td style="color:#656d76">'+(i+1)+'</td><td class="addr">'+p.address+'</td><td>'+flag(p.country_code)+' '+p.country+'</td><td>'+p.last_latency.toFixed(2)+'s</td><td>'+(p.success_rate*100).toFixed(0)+'%</td><td><div class="score-bar"><div class="s" style="width:'+sc+'%"></div></div></td><td style="font-size:11px"><span style="color:#8250df">'+proto+'</span> '+flags.join(' ')+'</td><td><button style="padding:3px 8px;font-size:11px" onclick="proxySelect(\''+p.address+'\')">select</button></td></tr>'}).join(''):'<tr><td colspan="8" class="empty">no proxies available</td></tr>';
+var sorted=alive.slice().sort(function(a,b){var va=a[proxySortKey],vb=b[proxySortKey];if(proxySortKey==='address'||proxySortKey==='country')return proxySortDir*va.localeCompare(vb);return proxySortDir*(va-vb)});
+tb.innerHTML=sorted.length?sorted.map(function(p,i){var sc=Math.min(100,Math.max(0,p.score));var flags=[];if(p.supports_connect)flags.push('<span style="color:#1a7f37;font-weight:600">HTTPS</span>');else flags.push('<span style="color:#656d76">HTTP</span>');if(p.mitm_suspect)flags.push('<span style="color:#cf222e;font-weight:600">MITM!</span>');var proto=p.protocol||'http';return'<tr><td style="color:#656d76">'+(i+1)+'</td><td class="addr">'+p.address+'</td><td>'+flag(p.country_code)+' '+shortCountry(p.country)+'</td><td>'+p.last_latency.toFixed(2)+'s</td><td>'+(p.success_rate*100).toFixed(0)+'%</td><td><div class="score-bar"><div class="s" style="width:'+sc+'%"></div></div></td><td style="font-size:11px"><span style="color:#8250df">'+proto+'</span> '+flags.join(' ')+'</td><td style="font-size:11px;white-space:nowrap">'+ago(p.last_ok)+'</td><td><button style="padding:3px 8px;font-size:11px" onclick="proxySelect(\''+p.address+'\')">select</button></td></tr>'}).join(''):'<tr><td colspan="9" class="empty">no proxies available</td></tr>';
 }
 
 function renderLog(ev){
