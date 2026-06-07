@@ -11,7 +11,9 @@ import socket
 import struct
 import time
 import yaml
+from collections import Counter, deque
 from dataclasses import dataclass, field, asdict
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 from urllib.parse import unquote, urlparse
@@ -21,6 +23,19 @@ PROJECT_DIR = Path(__file__).resolve().parent
 CONFIG_PATH = PROJECT_DIR / "config.yaml"
 DATA_DIR = PROJECT_DIR / "data"
 HUNT_HTML_PATH = PROJECT_DIR / "hunt.html"
+WEB_DIR = PROJECT_DIR / "web"
+
+STATIC_MIME = {
+    ".html": "text/html; charset=utf-8",
+    ".css": "text/css; charset=utf-8",
+    ".js": "application/javascript; charset=utf-8",
+    ".json": "application/json",
+    ".svg": "image/svg+xml",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".ico": "image/x-icon",
+}
 
 logger = logging.getLogger("huntproxy.hunt")
 
@@ -198,6 +213,8 @@ class HuntState:
         self.health_interval = cfg.get("health_interval", 180)
         self.health_parallel = cfg.get("health_parallel", 20)
 
+        self.started_at = time.time()
+        self.history = deque(maxlen=360)
         self._load_blacklist()
         self._load_state()
         self._load_working_file()
@@ -264,6 +281,7 @@ class HuntState:
                 "alive": len(alive),
                 "dead": len(dead),
                 "blacklist": len(banned) + sum(1 for a in self.blacklist if a not in self.ratings),
+                "new_today": sum(1 for r in self.ratings.values() if r.first_seen > time.time() - 86400),
             },
             "settings": {
                 "parallel": self.parallel,
@@ -273,6 +291,8 @@ class HuntState:
             "top_proxies": [r.to_dict() for r in sorted_alive[:30]],
             "blacklist": self._blacklist_view(),
             "last_event": self.last_event,
+            "uptime_seconds": int(time.time() - self.started_at),
+            "last_proxy_details": self.ratings.get(self.last_proxy, ProxyRating(address=self.last_proxy or "")).to_dict() if self.last_proxy else None,
         }
 
     def _blacklist_view(self) -> list:
@@ -286,6 +306,113 @@ class HuntState:
                 "score": r.score if r else 0,
             })
         return out
+
+    def get_countries(self) -> list:
+        alive = [r for r in self.ratings.values() if r.last_status == "ok" and not r.in_blacklist and r.country]
+        counts = Counter(r.country for r in alive)
+        total = sum(counts.values()) or 1
+        result = []
+        for country, count in counts.most_common(10):
+            code = country_code_from_name(country)
+            result.append({"country": country, "country_code": code, "count": count, "pct": round(count / total * 100, 1)})
+        return result
+
+    def get_activity(self, limit: int = 10) -> list:
+        def _icon(kind, msg):
+            if "validated" in msg.lower(): return "validated"
+            if "added" in msg.lower(): return "added"
+            if "removed" in msg.lower() or "clear" in msg.lower(): return "removed"
+            if "failed" in msg.lower() or "error" in msg.lower(): return "failed"
+            if "health" in msg.lower(): return "health"
+            if "blacklist" in msg.lower(): return "blacklist"
+            if "stopped" in msg.lower(): return "stopped"
+            if "started" in msg.lower(): return "started"
+            return "info"
+        out = []
+        for ev in reversed(self.events[-limit:]):
+            out.append({
+                "seq": ev["seq"],
+                "ts": ev["ts"],
+                "type": ev["type"],
+                "msg": ev["msg"],
+                "icon": _icon(ev["type"], ev["msg"]),
+            })
+        return out
+
+    def get_history(self, last: str = "1h") -> list:
+        # Return last N points from history ring buffer
+        if not self.history:
+            return []
+        try:
+            if last.endswith("h"):
+                hours = int(last[:-1])
+                cutoff = time.time() - hours * 3600
+            elif last.endswith("d"):
+                days = int(last[:-1])
+                cutoff = time.time() - days * 86400
+            else:
+                cutoff = 0
+        except Exception:
+            cutoff = 0
+        return [h for h in self.history if h.get("ts", 0) > cutoff]
+
+    def _get_system(self) -> dict:
+        try:
+            import psutil
+            return {
+                "cpu": psutil.cpu_percent(interval=0.1),
+                "mem": psutil.virtual_memory().percent,
+                "disk": psutil.disk_usage('/').percent,
+            }
+        except Exception:
+            pass
+        # Fallback Linux /proc
+        try:
+            with open("/proc/stat") as f:
+                line = f.readline()
+            parts = line.split()
+            if parts[0] == "cpu" and len(parts) >= 5:
+                idle = int(parts[4])
+                total = sum(int(x) for x in parts[1:5])
+                cpu = round((1 - idle / total) * 100, 1) if total else 0.0
+            else:
+                cpu = 0.0
+        except Exception:
+            cpu = None
+        try:
+            with open("/proc/meminfo") as f:
+                mem_total = None
+                mem_avail = None
+                for line in f:
+                    if line.startswith("MemTotal:"):
+                        mem_total = int(line.split()[1])
+                    elif line.startswith("MemAvailable:"):
+                        mem_avail = int(line.split()[1])
+                if mem_total and mem_avail:
+                    mem = round((1 - mem_avail / mem_total) * 100, 1)
+                else:
+                    mem = None
+        except Exception:
+            mem = None
+        try:
+            import shutil
+            du = shutil.disk_usage('/')
+            disk = round(du.used / du.total * 100, 1)
+        except Exception:
+            disk = None
+        return {"cpu": cpu, "mem": mem, "disk": disk}
+
+    def _push_history(self):
+        alive = sum(1 for r in self.ratings.values() if r.last_status == "ok" and not r.in_blacklist)
+        dead = sum(1 for r in self.ratings.values() if r.last_status == "failed")
+        self.history.append({
+            "ts": time.time(),
+            "alive": alive,
+            "dead": dead,
+            "total": len(self.ratings),
+            "requests": self.working,  # approximate using working count as proxy
+            "success_rate": (alive / max(1, alive + dead)) * 100,
+        })
 
     def start_hunt(self) -> bool:
         if self.phase not in (self.PHASE_IDLE, self.PHASE_DONE):
@@ -416,6 +543,7 @@ class HuntState:
         await asyncio.gather(*tasks)
         self._save_state()
         self._save_working_file()
+        self._push_history()
 
     async def _check_proxy(self, addr: str) -> tuple:
         host, port_str = addr.rsplit(":", 1)
@@ -930,6 +1058,7 @@ class HuntState:
         await asyncio.gather(*tasks)
         self._save_state()
         self._save_working_file()
+        self._push_history()
         self._emit(f"Health check done: {ok_count} ok, {fail_count} failed", "ok")
         self.phase = self.PHASE_DONE
 
@@ -1931,8 +2060,36 @@ class HuntServer:
         writer.write(resp)
         await writer.drain()
 
+    def _serve_static(self, path: str):
+        if not WEB_DIR.exists():
+            return None
+        safe = path.lstrip("/")
+        if ".." in safe or safe.startswith("/"):
+            return None
+        target = WEB_DIR / safe
+        try:
+            target.resolve().relative_to(WEB_DIR.resolve())
+        except ValueError:
+            return None
+        if not target.exists() or not target.is_file():
+            return None
+        data = target.read_bytes()
+        ext = target.suffix.lower()
+        ct = STATIC_MIME.get(ext, "application/octet-stream")
+        return data, 200, ct
+
     async def _route(self, method, path, body):
+        if path.startswith("/css/") or path.startswith("/js/") or path.startswith("/img/") or path.startswith("/assets/"):
+            static = self._serve_static(path)
+            if static:
+                return static
+
+        if path == "/legacy":
+            return WEB_HTML, 200, "text/html; charset=utf-8"
+
         if path == "/" or path.startswith("/index"):
+            if WEB_DIR.exists() and (WEB_DIR / "index.html").exists():
+                return self._serve_static("index.html")
             return WEB_HTML, 200, "text/html; charset=utf-8"
 
         if path == "/api/snapshot":
@@ -2044,6 +2201,223 @@ class HuntServer:
             self.state.country_filter = code
             self.state._emit(f"Country filter set to: {code or 'ALL'}", "info")
             return json.dumps({"ok": True, "country_filter": self.state.country_filter}), 200, "application/json"
+
+        # === Overview / Dashboard endpoints ===
+        if path == "/api/countries":
+            return json.dumps(self.state.get_countries()), 200, "application/json"
+
+        if path.startswith("/api/system"):
+            return json.dumps(self.state._get_system()), 200, "application/json"
+
+        if path.startswith("/api/activity"):
+            qs = _qs(path)
+            limit = int(qs.get("limit", 10))
+            return json.dumps(self.state.get_activity(limit)), 200, "application/json"
+
+        if path.startswith("/api/history"):
+            qs = _qs(path)
+            last = qs.get("last", "1h")
+            return json.dumps(self.state.get_history(last)), 200, "application/json"
+
+        # === Proxies ===
+        if path.startswith("/api/proxies"):
+            qs = _qs(path)
+            status = qs.get("status", "")
+            page = int(qs.get("page", 1))
+            limit = int(qs.get("limit", 20))
+            all_proxies = list(self.state.ratings.values())
+            if status == "alive":
+                all_proxies = [r for r in all_proxies if r.last_status == "ok" and not r.in_blacklist]
+            elif status == "dead":
+                all_proxies = [r for r in all_proxies if r.last_status == "failed"]
+            elif status == "blacklisted":
+                all_proxies = [r for r in all_proxies if r.in_blacklist]
+            total = len(all_proxies)
+            start = (page - 1) * limit
+            end = start + limit
+            page_data = all_proxies[start:end]
+            return json.dumps({
+                "total": total,
+                "page": page,
+                "limit": limit,
+                "proxies": [r.to_dict() for r in page_data],
+            }), 200, "application/json"
+
+        if path.startswith("/api/proxy/") and method == "GET":
+            addr = path[len("/api/proxy/"):]
+            addr = unquote(addr)
+            r = self.state.ratings.get(addr)
+            if r:
+                return json.dumps(r.to_dict()), 200, "application/json"
+            return json.dumps({"error": "not found"}), 404, "application/json"
+
+        # === Blacklist ===
+        if path.startswith("/api/blacklist"):
+            qs = _qs(path)
+            page = int(qs.get("page", 1))
+            limit = int(qs.get("limit", 20))
+            bl = self.state._blacklist_view()
+            total = len(bl)
+            start = (page - 1) * limit
+            end = start + limit
+            return json.dumps({
+                "total": total,
+                "page": page,
+                "limit": limit,
+                "blacklist": bl[start:end],
+            }), 200, "application/json"
+
+        # === Actions ===
+        if path.startswith("/api/clear_dead") and method == "POST":
+            dead_addrs = [a for a, r in self.state.ratings.items() if r.last_status == "failed"]
+            for a in dead_addrs:
+                del self.state.ratings[a]
+            self.state._emit(f"Cleared {len(dead_addrs)} dead proxies", "warn")
+            self.state._save_state()
+            self.state._save_working_file()
+            return json.dumps({"ok": True, "cleared": len(dead_addrs)}), 200, "application/json"
+
+        if path.startswith("/api/export") and method == "POST":
+            data = self.state.working_file.read_text() if self.state.working_file.exists() else ""
+            return json.dumps({"ok": True, "data": data}), 200, "application/json"
+
+        if path.startswith("/api/import") and method == "POST":
+            try:
+                data = json.loads(body or b"{}")
+                lines = data.get("proxies", [])
+                added = 0
+                for line in lines:
+                    addr = line.strip()
+                    if not addr or ":" not in addr:
+                        continue
+                    if addr not in self.state.ratings and addr not in self.state.blacklist:
+                        self.state.ratings[addr] = ProxyRating(address=addr, first_seen=time.time(), last_check=time.time(), checks_total=1, checks_ok=1, last_status="ok")
+                        added += 1
+                self.state._emit(f"Imported {added} proxies", "info")
+                self.state._save_state()
+                self.state._save_working_file()
+                return json.dumps({"ok": True, "added": added}), 200, "application/json"
+            except Exception as e:
+                return json.dumps({"ok": False, "error": str(e)}), 400, "application/json"
+
+        if path.startswith("/api/health/start") and method == "POST":
+            try:
+                asyncio.create_task(self.state._health_check())
+                return json.dumps({"ok": True}), 200, "application/json"
+            except Exception as e:
+                return json.dumps({"ok": False, "error": str(e)}), 500, "application/json"
+
+        # === Settings ===
+        if path.startswith("/api/settings") and method == "GET":
+            if not CONFIG_PATH.exists():
+                return json.dumps({"error": "config not found"}), 404, "application/json"
+            with open(CONFIG_PATH) as f:
+                cfg = yaml.safe_load(f)
+            return json.dumps(cfg or {}), 200, "application/json"
+
+        if path.startswith("/api/settings") and method == "POST":
+            try:
+                data = json.loads(body or b"{}")
+                with open(CONFIG_PATH, "w") as f:
+                    yaml.dump(data, f, default_flow_style=False, sort_keys=False)
+                self.state._emit("Settings updated", "info")
+                return json.dumps({"ok": True}), 200, "application/json"
+            except Exception as e:
+                return json.dumps({"ok": False, "error": str(e)}), 400, "application/json"
+
+        # === Logs ===
+        if path.startswith("/api/logs"):
+            qs = _qs(path)
+            limit = int(qs.get("limit", 50))
+            log_file = DATA_DIR / "huntproxy.log"
+            lines = []
+            if log_file.exists():
+                try:
+                    with open(log_file) as f:
+                        lines = f.readlines()[-limit:]
+                except Exception:
+                    pass
+            return json.dumps({"lines": [l.rstrip() for l in lines]}), 200, "application/json"
+
+        # === Downloads ===
+        if path.startswith("/api/download/"):
+            filename = path[len("/api/download/"):]
+            filename = unquote(filename)
+            if filename not in ("working.txt", "blacklist.txt", "ratings.json", "config.yaml"):
+                return json.dumps({"error": "forbidden"}), 403, "application/json"
+            target = DATA_DIR / filename if filename != "config.yaml" else CONFIG_PATH
+            if not target.exists():
+                return json.dumps({"error": "not found"}), 404, "application/json"
+            data = target.read_bytes()
+            ct = "application/octet-stream"
+            if filename.endswith(".txt"):
+                ct = "text/plain; charset=utf-8"
+            elif filename.endswith(".json"):
+                ct = "application/json"
+            elif filename.endswith(".yaml"):
+                ct = "text/yaml"
+            return data, 200, ct
+
+        # === Proxy Control / Traffic stubs (Phase 2) ===
+        if path.startswith("/api/traffic"):
+            return json.dumps({"points": list(self.state.history)}), 200, "application/json"
+
+        if path.startswith("/api/requests"):
+            return json.dumps({"requests": list(self.proxy.log)[-50:]}), 200, "application/json"
+
+        if path.startswith("/api/clients"):
+            clients = {}
+            for entry in self.proxy.log:
+                c = entry.get("client", "?")
+                if c not in clients:
+                    clients[c] = {"client": c, "requests": 0, "last_seen": entry.get("ts", 0)}
+                clients[c]["requests"] += 1
+                clients[c]["last_seen"] = max(clients[c]["last_seen"], entry.get("ts", 0))
+            return json.dumps({"clients": sorted(clients.values(), key=lambda x: x["requests"], reverse=True)[:20]}), 200, "application/json"
+
+        if path.startswith("/api/domains"):
+            domains = {}
+            for entry in self.proxy.log:
+                t = entry.get("target", "")
+                try:
+                    h = urlparse(t if t.startswith("http") else f"http://{t}").hostname or t
+                except Exception:
+                    h = t
+                if not h:
+                    continue
+                if h not in domains:
+                    domains[h] = {"domain": h, "requests": 0, "response_time": 0, "count": 0}
+                domains[h]["requests"] += 1
+            top = sorted(domains.values(), key=lambda x: x["requests"], reverse=True)[:10]
+            total = sum(d["requests"] for d in top) or 1
+            for d in top:
+                d["pct"] = round(d["requests"] / total * 100, 1)
+            return json.dumps({"domains": top}), 200, "application/json"
+
+        if path.startswith("/api/errors"):
+            errors = {"timeout": 0, "connect_failed": 0, "4xx": 0, "5xx": 0, "other": 0}
+            for entry in self.proxy.log:
+                st = entry.get("status", "")
+                if "timeout" in st.lower():
+                    errors["timeout"] += 1
+                elif "connect" in st.lower() or "fail" in st.lower():
+                    errors["connect_failed"] += 1
+                elif st.startswith("4"):
+                    errors["4xx"] += 1
+                elif st.startswith("5") or st.startswith("502") or st.startswith("503"):
+                    errors["5xx"] += 1
+                else:
+                    errors["other"] += 1
+            total = sum(errors.values()) or 1
+            result = []
+            for k, v in errors.items():
+                if v:
+                    result.append({"type": k, "count": v, "pct": round(v / total * 100, 1)})
+            return json.dumps({"errors": result, "total": total}), 200, "application/json"
+
+        if path.startswith("/api/bandwidth"):
+            # Placeholder — real bandwidth tracking requires per-request byte counting
+            return json.dumps({"incoming": 0, "outgoing": 0, "incoming_gb": 0.0, "outgoing_gb": 0.0}), 200, "application/json"
 
         return json.dumps({"error": "not found"}), 404, "application/json"
 

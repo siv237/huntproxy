@@ -1,0 +1,88 @@
+:root {
+  --bg: #F8F9FA;
+  --surface: #FFFFFF;
+  --surface-raised: #F3F4F6;
+  --text-primary: #1A1D1F;
+  --text-secondary: #6B7280;
+  --text-muted: #9CA3AF;
+  --border: #E5E7EB;
+  --border-subtle: #F3F4F6;
+  --accent: #4F46E5;
+  --accent-hover: #4338CA;
+  --accent-light: #EEF2FF;
+  --success: #10B981;
+  --success-bg: #ECFDF5;
+  --danger: #EF4444;
+  --danger-bg: #FEF2F2;
+  --warning: #F59E0B;
+  --warning-bg: #FFFBEB;
+  --info: #3B82F6;
+  --info-bg: #EFF6FF;
+  --sidebar-bg: #FFFFFF;
+  --sidebar-text: #4B5563;
+  --sidebar-active: #4F46E5;
+  --sidebar-active-bg: #EEF2FF;
+  --topbar-bg: #FFFFFF;
+  --topbar-border: #E5E7EB;
+  --hover: #F9FAFB;
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
+  --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
+  --radius: 12px;
+  --radius-sm: 8px;
+  --radius-xs: 6px;
+  --transition: all 0.15s ease;
+}
+
+[data-theme="dark"] {
+  --bg: #0F1115;
+  --surface: #1A1D24;
+  --surface-raised: #232830;
+  --text-primary: #F0F0F5;
+  --text-secondary: #9CA3AF;
+  --text-muted: #6B7280;
+  --border: #2A2D35;
+  --border-subtle: #232830;
+  --accent: #6366F1;
+  --accent-hover: #818CF8;
+  --accent-light: #1E1B4B;
+  --success: #34D399;
+  --success-bg: #064E3B;
+  --danger: #F87171;
+  --danger-bg: #450A0A;
+  --warning: #FBBF24;
+  --warning-bg: #451A03;
+  --info: #60A5FA;
+  --info-bg: #1E3A8A;
+  --sidebar-bg: #161921;
+  --sidebar-text: #9CA3AF;
+  --sidebar-active: #818CF8;
+  --sidebar-active-bg: #1E1B4B;
+  --topbar-bg: #161921;
+  --topbar-border: #2A2D35;
+  --hover: #232830;
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.2);
+  --shadow: 0 1px 3px rgba(0,0,0,0.3), 0 1px 2px rgba(0,0,0,0.2);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-primary);
+  background: var(--bg);
+  height: 100%;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+button { font-family: inherit; }
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
