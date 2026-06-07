@@ -74,6 +74,15 @@ class ProxyRating:
     blacklist_reason: str = ""
     supports_connect: bool = False
     mitm_suspect: bool = False
+    egress_ip: str = ""
+    egress_city: str = ""
+    egress_isp: str = ""
+    egress_country: str = ""
+    listen_country: str = ""
+    listen_city: str = ""
+    listen_isp: str = ""
+    egress_http_ip: str = ""
+    egress_http_country: str = ""
 
     @property
     def latency_avg(self) -> float:
@@ -121,6 +130,13 @@ class ProxyRating:
             "mitm_suspect": self.mitm_suspect,
             "last_check_ago": round(time.time() - self.last_check, 1) if self.last_check else 0,
             "last_ok": self.last_ok,
+            "egress_ip": self.egress_ip,
+            "egress_city": self.egress_city,
+            "egress_isp": self.egress_isp,
+            "egress_country": self.egress_country,
+            "listen_country": self.listen_country,
+            "listen_city": self.listen_city,
+            "listen_isp": self.listen_isp,
         }
 
 
@@ -136,6 +152,7 @@ class HuntState:
         DATA_DIR.mkdir(parents=True, exist_ok=True)
         self.ratings: dict[str, ProxyRating] = {}
         self.blacklist: dict[str, str] = {}
+        self._geo_cache: dict[str, dict] = {}
         self.phase: str = self.PHASE_IDLE
         self.phase_started: float = 0.0
         self.task: Optional[asyncio.Task] = None
@@ -349,7 +366,7 @@ class HuntState:
                 return
             async with sem:
                 start = time.monotonic()
-                ok, country, supports_connect, mitm_suspect = await self._check_proxy(addr)
+                ok, country, supports_connect, mitm_suspect, egress, listen = await self._check_proxy(addr)
                 latency = time.monotonic() - start
                 async with lock:
                     self.checked += 1
@@ -361,7 +378,7 @@ class HuntState:
                     else:
                         fail_count += 1
                         self.failed = fail_count
-                    self._update_rating(addr, ok, country, latency, supports_connect, mitm_suspect)
+                    self._update_rating(addr, ok, country, latency, supports_connect, mitm_suspect, egress, listen)
                     if self.checked % 25 == 0 or ok:
                         pct = int(100 * self.checked / max(1, self.checking_total))
                         self._emit(
@@ -380,7 +397,7 @@ class HuntState:
         try:
             port = int(port_str)
         except ValueError:
-            return False, "", False, False
+            return False, "", False, False, {}, {}
         is_socks = port in (1080, 10808, 9050, 4145)
 
         try:
@@ -389,33 +406,40 @@ class HuntState:
                 timeout=self.timeout,
             )
         except (asyncio.TimeoutError, OSError):
-            return False, "", False, False
+            return False, "", False, False, {}, {}
 
+        listen_task = asyncio.create_task(self._resolve_geo(host))
         country = ""
         country_code = ""
         supports_connect = False
         mitm_suspect = False
+        egress: dict = {}
 
         if is_socks:
             if port == 4145:
                 ok = await self._socks4_test(reader, writer)
             else:
                 ok = await self._socks5_test(reader, writer)
+            try: writer.close()
+            except: pass
             if not ok:
-                try: writer.close()
-                except: pass
-                return False, "", False, False
-            country = "United States"
-            country_code = "US"
+                listen = await listen_task
+                return False, "", False, False, {}, listen
+            egress = await self._socks_egress(host, port)
+            if egress:
+                country = egress.get("egress_country", "")
+                country_code = country_code_from_name(country)
+            if not country:
+                country = "Unknown"
             supports_connect = True
         else:
             try:
                 req = (
-                    f"GET http://ip-api.com/json/{host} HTTP/1.0\r\n"
-                    f"Host: ip-api.com\r\n"
-                    f"User-Agent: setproxy\r\n"
-                    f"Connection: close\r\n"
-                    f"\r\n"
+                    "GET http://ip-api.com/json/ HTTP/1.0\r\n"
+                    "Host: ip-api.com\r\n"
+                    "User-Agent: setproxy\r\n"
+                    "Connection: close\r\n"
+                    "\r\n"
                 )
                 writer.write(req.encode())
                 await asyncio.wait_for(writer.drain(), timeout=self.timeout)
@@ -431,7 +455,8 @@ class HuntState:
                     if buf.count(b"}") >= 1 and len(buf) > 200:
                         break
             except Exception:
-                return False, "", False, False
+                listen = await listen_task
+                return False, "", False, False, {}, listen
             finally:
                 try:
                     writer.close()
@@ -442,28 +467,37 @@ class HuntState:
             if sep == -1:
                 sep = buf.find(b"\n\n")
             if sep == -1:
-                return False, "", False, False
+                listen = await listen_task
+                return False, "", False, False, {}, listen
             try:
                 data = json.loads(buf[sep:].strip())
             except Exception:
-                return False, "", False, False
+                listen = await listen_task
+                return False, "", False, False, {}, listen
             country = data.get("country", "")
             country_code = data.get("countryCode", "")
+            egress = {
+                "egress_ip": data.get("query", ""),
+                "egress_city": data.get("city", ""),
+                "egress_isp": data.get("isp", ""),
+                "egress_country": data.get("country", ""),
+            }
 
+        listen = await listen_task
         if self.country_filter and country_code != self.country_filter:
-            return False, country, False, False
+            return False, country, False, False, egress, listen
         if self.us_only and country != "United States":
-            return False, country, False, False
+            return False, country, False, False, egress, listen
 
         connect_ok, mitm_suspect = await self._check_proxy_connect(host, port, is_socks)
         supports_connect = connect_ok
 
         if not connect_ok and not is_socks:
-            return True, country, False, mitm_suspect
+            return True, country, False, mitm_suspect, egress, listen
 
         if not connect_ok:
-            return False, country, False, mitm_suspect
-        return True, country, True, mitm_suspect
+            return False, country, False, mitm_suspect, egress, listen
+        return True, country, True, mitm_suspect, egress, listen
 
     async def _check_proxy_connect(self, host: str, port: int, is_socks: bool = False) -> tuple:
         try:
@@ -586,8 +620,125 @@ class HuntState:
         except Exception:
             return False
 
+    async def _resolve_geo(self, ip: str) -> dict:
+        if ip in self._geo_cache:
+            return self._geo_cache[ip]
+        try:
+            r, w = await asyncio.wait_for(
+                asyncio.open_connection("ip-api.com", 80), timeout=5)
+        except Exception:
+            return {}
+        try:
+            req = f"GET /json/{ip} HTTP/1.0\r\nHost: ip-api.com\r\nUser-Agent: setproxy\r\nConnection: close\r\n\r\n"
+            w.write(req.encode())
+            await asyncio.wait_for(w.drain(), timeout=5)
+            buf = b""
+            while True:
+                try:
+                    chunk = await asyncio.wait_for(r.read(4096), timeout=5)
+                except asyncio.TimeoutError:
+                    break
+                if not chunk:
+                    break
+                buf += chunk
+                if buf.count(b"}") >= 1 and len(buf) > 200:
+                    break
+        except Exception:
+            return {}
+        finally:
+            try:
+                w.close()
+            except Exception:
+                pass
+        sep = buf.find(b"\r\n\r\n")
+        if sep == -1:
+            sep = buf.find(b"\n\n")
+        if sep == -1:
+            return {}
+        try:
+            data = json.loads(buf[sep:].strip())
+        except Exception:
+            return {}
+        result = {
+            "country": data.get("country", ""),
+            "city": data.get("city", ""),
+            "isp": data.get("isp", ""),
+        }
+        self._geo_cache[ip] = result
+        return result
+
+    async def _socks_egress(self, host: str, port: int) -> dict:
+        try:
+            r, w = await asyncio.wait_for(
+                asyncio.open_connection(host, port), timeout=self.timeout)
+        except Exception:
+            return {}
+        try:
+            if port == 4145:
+                req = bytes([4, 1, 0, 80, 0, 0, 0, 1]) + b"\x00" + b"ip-api.com\x00"
+                w.write(req); await asyncio.wait_for(w.drain(), timeout=8)
+                resp = await asyncio.wait_for(r.readexactly(8), timeout=8)
+                if resp[1] != 0x5A:
+                    return {}
+            else:
+                w.write(bytes([5, 1, 0])); await asyncio.wait_for(w.drain(), timeout=8)
+                resp = await asyncio.wait_for(r.readexactly(2), timeout=8)
+                if resp[1] != 0:
+                    return {}
+                req = bytes([5, 1, 0, 3, 9]) + b"ip-api.com" + b"\x00\x50"
+                w.write(req); await asyncio.wait_for(w.drain(), timeout=8)
+                hdr = await asyncio.wait_for(r.readexactly(4), timeout=8)
+                if hdr[1] != 0:
+                    return {}
+                atyp = hdr[3]
+                if atyp == 1:
+                    await asyncio.wait_for(r.readexactly(6), timeout=8)
+                elif atyp == 3:
+                    dl = await asyncio.wait_for(r.readexactly(1), timeout=8)
+                    await asyncio.wait_for(r.readexactly(dl[0] + 2), timeout=8)
+                elif atyp == 4:
+                    await asyncio.wait_for(r.readexactly(18), timeout=8)
+                else:
+                    return {}
+            w.write(b"GET /json/ HTTP/1.0\r\nHost: ip-api.com\r\nUser-Agent: setproxy\r\nConnection: close\r\n\r\n")
+            await asyncio.wait_for(w.drain(), timeout=8)
+            buf = b""
+            while True:
+                try:
+                    chunk = await asyncio.wait_for(r.read(4096), timeout=8)
+                except asyncio.TimeoutError:
+                    break
+                if not chunk:
+                    break
+                buf += chunk
+                if buf.count(b"}") >= 1 and len(buf) > 200:
+                    break
+        except Exception:
+            return {}
+        finally:
+            try:
+                w.close()
+            except Exception:
+                pass
+        sep = buf.find(b"\r\n\r\n")
+        if sep == -1:
+            sep = buf.find(b"\n\n")
+        if sep == -1:
+            return {}
+        try:
+            data = json.loads(buf[sep:].strip())
+        except Exception:
+            return {}
+        return {
+            "egress_ip": data.get("query", ""),
+            "egress_city": data.get("city", ""),
+            "egress_isp": data.get("isp", ""),
+            "egress_country": data.get("country", ""),
+        }
+
     def _update_rating(self, addr: str, ok: bool, country: str, latency: float,
-                        supports_connect: bool = False, mitm_suspect: bool = False):
+                        supports_connect: bool = False, mitm_suspect: bool = False,
+                        egress: dict = None, listen: dict = None):
         r = self.ratings.get(addr)
         if not r:
             r = ProxyRating(
@@ -619,6 +770,15 @@ class HuntState:
             r.supports_connect = supports_connect
             if mitm_suspect:
                 r.mitm_suspect = True
+            if egress:
+                r.egress_ip = egress.get("egress_ip") or r.egress_ip
+                r.egress_city = egress.get("egress_city") or r.egress_city
+                r.egress_isp = egress.get("egress_isp") or r.egress_isp
+                r.egress_country = egress.get("egress_country") or r.egress_country
+            if listen:
+                r.listen_country = listen.get("country") or r.listen_country
+                r.listen_city = listen.get("city") or r.listen_city
+                r.listen_isp = listen.get("isp") or r.listen_isp
         else:
             r.last_status = "failed"
         self.ratings[addr] = r
@@ -652,7 +812,7 @@ class HuntState:
             nonlocal ok_count, fail_count
             async with sem:
                 start = time.monotonic()
-                ok, country, supports_connect, mitm_suspect = await self._check_proxy(r.address)
+                ok, country, supports_connect, mitm_suspect, egress, listen = await self._check_proxy(r.address)
                 latency = time.monotonic() - start
                 async with lock:
                     self.checked += 1
@@ -662,7 +822,7 @@ class HuntState:
                     else:
                         fail_count += 1
                         self.failed = fail_count
-                    self._update_rating(r.address, ok, country, latency, supports_connect, mitm_suspect)
+                    self._update_rating(r.address, ok, country, latency, supports_connect, mitm_suspect, egress, listen)
 
         tasks = [asyncio.create_task(check(r)) for r in candidates]
         await asyncio.gather(*tasks)
@@ -744,6 +904,13 @@ class HuntState:
                     first_seen=d.get("first_seen", 0),
                     supports_connect=d.get("supports_connect", False),
                     mitm_suspect=d.get("mitm_suspect", False),
+                    egress_ip=d.get("egress_ip", ""),
+                    egress_city=d.get("egress_city", ""),
+                    egress_isp=d.get("egress_isp", ""),
+                    egress_country=d.get("egress_country", ""),
+                    listen_country=d.get("listen_country", ""),
+                    listen_city=d.get("listen_city", ""),
+                    listen_isp=d.get("listen_isp", ""),
                 )
                 self.ratings[r.address] = r
             logger.info(f"Loaded {len(self.ratings)} ratings from state file")
@@ -1018,19 +1185,33 @@ class ProxyRunner:
             r = self.state.ratings.get(self.active_proxy_addr)
             if not r or r.in_blacklist:
                 self._log(None, f"selected proxy {self.active_proxy_addr} not available", "")
-                r = None
-        else:
-            r = None
+                return None
+            phost, pport_str = r.address.rsplit(":", 1)
+            try:
+                reader, writer = await asyncio.wait_for(
+                    asyncio.open_connection(phost, int(pport_str)), timeout=10)
+            except Exception as e:
+                self._log(None, f"selected {r.address} connect fail", str(e)[:40], r.address)
+                return None
+            if r.protocol == "socks4":
+                ok = await self._socks4_cmd(reader, writer, host, port)
+            elif r.protocol == "socks5":
+                ok = await self._socks5_cmd(reader, writer, host, port)
+            else:
+                ok = await self._http_connect_cmd(reader, writer, host, port)
+            if not ok:
+                self._log(None, f"selected {r.address} CONNECT fail", f"{host}:{port}", r.address)
+                try: writer.close()
+                except: pass
+                return None
+            self._log(None, f"selected {r.address} ok", f"{host}:{port}", r.address)
+            return reader, writer, r.address
 
         pool = [r for r in self.state.ratings.values()
                 if r.last_status == "ok" and not r.in_blacklist]
         if not pool:
             return None
         pool.sort(key=lambda r: r.score, reverse=True)
-
-        if r and r in pool:
-            pool.remove(r)
-            pool.insert(0, r)
 
         for attempt in range(min(len(pool), 8)):
             p = pool[attempt]
@@ -1380,6 +1561,7 @@ input[type=text]:focus,input[type=number]:focus{outline:none;border-color:#0969d
 <div class="sel-proxy" id="sel-proxy">
   <div class="sel-addr" id="sel-addr"></div>
   <div class="sel-badges" id="sel-badges"></div>
+  <div class="sel-geo" id="sel-geo" style="font-size:11px;color:#656d76;margin-bottom:8px;line-height:1.6"></div>
   <div class="sel-stats" id="sel-stats">
     <div class="metric"><div class="v" id="sel-score">-</div><div class="l">score</div></div>
     <div class="metric"><div class="v" id="sel-lat">-</div><div class="l">latency</div></div>
@@ -1418,6 +1600,7 @@ input[type=text]:focus,input[type=number]:focus{outline:none;border-color:#0969d
 let lastEventSeq=0, huntLogLines=[], proxyLogLines=[];
 
 function flag(c){if(!c||c.length!==2)return'\u{1F3F3}';var b=0x1F1E6-'A'.charCodeAt(0);return String.fromCodePoint(b+c.charCodeAt(0),b+c.charCodeAt(1))}
+function ccode(n){var m={};'US=United States|GB=United Kingdom|DE=Germany|FR=France|NL=Netherlands|JP=Japan|CA=Canada|RU=Russia|CN=China|BR=Brazil|ES=Spain|IT=Italy|PL=Poland|UA=Ukraine|IN=India|AU=Australia|SG=Singapore|KR=Korea|MX=Mexico|SE=Sweden|NO=Norway|FI=Finland|CH=Switzerland|HK=Hong Kong'.split('|').forEach(function(x){var p=x.split('=');m[p[1]]=p[0]});return m[n]||''}
 function shortCountry(n){return n&&n.length>10?n.substring(0,9)+'\u2026':n}
 function fmtTime(t){return new Date(t*1e3).toLocaleTimeString()}
 
@@ -1442,6 +1625,12 @@ function renderSelected(ap){
   if(!ap){card.style.display='none';_selectedAddr=null;return}
   card.style.display='block';_selectedAddr=ap.address;
   document.getElementById('sel-addr').textContent=ap.address;
+  var geoT=geoTitle(ap);
+  var geoHtml='';
+  if(ap.listen_country) geoHtml+='server: '+flag(ccode(ap.listen_country))+ap.listen_country+(ap.listen_city?', '+ap.listen_city:'')+(ap.listen_isp?', '+ap.listen_isp:'')+'<br>';
+  if(ap.egress_isp) geoHtml+='isp: '+ap.egress_isp+'<br>';
+  if(ap.egress_ip) geoHtml+='exit ip: '+ap.egress_ip;
+  document.getElementById('sel-geo').innerHTML=geoHtml||'\u2014';
   var badges='<span class="sel-badge sel-country">'+flag(ap.country_code)+' '+ap.country+'</span><span class="sel-badge sel-proto">'+ap.protocol+'</span>';
   document.getElementById('sel-badges').innerHTML=badges;
   document.getElementById('sel-score').textContent=ap.score.toFixed(0);
@@ -1472,12 +1661,13 @@ if(!s.direct_mode && !s.active_proxy && _selectedAddr){document.getElementById('
 
 var pl=document.getElementById('proxy-log');
 if(s.log && s.log.length){
-proxyLogLines=s.log.map(function(e){return '<span class="live-ts">'+fmtTime(e.ts)+'</span> '+e.client+' \u2192 '+e.target+' ['+e.status+']'});
+proxyLogLines=s.log.map(function(e){return '<span class="live-ts">'+fmtTime(e.ts)+'</span> '+e.client+' \u2192 '+e.target+' ['+e.status+']'+(e.upstream&&e.upstream!=='direct'&&e.upstream!=='?'?' <span style="color:#8250df">via '+e.upstream+'</span>':'')});
 pl.innerHTML=proxyLogLines.join('<br>');
 } else if(!s.running) {pl.innerHTML='<div class="empty small">proxy not started</div>'}
 }
 
 function ago(ts){if(!ts)return '\u2014';var d=Date.now()/1000-ts;if(d<60)return Math.floor(d)+'s';if(d<3600)return Math.floor(d/60)+'m';if(d<86400)return Math.floor(d/3600)+'h';return Math.floor(d/86400)+'d'}
+function geoTitle(p){var a=[],nl='\n';if(p.egress_isp)a.push('isp: '+p.egress_isp);if(p.listen_country)a.push('server: '+p.listen_country+(p.listen_city?', '+p.listen_city:'')+(p.listen_isp?', '+p.listen_isp:''));if(p.egress_ip)a.push('exit ip: '+p.egress_ip);return a.join(nl)}
 var topSortKey='score',topSortDir=-1,proxySortKey='score',proxySortDir=-1;
 function sortTop(k){if(topSortKey===k)topSortDir*=-1;else{topSortKey=k;topSortDir=k==='score'||k==='success_rate'?-1:1};poll()}
 function sortProxy(k){if(proxySortKey===k)proxySortDir*=-1;else{proxySortKey=k;proxySortDir=k==='score'||k==='success_rate'?-1:1};poll()}
@@ -1501,7 +1691,7 @@ if(p.last_proxy){lp.style.visibility='visible';document.getElementById('last-add
 // top table
 var tb=document.getElementById('top-body');
 var sorted=s.top_proxies.slice().sort(function(a,b){var va=a[topSortKey],vb=b[topSortKey];if(topSortKey==='address'||topSortKey==='country')return topSortDir*va.localeCompare(vb);return topSortDir*(va-vb)});
-tb.innerHTML=sorted.length?sorted.map(function(p,i){var sc=Math.min(100,Math.max(0,p.score));var flags=[];if(p.supports_connect)flags.push('<span style="color:#1a7f37;font-weight:600">HTTPS</span>');else flags.push('<span style="color:#656d76">HTTP</span>');if(p.mitm_suspect)flags.push('<span style="color:#cf222e;font-weight:600">MITM!</span>');var proto=p.protocol||'http';return'<tr><td style="color:#656d76">'+(i+1)+'</td><td class="addr">'+p.address+'</td><td>'+flag(p.country_code)+' '+shortCountry(p.country)+'</td><td>'+p.last_latency.toFixed(2)+'s</td><td>'+(p.success_rate*100).toFixed(0)+'%</td><td>'+p.checks_ok+'/'+p.checks_total+'</td><td><div class="score-bar"><div class="s" style="width:'+sc+'%"></div></div></td><td style="font-size:11px"><span style="color:#8250df">'+proto+'</span> '+flags.join(' ')+'</td><td style="font-size:11px;white-space:nowrap">'+ago(p.last_ok)+'</td><td><button class="danger" style="padding:2px 6px;font-size:10px" onclick="blRemove(\''+p.address+'\')">bl</button></td></tr>'}).join(''):'<tr><td colspan="10" class="empty">no alive proxies</td></tr>';
+tb.innerHTML=sorted.length?sorted.map(function(p,i){var sc=Math.min(100,Math.max(0,p.score));var flags=[];if(p.supports_connect)flags.push('<span style="color:#1a7f37;font-weight:600">HTTPS</span>');else flags.push('<span style="color:#656d76">HTTP</span>');if(p.mitm_suspect)flags.push('<span style="color:#cf222e;font-weight:600">MITM!</span>');var proto=p.protocol||'http';return'<tr><td style="color:#656d76">'+(i+1)+'</td><td class="addr">'+p.address+'</td><td>'+flag(p.country_code)+' '+shortCountry(p.country)+(p.listen_country&&p.listen_country!==p.country?' \u2192 '+shortCountry(p.listen_country):'')+'</td><td>'+p.last_latency.toFixed(2)+'s</td><td>'+(p.success_rate*100).toFixed(0)+'%</td><td>'+p.checks_ok+'/'+p.checks_total+'</td><td><div class="score-bar"><div class="s" style="width:'+sc+'%"></div></div></td><td style="font-size:11px"><span style="color:#8250df">'+proto+'</span> '+flags.join(' ')+'</td><td style="font-size:11px;white-space:nowrap">'+ago(p.last_ok)+'</td><td><button class="danger" style="padding:2px 6px;font-size:10px" onclick="blRemove(\''+p.address+'\')">bl</button></td></tr>'}).join(''):'<tr><td colspan="10" class="empty">no alive proxies</td></tr>';
 
 // blacklist
 var bb=document.getElementById('bl-body');
@@ -1511,7 +1701,7 @@ bb.innerHTML=s.blacklist.length?s.blacklist.map(function(b){return'<tr><td class
 function renderProxyList(alive){
 var tb=document.getElementById('proxy-list-body');
 var sorted=alive.slice().sort(function(a,b){var va=a[proxySortKey],vb=b[proxySortKey];if(proxySortKey==='address'||proxySortKey==='country')return proxySortDir*va.localeCompare(vb);return proxySortDir*(va-vb)});
-tb.innerHTML=sorted.length?sorted.map(function(p,i){var sc=Math.min(100,Math.max(0,p.score));var flags=[];if(p.supports_connect)flags.push('<span style="color:#1a7f37;font-weight:600">HTTPS</span>');else flags.push('<span style="color:#656d76">HTTP</span>');if(p.mitm_suspect)flags.push('<span style="color:#cf222e;font-weight:600">MITM!</span>');var proto=p.protocol||'http';return'<tr><td style="color:#656d76">'+(i+1)+'</td><td class="addr">'+p.address+'</td><td>'+flag(p.country_code)+' '+shortCountry(p.country)+'</td><td>'+p.last_latency.toFixed(2)+'s</td><td>'+(p.success_rate*100).toFixed(0)+'%</td><td><div class="score-bar"><div class="s" style="width:'+sc+'%"></div></div></td><td style="font-size:11px"><span style="color:#8250df">'+proto+'</span> '+flags.join(' ')+'</td><td style="font-size:11px;white-space:nowrap">'+ago(p.last_ok)+'</td><td><button style="padding:3px 8px;font-size:11px" onclick="proxySelect(\''+p.address+'\')">select</button></td></tr>'}).join(''):'<tr><td colspan="9" class="empty">no proxies available</td></tr>';
+tb.innerHTML=sorted.length?sorted.map(function(p,i){var sc=Math.min(100,Math.max(0,p.score));var flags=[];if(p.supports_connect)flags.push('<span style="color:#1a7f37;font-weight:600">HTTPS</span>');else flags.push('<span style="color:#656d76">HTTP</span>');if(p.mitm_suspect)flags.push('<span style="color:#cf222e;font-weight:600">MITM!</span>');var proto=p.protocol||'http';return'<tr><td style="color:#656d76">'+(i+1)+'</td><td class="addr">'+p.address+'</td><td>'+flag(p.country_code)+' '+shortCountry(p.country)+(p.listen_country&&p.listen_country!==p.country?' \u2192 '+shortCountry(p.listen_country):'')+'</td><td>'+p.last_latency.toFixed(2)+'s</td><td>'+(p.success_rate*100).toFixed(0)+'%</td><td><div class="score-bar"><div class="s" style="width:'+sc+'%"></div></div></td><td style="font-size:11px"><span style="color:#8250df">'+proto+'</span> '+flags.join(' ')+'</td><td style="font-size:11px;white-space:nowrap">'+ago(p.last_ok)+'</td><td><button style="padding:3px 8px;font-size:11px" onclick="proxySelect(\''+p.address+'\')">select</button></td></tr>'}).join(''):'<tr><td colspan="9" class="empty">no proxies available</td></tr>';
 }
 
 function renderLog(ev){
