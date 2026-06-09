@@ -160,11 +160,19 @@ router.register('overview', (container) => {
   function buildPoolProgressCard() {
     const card = ui.el('div', 'card');
     card.id = 'pool-progress-card';
-    card.appendChild(ui.el('div', 'card-title', { text: 'Pool Progress', style: 'margin-bottom:12px' }));
+    card.style.display = 'flex';
+    card.style.flexDirection = 'column';
 
-    const body = ui.el('div', '', { style: 'display:flex;align-items:center;gap:20px' });
+    const header = ui.el('div', 'card-header');
+    header.appendChild(ui.el('div', 'card-title', { id: 'pool-title', text: 'Pool Progress' }));
+    const huntBtn = ui.el('button', '', { id: 'pool-hunt-btn', style: 'font-size:1.4em;padding:0.1em 0.35em;border:1px solid var(--border);border-radius:0.25em;background:var(--surface-raised);color:var(--success);cursor:pointer;line-height:1' });
+    huntBtn.textContent = '▶';
+    huntBtn.title = 'Start hunt';
+    header.appendChild(huntBtn);
+    card.appendChild(header);
 
-    // Circular progress
+    const body = ui.el('div', '', { style: 'display:flex;align-items:center;gap:20px;flex-wrap:wrap' });
+
     const circle = ui.el('div', 'circle-progress', { id: 'pool-circle' });
     circle.innerHTML = `
       <svg width="80" height="80" viewBox="0 0 80 80">
@@ -176,8 +184,7 @@ router.register('overview', (container) => {
       </div>`;
     body.appendChild(circle);
 
-    // Details
-    const details = ui.el('div', '', { style: 'flex:1' });
+    const details = ui.el('div', '', { style: 'flex:1;min-width:180px' });
     details.appendChild(ui.el('div', '', { id: 'pool-phase', style: 'font-size:13px;font-weight:600;color:var(--text-primary);margin-bottom:8px', text: 'Validating proxies' }));
 
     const bar = ui.el('div', 'progress-bar', { style: 'height:8px;margin-bottom:6px' });
@@ -190,12 +197,92 @@ router.register('overview', (container) => {
     body.appendChild(details);
     card.appendChild(body);
 
-    // Current proxy being checked
-    const currentProxy = ui.el('div', '', { id: 'pool-current-proxy', style: 'margin-top:10px;font-size:12px;display:flex;align-items:center;gap:6px;color:var(--text-secondary)' });
+    const currentProxy = ui.el('div', '', { id: 'pool-current-proxy', style: 'margin-top:10px;font-size:12px;color:var(--text-secondary);flex:1' });
     currentProxy.innerHTML = '<span style="color:var(--text-muted)">ready</span>';
     card.appendChild(currentProxy);
 
+    const poolStats = ui.el('div', '', { id: 'pool-stats-row', style: 'display:grid;grid-template-columns:repeat(auto-fit,minmax(60px,1fr));gap:0.3em;margin-top:auto' });
+    card.appendChild(poolStats);
+
     return card;
+  }
+
+  function renderPoolProxyInfo(det) {
+    const wrap = document.getElementById('pool-current-proxy');
+    const statsWrap = document.getElementById('pool-stats-row');
+    if (!wrap) return;
+    if (!det || !det.address) {
+      wrap.innerHTML = '<span style="color:var(--text-muted)">ready</span>';
+      if (statsWrap) statsWrap.innerHTML = '';
+      return;
+    }
+    wrap.innerHTML = '';
+
+    const mode = det.supports_connect ? 'HTTPS' : (det.protocol || 'HTTP').toUpperCase();
+    const ok = det.last_status === 'ok';
+    const addrRow = ui.el('div', '', { style: 'display:flex;align-items:center;gap:0.4em;flex-wrap:wrap;margin-bottom:0.4em' });
+    addrRow.appendChild(ui.el('span', '', { style: 'font-family:monospace;font-weight:700;color:var(--accent);font-size:12px', text: det.address }));
+    addrRow.appendChild(ui.el('span', '', { style: 'color:var(--accent);font-weight:600;font-size:11px', text: mode }));
+    addrRow.appendChild(ui.el('span', '', { style: `color:${ok ? 'var(--success)' : 'var(--danger)'};font-size:14px`, text: ok ? '●' : '○' }));
+    wrap.appendChild(addrRow);
+
+    const hasListen = !!(det.listen_country || det.listen_city);
+    const hasEgress = !!(det.egress_country || det.egress_city);
+    const diffCountry = hasListen && hasEgress && (det.listen_country || '') !== (det.egress_country || '');
+
+    if (diffCountry) {
+      const cols = ui.el('div', '', { style: 'display:grid;grid-template-columns:1fr auto 1fr;gap:0 0.5em;margin-bottom:0.3em;font-size:11px' });
+
+      const lc = ui.el('div', '', { style: 'min-width:0' });
+      lc.appendChild(ui.el('div', '', { style: 'font-size:0.65em;color:var(--text-muted);text-transform:uppercase;margin-bottom:2px', text: 'Server' }));
+      const lr = ui.el('div', '', { style: 'display:flex;align-items:center;gap:0.3em' });
+      lr.appendChild(ui.el('span', 'flag', { text: ui.flag(det.listen_country_code || det.country_code || ''), style: 'flex-shrink:0' }));
+      lr.appendChild(ui.el('span', '', { style: 'color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap', text: (det.listen_country || '') + (det.listen_city ? ', ' + det.listen_city : '') }));
+      lc.appendChild(lr);
+      if (det.listen_isp) lc.appendChild(ui.el('div', '', { style: 'font-size:0.7em;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap', text: det.listen_isp }));
+      cols.appendChild(lc);
+
+      const arrow = ui.el('div', '', { style: 'display:flex;align-items:center;color:var(--accent);font-weight:700;font-size:13px;padding-top:0.8em', text: '→' });
+      cols.appendChild(arrow);
+
+      const rc = ui.el('div', '', { style: 'min-width:0' });
+      rc.appendChild(ui.el('div', '', { style: 'font-size:0.65em;color:var(--text-muted);text-transform:uppercase;margin-bottom:2px', text: 'Exit' }));
+      const rr = ui.el('div', '', { style: 'display:flex;align-items:center;gap:0.3em' });
+      rr.appendChild(ui.el('span', 'flag', { text: ui.flag(det.egress_country_code || det.country_code || ''), style: 'flex-shrink:0' }));      rr.appendChild(ui.el('span', '', { style: 'color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap', text: (det.egress_country || '') + (det.egress_city ? ', ' + det.egress_city : '') }));
+      rc.appendChild(rr);
+      if (det.egress_isp) rc.appendChild(ui.el('div', '', { style: 'font-size:0.7em;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap', text: det.egress_isp }));
+      if (det.egress_ip) rc.appendChild(ui.el('div', '', { style: 'font-size:0.7em;color:var(--text-muted)', text: 'ip: ' + det.egress_ip }));
+      cols.appendChild(rc);
+
+      wrap.appendChild(cols);
+    } else {
+      const single = ui.el('div', '', { style: 'display:flex;align-items:center;gap:0.4em;flex-wrap:wrap;margin-bottom:0.2em;font-size:11px' });
+      single.appendChild(ui.el('span', 'flag', { text: ui.flag(det.country_code || ''), style: 'flex-shrink:0' }));
+      single.appendChild(ui.el('span', '', { style: 'color:var(--text-secondary)', text: (det.listen_country || det.egress_country || det.country || '') + (det.listen_city || det.egress_city ? ', ' + (det.listen_city || det.egress_city) : '') }));
+      wrap.appendChild(single);
+      const details = ui.el('div', '', { style: 'font-size:0.7em;color:var(--text-muted);line-height:1.3;margin-bottom:0.2em' });
+      let d = '';
+      if (det.listen_isp) d += det.listen_isp;
+      if (det.egress_ip) d += (d ? ' · ' : '') + 'exit ' + det.egress_ip;
+      details.textContent = d;
+      if (d) wrap.appendChild(details);
+    }
+
+    if (statsWrap) {
+      statsWrap.innerHTML = '';
+      const stats = [
+        { l: 'Lat', v: det.last_latency ? det.last_latency.toFixed(2) + 's' : '–' },
+        { l: 'Speed', v: det.speed_avg ? det.speed_avg.toFixed(0) + 'KB/s' : '–' },
+        { l: 'Succ', v: det.success_rate != null ? Math.round(det.success_rate * 100) + '%' : '–' },
+        { l: 'Up', v: (det.checks_ok || 0) + '/' + (det.checks_total || 0) },
+      ];
+      stats.forEach(it => {
+        const cell = ui.el('div', '', { style: 'text-align:center;padding:0.25em 0.15em;background:var(--surface-raised);border-radius:0.25em;min-width:0' });
+        cell.appendChild(ui.el('div', '', { style: 'font-size:0.6em;color:var(--text-muted);text-transform:uppercase', text: it.l }));
+        cell.appendChild(ui.el('div', '', { style: 'font-weight:600;color:var(--text-primary);font-size:0.8em', text: it.v }));
+        statsWrap.appendChild(cell);
+      });
+    }
   }
 
   // --- Top Countries Card ---
@@ -605,17 +692,29 @@ router.register('overview', (container) => {
   function buildCurrentProxyCard() {
     const card = ui.el('div', 'card');
     card.id = 'current-proxy-card';
-    card.appendChild(ui.el('div', 'card-title', { id: 'proxy-card-title', text: 'Local Proxy', style: 'margin-bottom:10px' }));
+    card.style.display = 'flex';
+    card.style.flexDirection = 'column';
 
-    const body = ui.el('div', '', { id: 'current-proxy-body' });
+    const header = ui.el('div', 'card-header');
+    header.appendChild(ui.el('div', 'card-title', { id: 'proxy-card-title', text: 'Local Proxy' }));
+    const poolBtn = ui.el('button', 'card-action', { text: 'Proxy Pool' });
+    poolBtn.addEventListener('click', () => router.navigate('proxy-pool'));
+    header.appendChild(poolBtn);
+    card.appendChild(header);
+
+    const body = ui.el('div', '', { id: 'current-proxy-body', style: 'flex:1' });
     body.innerHTML = '<div class="empty" style="font-size:12px;padding:16px">No upstream selected</div>';
     card.appendChild(body);
+
+    const statsRow = ui.el('div', '', { id: 'proxy-stats-row', style: 'display:grid;grid-template-columns:repeat(auto-fit,minmax(60px,1fr));gap:0.3em;margin-top:auto' });
+    card.appendChild(statsRow);
 
     return card;
   }
 
   function renderCurrentProxy(ps) {
     const body = document.getElementById('current-proxy-body');
+    const statsWrap = document.getElementById('proxy-stats-row');
     const card = document.getElementById('current-proxy-card');
     const titleEl = document.getElementById('proxy-card-title');
     if (!body) return;
@@ -632,6 +731,7 @@ router.register('overview', (container) => {
     }
 
     body.innerHTML = '';
+    if (statsWrap) statsWrap.innerHTML = '';
 
     const port = ps ? (ps.port || 17277) : 17277;
     const bindHost = ps ? (ps.bind_host || '127.0.0.1') : '127.0.0.1';
@@ -640,15 +740,15 @@ router.register('overview', (container) => {
     const srvColor = running ? 'var(--success)' : 'var(--danger)';
 
     const mkBtn = (char, title, color, fn) => {
-      const b = ui.el('button', '', { style: `font-size:1.6em;padding:0.1em 0.35em;border:1px solid var(--border);border-radius:0.25em;background:var(--surface-raised);color:${color};cursor:pointer;line-height:1` });
+      const b = ui.el('button', '', { style: `font-size:1.4em;padding:0.1em 0.35em;border:1px solid var(--border);border-radius:0.25em;background:var(--surface-raised);color:${color};cursor:pointer;line-height:1` });
       b.textContent = char; b.title = title;
       b.addEventListener('click', fn);
       return b;
     };
 
-    const chainRow = ui.el('div', '', { style: 'display:flex;align-items:center;gap:0.4em;margin-bottom:0.6em' });
+    const chainRow = ui.el('div', '', { style: 'display:flex;align-items:center;gap:0.4em;margin-bottom:0.6em;flex-wrap:wrap' });
 
-    const localAddr = ui.el('span', '', { style: `font-family:monospace;font-weight:700;color:${srvColor}`, text: bindHost + ':' + port });
+    const localAddr = ui.el('span', '', { style: `font-family:monospace;font-weight:700;color:${srvColor};font-size:12px`, text: bindHost + ':' + port });
     chainRow.appendChild(localAddr);
 
     const arrowSpan = ui.el('span', '', { style: 'color:var(--text-muted);font-weight:700', text: '→' });
@@ -656,7 +756,7 @@ router.register('overview', (container) => {
 
     const addrWrap = ui.el('div', '', { style: 'flex:1;min-width:0;overflow:hidden' });
     if (ap) {
-      addrWrap.appendChild(ui.el('span', '', { style: 'font-family:monospace;font-weight:700;color:var(--success);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block', text: ap.address }));
+      addrWrap.appendChild(ui.el('span', '', { style: 'font-family:monospace;font-weight:700;color:var(--success);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;font-size:12px', text: ap.address }));
     } else if (ps && ps.direct_mode) {
       addrWrap.appendChild(ui.el('span', '', { style: 'font-weight:600;color:var(--text-muted)', text: 'прямой' }));
     } else {
@@ -681,66 +781,96 @@ router.register('overview', (container) => {
       return;
     }
 
-    const infoRow = ui.el('div', '', { style: 'display:flex;align-items:center;gap:0.6em;margin-bottom:0.3em' });
-    infoRow.appendChild(ui.el('span', 'flag', { text: ui.flag(ap.country_code), style: 'flex-shrink:0' }));
-    infoRow.appendChild(ui.el('span', '', { style: 'color:var(--text-secondary);font-weight:500', text: ap.egress_country || ap.country || ap.country_code || '' }));
     const mode = ap.supports_connect ? 'HTTPS' : (ap.protocol || 'HTTP').toUpperCase();
-    infoRow.appendChild(ui.el('span', '', { style: 'color:var(--accent);font-weight:600', text: mode }));
-    infoRow.appendChild(ui.el('span', '', { style: `color:${ap.last_status === 'ok' ? 'var(--success)' : 'var(--danger)'}`, text: ap.last_status === 'ok' ? '●' : '○' }));
-    infoRow.appendChild(ui.el('span', '', { style: 'color:var(--success);font-weight:600', text: '✓' + (ps.connections_ok || 0) }));
-    infoRow.appendChild(ui.el('span', '', { style: 'color:var(--danger);font-weight:600', text: '✗' + (ps.connections_failed || 0) }));
-    body.appendChild(infoRow);
+    const ok = ap.last_status === 'ok';
+    const metaRow = ui.el('div', '', { style: 'display:flex;align-items:center;gap:0.4em;flex-wrap:wrap;margin-bottom:0.3em' });
+    metaRow.appendChild(ui.el('span', '', { style: 'color:var(--accent);font-weight:600;font-size:11px', text: mode }));
+    metaRow.appendChild(ui.el('span', '', { style: `color:${ok ? 'var(--success)' : 'var(--danger)'};font-size:14px`, text: ok ? '●' : '○' }));
+    metaRow.appendChild(ui.el('span', '', { style: 'color:var(--success);font-weight:600;font-size:11px', text: '✓' + (ps.connections_ok || 0) }));
+    metaRow.appendChild(ui.el('span', '', { style: 'color:var(--danger);font-weight:600;font-size:11px', text: '✗' + (ps.connections_failed || 0) }));
+    body.appendChild(metaRow);
 
-    // Geo details
-    const geoRow = ui.el('div', '', { style: 'font-size:0.75em;color:var(--text-muted);line-height:1.5;margin-bottom:0.5em;padding-left:0.2em' });
-    let geoHtml = '';
-    if (ap.listen_country) geoHtml += 'server: ' + ap.listen_country + (ap.listen_city ? ', ' + ap.listen_city : '') + (ap.listen_isp ? ', ' + ap.listen_isp : '') + '<br>';
-    if (ap.egress_isp) geoHtml += 'isp: ' + ap.egress_isp + '<br>';
-    if (ap.egress_ip) geoHtml += 'exit ip: ' + ap.egress_ip;
-    geoRow.innerHTML = geoHtml || '';
-    body.appendChild(geoRow);
+    const hasListen = !!(ap.listen_country || ap.listen_city);
+    const hasEgress = !!(ap.egress_country || ap.egress_city);
+    const diffCountry = hasListen && hasEgress && (ap.listen_country || '') !== (ap.egress_country || '');
 
-    const statsRow = ui.el('div', '', { style: 'display:grid;grid-template-columns:repeat(6,1fr);gap:0.4em' });
-    const stats = [
-      { l: 'Latency', v: ap.last_latency ? ap.last_latency.toFixed(2) + 's' : '–' },
-      { l: 'Avg Lat', v: ap.latency_avg ? ap.latency_avg.toFixed(2) + 's' : '–' },
-      { l: 'Speed', v: ap.speed_avg ? ap.speed_avg.toFixed(0) + ' KB/s' : '–' },
-      { l: 'Succ', v: ap.success_rate != null ? Math.round(ap.success_rate * 100) + '%' : '–' },
-      { l: 'Up', v: (ap.checks_ok || 0) + '/' + (ap.checks_total || 0) },
-      { l: 'Last', v: ui.ago(ap.last_check) },
-    ];
-    stats.forEach(it => {
-      const cell = ui.el('div', '', { style: 'text-align:center;padding:0.4em;background:var(--surface-raised);border-radius:0.3em' });
-      cell.appendChild(ui.el('div', '', { style: 'font-size:0.75em;color:var(--text-muted);text-transform:uppercase;margin-bottom:0.15em', text: it.l }));
-      cell.appendChild(ui.el('div', '', { style: 'font-weight:600;color:var(--text-primary)', text: it.v }));
-      statsRow.appendChild(cell);
-    });
-    body.appendChild(statsRow);
+    if (diffCountry) {
+      const cols = ui.el('div', '', { style: 'display:grid;grid-template-columns:1fr auto 1fr;gap:0 0.5em;margin-bottom:0.3em;font-size:11px' });
 
-    // Recheck button
-    const recheckBtn = ui.el('button', '', { style: `font-size:1.6em;padding:0.1em 0.35em;border:1px solid var(--border);border-radius:0.25em;background:var(--surface-raised);color:var(--info);cursor:pointer;line-height:1` });
-    const recheckIcon = ui.el('span', '', { style: 'display:inline-block' });
-    recheckIcon.textContent = '↻';
-    recheckBtn.appendChild(recheckIcon);
-    recheckBtn.title = 'Recheck';
-    recheckBtn.addEventListener('click', () => {
+      const lc = ui.el('div', '', { style: 'min-width:0' });
+      lc.appendChild(ui.el('div', '', { style: 'font-size:0.65em;color:var(--text-muted);text-transform:uppercase;margin-bottom:2px', text: 'Server' }));
+      const lr = ui.el('div', '', { style: 'display:flex;align-items:center;gap:0.3em' });
+      lr.appendChild(ui.el('span', 'flag', { text: ui.flag(ap.listen_country_code || ap.country_code || ''), style: 'flex-shrink:0' }));
+      lr.appendChild(ui.el('span', '', { style: 'color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap', text: (ap.listen_country || '') + (ap.listen_city ? ', ' + ap.listen_city : '') }));
+      lc.appendChild(lr);
+      if (ap.listen_isp) lc.appendChild(ui.el('div', '', { style: 'font-size:0.7em;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap', text: ap.listen_isp }));
+      cols.appendChild(lc);
+
+      const arrow = ui.el('div', '', { style: 'display:flex;align-items:center;color:var(--accent);font-weight:700;font-size:13px;padding-top:0.8em', text: '→' });
+      cols.appendChild(arrow);
+
+      const rc = ui.el('div', '', { style: 'min-width:0' });
+      rc.appendChild(ui.el('div', '', { style: 'font-size:0.65em;color:var(--text-muted);text-transform:uppercase;margin-bottom:2px', text: 'Exit' }));
+      const rr = ui.el('div', '', { style: 'display:flex;align-items:center;gap:0.3em' });
+      rr.appendChild(ui.el('span', 'flag', { text: ui.flag(ap.egress_country_code || ap.country_code || ''), style: 'flex-shrink:0' }));
+      rr.appendChild(ui.el('span', '', { style: 'color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap', text: (ap.egress_country || '') + (ap.egress_city ? ', ' + ap.egress_city : '') }));
+      rc.appendChild(rr);
+      if (ap.egress_isp) rc.appendChild(ui.el('div', '', { style: 'font-size:0.7em;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap', text: ap.egress_isp }));
+      if (ap.egress_ip) rc.appendChild(ui.el('div', '', { style: 'font-size:0.7em;color:var(--text-muted)', text: 'ip: ' + ap.egress_ip }));
+      cols.appendChild(rc);
+
+      body.appendChild(cols);
+    } else {
+      const single = ui.el('div', '', { style: 'display:flex;align-items:center;gap:0.4em;flex-wrap:wrap;margin-bottom:0.2em;font-size:11px' });
+      single.appendChild(ui.el('span', 'flag', { text: ui.flag(ap.country_code || ''), style: 'flex-shrink:0' }));
+      single.appendChild(ui.el('span', '', { style: 'color:var(--text-secondary)', text: (ap.listen_country || ap.egress_country || ap.country || '') + (ap.listen_city || ap.egress_city ? ', ' + (ap.listen_city || ap.egress_city) : '') }));
+      body.appendChild(single);
+      const details = ui.el('div', '', { style: 'font-size:0.7em;color:var(--text-muted);line-height:1.3;margin-bottom:0.2em' });
+      let d = '';
+      if (ap.listen_isp) d += ap.listen_isp;
+      if (ap.egress_ip) d += (d ? ' · ' : '') + 'exit ' + ap.egress_ip;
+      details.textContent = d;
+      if (d) body.appendChild(details);
+    }
+
+    if (statsWrap) {
+      const stats = [
+        { l: 'Lat', v: ap.last_latency ? ap.last_latency.toFixed(2) + 's' : '–' },
+        { l: 'Avg', v: ap.latency_avg ? ap.latency_avg.toFixed(2) + 's' : '–' },
+        { l: 'Speed', v: ap.speed_avg ? ap.speed_avg.toFixed(0) + 'KB/s' : '–' },
+        { l: 'Succ', v: ap.success_rate != null ? Math.round(ap.success_rate * 100) + '%' : '–' },
+        { l: 'Up', v: (ap.checks_ok || 0) + '/' + (ap.checks_total || 0) },
+        { l: 'Last', v: ui.ago(ap.last_check) },
+      ];
+      stats.forEach(it => {
+        const cell = ui.el('div', '', { style: 'text-align:center;padding:0.25em 0.15em;background:var(--surface-raised);border-radius:0.25em;min-width:0' });
+        cell.appendChild(ui.el('div', '', { style: 'font-size:0.6em;color:var(--text-muted);text-transform:uppercase', text: it.l }));
+        cell.appendChild(ui.el('div', '', { style: 'font-weight:600;color:var(--text-primary);font-size:0.8em', text: it.v }));
+        statsWrap.appendChild(cell);
+      });
+    }
+
+    const recheckBtn = mkBtn('↻', 'Recheck', 'var(--info)', () => {
       recheckBtn.disabled = true;
       recheckBtn.style.color = 'var(--text-muted)';
-      recheckIcon.style.animation = 'recheckSpin 0.8s linear infinite';
+      recheckBtn.querySelector('span').style.animation = 'recheckSpin 0.8s linear infinite';
       api.proxyRecheck(ap.address).then(() => poll()).then(() => {
-        recheckIcon.style.animation = '';
+        recheckBtn.querySelector('span').style.animation = '';
         recheckBtn.disabled = false;
         recheckBtn.style.color = 'var(--info)';
       }).catch(e => {
-        recheckIcon.style.animation = '';
+        recheckBtn.querySelector('span').style.animation = '';
         recheckBtn.disabled = false;
         recheckBtn.style.color = 'var(--info)';
         app.toast('Error: ' + e.message, 'error');
       });
     });
+    const recheckIcon = ui.el('span', '', { style: 'display:inline-block' });
+    recheckIcon.textContent = '↻';
+    recheckBtn.textContent = '';
+    recheckBtn.appendChild(recheckIcon);
     chainRow.appendChild(recheckBtn);
 
-    // Inject spin keyframes once
     if (!document.getElementById('recheck-spin-style')) {
       const s = document.createElement('style');
       s.id = 'recheck-spin-style';
@@ -799,12 +929,24 @@ router.register('overview', (container) => {
         el('pool-phase').textContent = s.running ? 'Validating proxies' : 'Idle';
       }
       if (el('pool-current-proxy')) {
-        if (p.last_proxy) {
-          const det = s.last_proxy_details || {};
-          el('pool-current-proxy').innerHTML = `<span class="flag">${ui.flag(det.country_code || '')}</span> <span style="font-family:monospace;color:var(--accent)">${p.last_proxy}</span> <span>${p.last_country || ''}</span>`;
+        renderPoolProxyInfo(s.last_proxy_details);
+      }
+      if (el('pool-hunt-btn')) {
+        const btn = el('pool-hunt-btn');
+        if (s.running) {
+          btn.textContent = '■';
+          btn.title = 'Stop hunt';
+          btn.style.color = 'var(--danger)';
+          btn.onclick = () => api.huntStop().then(() => app.toast('Hunt stopped')).catch(e => app.toast('Error: ' + e.message, 'error'));
         } else {
-          el('pool-current-proxy').innerHTML = '<span style="color:var(--text-muted)">ready</span>';
+          btn.textContent = '▶';
+          btn.title = 'Start hunt';
+          btn.style.color = 'var(--success)';
+          btn.onclick = () => api.huntStart().then(() => app.toast('Hunt started')).catch(e => app.toast('Error: ' + e.message, 'error'));
         }
+      }
+      if (el('pool-title')) {
+        el('pool-title').textContent = s.running ? 'Pool Progress — Running' : 'Pool Progress';
       }
 
       // Top countries

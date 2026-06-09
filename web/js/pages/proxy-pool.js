@@ -159,14 +159,29 @@ router.register('proxy-pool', (container) => {
     body.appendChild(top);
 
     const badges = ui.el('div', '', { style: 'display:flex;gap:4px;flex-wrap:wrap;margin-bottom:4px' });
-    badges.appendChild(ui.badge((ui.flag(ap.country_code) || '') + ' ' + (ap.country || 'Unknown'), 'blue'));
+
+    const hasListen = !!(ap.listen_country || ap.listen_city);
+    const hasEgress = !!(ap.egress_country || ap.egress_city);
+    const diffCountry = hasListen && hasEgress && (ap.listen_country || '') !== (ap.egress_country || '');
+
+    if (diffCountry) {
+      badges.appendChild(ui.badge((ui.flag(ap.listen_country_code || ap.country_code) || '') + ' ' + (ap.listen_country || ''), 'blue'));
+      badges.appendChild(ui.el('span', '', { style: 'color:var(--accent);font-weight:700', text: '→' }));
+      badges.appendChild(ui.badge((ui.flag(ap.egress_country_code || ap.country_code) || '') + ' ' + (ap.egress_country || ''), 'green'));
+    } else {
+      badges.appendChild(ui.badge((ui.flag(ap.listen_country_code || ap.country_code) || '') + ' ' + (ap.egress_country || ap.country || 'Unknown'), 'blue'));
+    }
     badges.appendChild(ui.badge(ap.protocol || 'http', 'gray'));
     body.appendChild(badges);
 
     const geo = ui.el('div', '', { style: 'font-size:10px;color:var(--text-secondary);line-height:1.5;margin-bottom:6px' });
     let geoHtml = '';
-    if (ap.listen_country) geoHtml += 'server: ' + (ap.listen_country || '') + (ap.listen_city ? ', ' + ap.listen_city : '') + (ap.listen_isp ? ', ' + ap.listen_isp : '') + '<br>';
-    if (ap.egress_isp) geoHtml += 'isp: ' + ap.egress_isp + '<br>';
+    if (diffCountry) {
+      geoHtml += 'server: ' + (ap.listen_country || '') + (ap.listen_city ? ', ' + ap.listen_city : '') + (ap.listen_isp ? ', ' + ap.listen_isp : '') + '<br>';
+      geoHtml += 'exit: ' + (ap.egress_country || '') + (ap.egress_city ? ', ' + ap.egress_city : '') + (ap.egress_isp ? ', ' + ap.egress_isp : '') + '<br>';
+    } else {
+      if (ap.listen_isp) geoHtml += 'isp: ' + ap.listen_isp + '<br>';
+    }
     if (ap.egress_ip) geoHtml += 'exit ip: ' + ap.egress_ip;
     geo.innerHTML = geoHtml || '—';
     body.appendChild(geo);
@@ -220,8 +235,14 @@ router.register('proxy-pool', (container) => {
     if (!wrap) return;
 
     const sorted = (proxies || []).slice()
+      .map(p => { p._diff = (p.listen_country && p.egress_country && p.listen_country !== p.egress_country) ? 1 : 0; p._exit_code = p.egress_country ? ui.flag(p.egress_country.slice(0,2).toUpperCase().replace(/[^A-Z]/g,'')) : ''; return p; })
       .filter(p => (!state.hideNoHttps || p.supports_connect) && (!state.hideMitm || !p.mitm_suspect))
-      .sort((a, b) => ui.sortValue(a, b, state.proxySortKey, state.proxySortDir));
+      .sort((a, b) => {
+        const key = state.proxySortKey;
+        const dir = state.proxySortDir;
+        if (key === '_exit') return dir * (a._diff - b._diff || (a.egress_country || '').localeCompare(b.egress_country || ''));
+        return ui.sortValue(a, b, key, dir);
+      });
 
     if (count) {
       const tags = [];
@@ -234,13 +255,13 @@ router.register('proxy-pool', (container) => {
     const headers = [
       h('#', null, '24px', 'center'),
       h('Proxy', 'address', null, 'left'),
-      h('Ctry', 'country', '40px', 'center'),
-      h('Lat', 'last_latency', '50px', 'right'),
-      h('Avg', 'latency_avg', '50px', 'right'),
+      h('Srv', 'country', '30px', 'center'),
+      h('Exit', '_exit', '30px', 'center'),
+      h('Lat', 'last_latency', '46px', 'right'),
       h('KB/s', 'speed_avg', '40px', 'right'),
       h('Succ', 'success_rate', '40px', 'right'),
       h('Score', 'score', '40px', 'right'),
-      h('Flags', null, '50px', 'center'),
+      h('Flags', 'supports_connect', '50px', 'center'),
       h('Ok', 'last_ok', '36px', 'right'),
       h('', null, '40px', 'center'),
     ];
@@ -252,12 +273,15 @@ router.register('proxy-pool', (container) => {
       if (p.mitm_suspect) flags.push('<span style="color:var(--danger);font-weight:600">MITM!</span>');
       const proto = p.protocol || 'http';
       const isSel = state.selected === p.address;
+      const hasDiff = p.listen_country && p.egress_country && p.listen_country !== p.egress_country;
+      const srvFlag = ui.flag(p.listen_country_code || p.country_code) || '—';
+      const exitFlag = hasDiff ? (ui.flag(p.egress_country_code || p.country_code) || '') : '';
       return [
         `<span style="color:var(--text-muted)">${i+1}</span>`,
         `<span class="addr" style="font-size:10px">${p.address}</span>`,
-        ui.flag(p.country_code) || '—',
+        srvFlag,
+        exitFlag,
         p.last_latency ? p.last_latency.toFixed(2) + 's' : '—',
-        p.latency_avg ? p.latency_avg.toFixed(2) + 's' : '—',
         (p.speed_avg || 0).toFixed(0),
         (p.success_rate * 100).toFixed(0) + '%',
         `<div style="display:inline-block;width:30px;height:4px;background:var(--surface-raised);border-radius:2px;vertical-align:middle;overflow:hidden"><div style="width:${sc}%;height:100%;background:linear-gradient(90deg,var(--accent),var(--info));transition:width 0.4s"></div></div>`,

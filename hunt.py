@@ -62,11 +62,19 @@ def country_flag(code: str) -> str:
 def country_code_from_name(name: str) -> str:
     mapping = {
         "United States": "US", "United Kingdom": "GB", "Germany": "DE",
-        "France": "FR", "Netherlands": "NL", "Japan": "JP", "Canada": "CA",
-        "Russia": "RU", "China": "CN", "Brazil": "BR", "Spain": "ES",
-        "Italy": "IT", "Poland": "PL", "Ukraine": "UA", "India": "IN",
-        "Australia": "AU", "Singapore": "SG", "Korea": "KR", "Mexico": "MX",
-        "Sweden": "SE", "Norway": "NO", "Finland": "FI", "Switzerland": "CH",
+        "France": "FR", "Netherlands": "NL", "The Netherlands": "NL",
+        "Japan": "JP", "Canada": "CA", "Russia": "RU", "China": "CN",
+        "Brazil": "BR", "Spain": "ES", "Italy": "IT", "Poland": "PL",
+        "Ukraine": "UA", "India": "IN", "Australia": "AU", "Singapore": "SG",
+        "Korea": "KR", "South Korea": "KR", "Mexico": "MX", "Sweden": "SE",
+        "Norway": "NO", "Finland": "FI", "Switzerland": "CH",
+        "Hong Kong": "HK", "Taiwan": "TW", "Ireland": "IE", "Denmark": "DK",
+        "Greece": "GR", "Portugal": "PT", "Romania": "RO", "Turkey": "TR",
+        "Türkiye": "TR", "Thailand": "TH", "Vietnam": "VN", "Malaysia": "MY",
+        "Indonesia": "ID", "Philippines": "PH", "Bangladesh": "BD",
+        "Nigeria": "NG", "Zimbabwe": "ZW", "United Arab Emirates": "AE",
+        "Kazakhstan": "KZ", "Uzbekistan": "UZ", "Latvia": "LV",
+        "Ecuador": "EC", "Syria": "SY", "Tanzania": "TZ",
     }
     return mapping.get(name, "")
 
@@ -94,7 +102,9 @@ class ProxyRating:
     egress_city: str = ""
     egress_isp: str = ""
     egress_country: str = ""
+    egress_country_code: str = ""
     listen_country: str = ""
+    listen_country_code: str = ""
     listen_city: str = ""
     listen_isp: str = ""
     egress_http_ip: str = ""
@@ -167,7 +177,9 @@ class ProxyRating:
             "egress_city": self.egress_city,
             "egress_isp": self.egress_isp,
             "egress_country": self.egress_country,
+            "egress_country_code": self.egress_country_code,
             "listen_country": self.listen_country,
+            "listen_country_code": self.listen_country_code,
             "listen_city": self.listen_city,
             "listen_isp": self.listen_isp,
         }
@@ -1156,8 +1168,12 @@ class HuntState:
                 r.egress_city = egress.get("egress_city") or r.egress_city
                 r.egress_isp = egress.get("egress_isp") or r.egress_isp
                 r.egress_country = egress.get("egress_country") or r.egress_country
+                if egress.get("egress_country") and not r.egress_country_code:
+                    r.egress_country_code = country_code_from_name(egress["egress_country"])
             if listen:
                 r.listen_country = listen.get("country") or r.listen_country
+                if listen.get("country") and not r.listen_country_code:
+                    r.listen_country_code = country_code_from_name(listen["country"])
                 r.listen_city = listen.get("city") or r.listen_city
                 r.listen_isp = listen.get("isp") or r.listen_isp
         else:
@@ -1321,10 +1337,16 @@ class HuntState:
                     egress_city=d.get("egress_city", ""),
                     egress_isp=d.get("egress_isp", ""),
                     egress_country=d.get("egress_country", ""),
+                    egress_country_code=d.get("egress_country_code", ""),
                     listen_country=d.get("listen_country", ""),
+                    listen_country_code=d.get("listen_country_code", ""),
                     listen_city=d.get("listen_city", ""),
                     listen_isp=d.get("listen_isp", ""),
                 )
+                if not r.egress_country_code and r.egress_country:
+                    r.egress_country_code = country_code_from_name(r.egress_country)
+                if not r.listen_country_code and r.listen_country:
+                    r.listen_country_code = country_code_from_name(r.listen_country)
                 self.ratings[r.address] = r
             logger.info(f"Loaded {len(self.ratings)} ratings from state file")
         except Exception as e:
