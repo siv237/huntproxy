@@ -388,13 +388,29 @@ class HuntState:
         return out
 
     def get_countries(self) -> list:
-        alive = [r for r in self.ratings.values() if r.last_status == "ok" and not r.in_blacklist and r.country]
-        counts = Counter(r.country for r in alive)
+        alive = [r for r in self.ratings.values() if r.last_status == "ok" and not r.in_blacklist]
+        counts = Counter((r.country_code or r.country or "?") for r in alive)
         total = sum(counts.values()) or 1
         result = []
-        for country, count in counts.most_common(10):
-            code = country_code_from_name(country)
-            result.append({"country": country, "country_code": code, "count": count, "pct": round(count / total * 100, 1)})
+        for code, count in counts.most_common(10):
+            if code == "?" or not code:
+                continue
+            name = code
+            rev = {v: k for k, v in {
+                "US": "United States", "GB": "United Kingdom", "DE": "Germany",
+                "FR": "France", "NL": "Netherlands", "JP": "Japan", "CA": "Canada",
+                "RU": "Russia", "CN": "China", "BR": "Brazil", "ES": "Spain",
+                "IT": "Italy", "PL": "Poland", "UA": "Ukraine", "IN": "India",
+                "AU": "Australia", "SG": "Singapore", "KR": "Korea", "MX": "Mexico",
+                "SE": "Sweden", "NO": "Norway", "FI": "Finland", "CH": "Switzerland",
+                "ID": "Indonesia", "TH": "Thailand", "VN": "Vietnam", "TR": "Turkey",
+                "ZA": "South Africa", "AR": "Argentina", "CL": "Chile", "CO": "Colombia",
+                "PH": "Philippines", "MY": "Malaysia", "RO": "Romania", "CZ": "Czech Republic",
+                "HU": "Hungary", "BG": "Bulgaria", "PK": "Pakistan", "BD": "Bangladesh",
+                "NG": "Nigeria", "KE": "Kenya", "EG": "Egypt", "IL": "Israel",
+            }.items()}
+            name = rev.get(code, code)
+            result.append({"country": name, "country_code": code, "count": count, "pct": round(count / total * 100, 1)})
         return result
 
     def get_activity(self, limit: int = 10) -> list:
