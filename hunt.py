@@ -372,6 +372,7 @@ class HuntState:
             "last_event": self.last_event,
             "uptime_seconds": int(time.time() - self.started_at),
             "last_proxy_details": self.ratings.get(self.last_proxy, ProxyRating(address=self.last_proxy or "")).to_dict() if self.last_proxy else None,
+            "resources": self._get_system(),
         }
 
     def _blacklist_view(self) -> list:
@@ -455,12 +456,14 @@ class HuntState:
             import psutil
             return {
                 "cpu": psutil.cpu_percent(interval=0.1),
-                "mem": psutil.virtual_memory().percent,
+                "memory": psutil.virtual_memory().percent,
                 "disk": psutil.disk_usage('/').percent,
             }
         except Exception:
             pass
-        # Fallback Linux /proc
+        cpu = None
+        mem = None
+        disk = None
         try:
             with open("/proc/stat") as f:
                 line = f.readline()
@@ -489,12 +492,16 @@ class HuntState:
         except Exception:
             mem = None
         try:
-            import shutil
-            du = shutil.disk_usage('/')
-            disk = round(du.used / du.total * 100, 1)
+            du = os.statvfs('/')
+            disk = round((1 - du.f_bavail / du.f_blocks) * 100, 1) if du.f_blocks else None
         except Exception:
-            disk = None
-        return {"cpu": cpu, "mem": mem, "disk": disk}
+            try:
+                import shutil
+                du = shutil.disk_usage('/')
+                disk = round(du.used / du.total * 100, 1)
+            except Exception:
+                disk = None
+        return {"cpu": cpu, "memory": mem, "disk": disk}
 
     def _push_history(self):
         alive = sum(1 for r in self.ratings.values() if r.last_status == "ok" and not r.in_blacklist)
