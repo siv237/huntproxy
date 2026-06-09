@@ -1221,8 +1221,9 @@ class HuntState:
 # ============================================================
 
 class ProxyRunner:
-    def __init__(self, state: "HuntState"):
+    def __init__(self, state: "HuntState", host: str = "127.0.0.1"):
         self.state = state
+        self.proxy_host = host
         self._server: Optional[asyncio.AbstractServer] = None
         self._task: Optional[asyncio.Task] = None
         self.running = False
@@ -1280,7 +1281,7 @@ class ProxyRunner:
     async def _run(self):
         try:
             self._server = await asyncio.start_server(
-                self._handle, "127.0.0.1", self.port)
+                self._handle, self.proxy_host, self.port)
             addr = self._server.sockets[0].getsockname()
             self.state._emit(f"Proxy listening on {addr[0]}:{addr[1]}", "ok")
             async with self._server:

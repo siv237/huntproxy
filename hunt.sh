@@ -6,6 +6,18 @@ VENV="$DIR/.venv"
 HOST="${HUNT_HOST:-127.0.0.1}"
 PORT="${HUNT_PORT:-17177}"
 
+ARGS=()
+for arg in "$@"; do
+    case "$arg" in
+        --public|--listen-all|-P)
+            HOST="0.0.0.0"
+            ;;
+        *)
+            ARGS+=("$arg")
+            ;;
+    esac
+done
+
 if [ ! -d "$VENV" ]; then
     echo "[*] Creating venv..."
     python3 -m venv "$VENV"
@@ -27,5 +39,8 @@ if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
 fi
 
 echo "[*] Starting hunt web UI at http://$HOST:$PORT/"
+if [ "$HOST" = "0.0.0.0" ]; then
+    echo "[*] Listening on all interfaces (public mode). Use --host 127.0.0.1 to restrict."
+fi
 echo "[*] Press Ctrl+C to stop."
-exec "$VENV/bin/python" "$DIR/hunt.py" --host "$HOST" --port "$PORT"
+exec "$VENV/bin/python" "$DIR/hunt.py" --host "$HOST" --port "$PORT" "${ARGS[@]}"
