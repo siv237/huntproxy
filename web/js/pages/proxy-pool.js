@@ -4,6 +4,8 @@ router.register('proxy-pool', (container) => {
     selected: null,
     proxySortKey: 'score',
     proxySortDir: -1,
+    hideNoHttps: true,
+    hideMitm: true,
   };
 
   function setProxySort(key) {
@@ -15,14 +17,12 @@ router.register('proxy-pool', (container) => {
   function build() {
     container.innerHTML = '';
 
-    // Row 1: Proxy Server Control + Selected Proxy (compact side by side)
-    const row1 = ui.el('div', 'grid grid-2');
+    const row1 = ui.el('div', 'grid grid-2 row-stretch');
     row1.appendChild(buildProxyControlCard());
     row1.appendChild(buildSelectedProxyCard());
     container.appendChild(row1);
 
-    // Row 2: Select Upstream Proxy + Client Log
-    const row2 = ui.el('div', 'grid grid-2');
+    const row2 = ui.el('div', 'grid grid-2 row-stretch');
     row2.appendChild(buildSelectProxyCard());
     row2.appendChild(buildClientLogCard());
     container.appendChild(row2);
@@ -90,8 +90,22 @@ router.register('proxy-pool', (container) => {
     header.appendChild(count);
     card.appendChild(header);
 
-    const wrap = ui.el('div', 'table-wrap');
-    wrap.id = 'select-proxy-tbl';
+    const filterRow = ui.el('div', '', { style: 'display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-shrink:0' });
+    const httpsLbl = ui.el('label', '', { style: 'display:flex;align-items:center;gap:4px;cursor:pointer;font-size:11px' });
+    const httpsCb = ui.el('input', '', { id: 'hide-no-https', type: 'checkbox', checked: 'checked' });
+    httpsCb.addEventListener('change', () => { state.hideNoHttps = httpsCb.checked; updateSelectProxy(state.proxies); });
+    httpsLbl.appendChild(httpsCb);
+    httpsLbl.appendChild(ui.el('span', '', { text: 'Hide without HTTPS' }));
+    filterRow.appendChild(httpsLbl);
+    const mitmLbl = ui.el('label', '', { style: 'display:flex;align-items:center;gap:4px;cursor:pointer;font-size:11px' });
+    const mitmCb = ui.el('input', '', { id: 'hide-mitm', type: 'checkbox', checked: 'checked' });
+    mitmCb.addEventListener('change', () => { state.hideMitm = mitmCb.checked; updateSelectProxy(state.proxies); });
+    mitmLbl.appendChild(mitmCb);
+    mitmLbl.appendChild(ui.el('span', '', { text: 'Hide MITM suspects' }));
+    filterRow.appendChild(mitmLbl);
+    card.appendChild(filterRow);
+
+    const wrap = ui.el('div', '', { id: 'select-proxy-tbl', style: 'flex:1;overflow-y:auto;min-height:0' });
     card.appendChild(wrap);
     return card;
   }
@@ -203,10 +217,18 @@ router.register('proxy-pool', (container) => {
   function updateSelectProxy(proxies) {
     const wrap = document.getElementById('select-proxy-tbl');
     const count = document.getElementById('select-count');
-    if (count) count.textContent = (proxies || []).length + ' alive';
     if (!wrap) return;
 
-    const sorted = (proxies || []).slice().sort((a, b) => ui.sortValue(a, b, state.proxySortKey, state.proxySortDir));
+    const sorted = (proxies || []).slice()
+      .filter(p => (!state.hideNoHttps || p.supports_connect) && (!state.hideMitm || !p.mitm_suspect))
+      .sort((a, b) => ui.sortValue(a, b, state.proxySortKey, state.proxySortDir));
+
+    if (count) {
+      const tags = [];
+      if (state.hideNoHttps) tags.push('HTTPS');
+      if (state.hideMitm) tags.push('no-MITM');
+      count.textContent = sorted.length + (tags.length ? ' ' + tags.join('+') : ' alive');
+    }
 
     const h = (label, key, width, align) => ({ label: label + (key ? ui.sortArrow(key, state.proxySortKey, state.proxySortDir) : ''), width, align, sortKey: key, onSort: key ? () => setProxySort(key) : undefined });
     const headers = [
@@ -222,7 +244,7 @@ router.register('proxy-pool', (container) => {
       h('Ok', 'last_ok', '36px', 'right'),
       h('', null, '40px', 'center'),
     ];
-    const rows = sorted.slice(0, 10).map((p, i) => {
+    const rows = sorted.map((p, i) => {
       const sc = Math.min(100, Math.max(0, p.score || 0));
       const flags = [];
       if (p.supports_connect) flags.push('<span style="color:var(--success);font-weight:600">HTTPS</span>');
@@ -255,6 +277,7 @@ router.register('proxy-pool', (container) => {
       try { ps = await api.proxyStatus(); } catch (e) { console.error('proxyStatus', e); }
       try { proxies = await api.proxyAlive(); } catch (e) { console.error('proxyAlive', e); }
       state.selected = ps && ps.active_proxy ? ps.active_proxy.address : null;
+      state.proxies = proxies;
       updateProxyControl(ps);
       updateSelectedProxy(ps);
       updateProxyLog(ps);
