@@ -8,10 +8,11 @@ import json
 import logging
 import os
 import socket
+import sqlite3
 import struct
 import time
 import yaml
-from collections import Counter, deque
+from collections import Counter
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -214,7 +215,8 @@ class HuntState:
         self.health_parallel = cfg.get("health_parallel", 20)
 
         self.started_at = time.time()
-        self.history = deque(maxlen=360)
+        self._db_path = DATA_DIR / "stats.db"
+        self._init_db()
         self._load_blacklist()
         self._load_state()
         self._load_working_file()
@@ -230,6 +232,30 @@ class HuntState:
     @property
     def state_file(self) -> Path:
         return DATA_DIR / "ratings.json"
+
+    def _db(self) -> sqlite3.Connection:
+        conn = sqlite3.connect(str(self._db_path))
+        conn.row_factory = sqlite3.Row
+        return conn
+
+    def _init_db(self):
+        conn = self._db()
+        conn.executescript("""
+            CREATE TABLE IF NOT EXISTS history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ts REAL NOT NULL,
+                alive INTEGER DEFAULT 0,
+                dead INTEGER DEFAULT 0,
+                total INTEGER DEFAULT 0,
+                requests INTEGER DEFAULT 0,
+                connections_ok INTEGER DEFAULT 0,
+                connections_failed INTEGER DEFAULT 0,
+                success_rate REAL DEFAULT 0
+            );
+            CREATE INDEX IF NOT EXISTS idx_history_ts ON history(ts);
+        """)
+        conn.commit()
+        conn.close()
 
     def _emit(self, msg: str, kind: str = "info", **kwargs):
         self._event_seq += 1
@@ -340,21 +366,26 @@ class HuntState:
         return out
 
     def get_history(self, last: str = "1h") -> list:
-        # Return last N points from history ring buffer
-        if not self.history:
-            return []
         try:
             if last.endswith("h"):
-                hours = int(last[:-1])
-                cutoff = time.time() - hours * 3600
+                cutoff = time.time() - int(last[:-1]) * 3600
             elif last.endswith("d"):
-                days = int(last[:-1])
-                cutoff = time.time() - days * 86400
+                cutoff = time.time() - int(last[:-1]) * 86400
             else:
                 cutoff = 0
         except Exception:
             cutoff = 0
-        return [h for h in self.history if h.get("ts", 0) > cutoff]
+        try:
+            conn = self._db()
+            rows = conn.execute(
+                "SELECT ts, alive, dead, total, requests, connections_ok, connections_failed, success_rate FROM history WHERE ts > ? ORDER BY ts",
+                (cutoff,)
+            ).fetchall()
+            conn.close()
+            return [dict(r) for r in rows]
+        except Exception as e:
+            logger.error("DB get_history: %s", e)
+            return []
 
     def _get_system(self) -> dict:
         try:
@@ -405,14 +436,19 @@ class HuntState:
     def _push_history(self):
         alive = sum(1 for r in self.ratings.values() if r.last_status == "ok" and not r.in_blacklist)
         dead = sum(1 for r in self.ratings.values() if r.last_status == "failed")
-        self.history.append({
-            "ts": time.time(),
-            "alive": alive,
-            "dead": dead,
-            "total": len(self.ratings),
-            "requests": self.working,  # approximate using working count as proxy
-            "success_rate": (alive / max(1, alive + dead)) * 100,
-        })
+        ok = sum(1 for e in self.proxy.log if e["status"] == "ok") if hasattr(self, 'proxy') and self.proxy else 0
+        total = len(self.proxy.log) if hasattr(self, 'proxy') and self.proxy else 0
+        sr = (alive / max(1, alive + dead)) * 100
+        try:
+            conn = self._db()
+            conn.execute(
+                "INSERT INTO history (ts, alive, dead, total, requests, connections_ok, connections_failed, success_rate) VALUES (?,?,?,?,?,?,?,?)",
+                (time.time(), alive, dead, len(self.ratings), total, ok, total - ok, sr)
+            )
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            logger.error("DB push history: %s", e)
 
     def start_hunt(self) -> bool:
         if self.phase not in (self.PHASE_IDLE, self.PHASE_DONE):
@@ -1014,6 +1050,14 @@ class HuntState:
                 await self._health_check()
             except Exception as e:
                 self._emit(f"Health check error: {e}", "error")
+
+    async def _history_loop(self):
+        while True:
+            await asyncio.sleep(60)
+            try:
+                self._push_history()
+            except Exception:
+                pass
 
     async def _health_check(self):
         candidates = [r for r in self.ratings.values()
@@ -2383,7 +2427,7 @@ class HuntServer:
 
         # === Proxy Control / Traffic stubs (Phase 2) ===
         if path.startswith("/api/traffic"):
-            return json.dumps({"points": list(self.state.history)}), 200, "application/json"
+            return json.dumps({"points": self.state.get_history("24h")}), 200, "application/json"
 
         if path.startswith("/api/requests"):
             return json.dumps({"requests": list(self.proxy.log)[-50:]}), 200, "application/json"
@@ -2458,6 +2502,10 @@ async def amain(config: dict):
 
     state = HuntState(hunt_cfg)
     server = HuntServer(state, host, port)
+    state.proxy_runner = server.proxy
+
+    # Start periodic history recording (every 60s)
+    asyncio.create_task(state._history_loop())
 
     print("=" * 56)
     print(f"  huntproxy HUNT — web UI: http://{host}:{port}/")

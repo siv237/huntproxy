@@ -371,6 +371,9 @@ router.register('overview', (container) => {
   }
 
   // --- Live Performance Card ---
+  let perfCache = { '1h': [], '6h': [], '24h': [] };
+  let perfCurrentRange = '1h';
+
   function buildLivePerformanceCard() {
     const card = ui.el('div', 'card');
     card.id = 'live-performance-card';
@@ -378,12 +381,10 @@ router.register('overview', (container) => {
     const header = ui.el('div', 'card-header');
     header.appendChild(ui.el('div', 'card-title', { text: 'Live Performance' }));
     const sel = ui.el('select', '', { style: 'padding:2px 6px;font-size:11px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--bg);color:var(--text-secondary)', id: 'perf-range' });
-    ['Last 1 hour', 'Last 6 hours', 'Last 24 hours'].forEach(t => sel.appendChild(ui.el('option', '', { text: t })));
+    ['1h', '6h', '24h'].forEach(t => sel.appendChild(ui.el('option', '', { text: 'Last ' + (t === '1h' ? '1 hour' : t === '6h' ? '6 hours' : '24 hours'), value: t })));
     sel.addEventListener('change', () => {
-      const perfRange = getPerformanceRange();
-      const perfLabels = perfData.labels.slice(-perfRange.length);
-      const perfSuccess = perfData.successRate.slice(-perfRange.length);
-      renderPerformanceChart({ labels: perfLabels, requests: perfRange, successRate: perfSuccess });
+      perfCurrentRange = sel.value;
+      renderPerformanceFromCache();
     });
     header.appendChild(sel);
     card.appendChild(header);
@@ -393,6 +394,23 @@ router.register('overview', (container) => {
     card.appendChild(chartWrap);
 
     return card;
+  }
+
+  function fmtTimeLabel(ts, range) {
+    const d = new Date(ts * 1000);
+    const hh = d.getHours().toString().padStart(2, '0');
+    const mm = d.getMinutes().toString().padStart(2, '0');
+    if (range === '24h') return hh + ':' + mm;
+    return hh + ':' + mm;
+  }
+
+  function renderPerformanceFromCache() {
+    const pts = perfCache[perfCurrentRange] || [];
+    if (!pts.length) {
+      renderPerformanceChart({ points: [], range: perfCurrentRange });
+      return;
+    }
+    renderPerformanceChart({ points: pts, range: perfCurrentRange });
   }
 
   function renderPerformanceChart(data) {
@@ -414,11 +432,24 @@ router.register('overview', (container) => {
 
     ctx.clearRect(0, 0, w, h);
 
-    if (!data || !data.requests || data.requests.length === 0) return;
+    const pts = data.points || [];
+    if (pts.length < 2) {
+      ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text-muted').trim() || '#9CA3AF';
+      ctx.font = '12px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('No data yet', w / 2, h / 2);
+      return;
+    }
 
-    const requests = data.requests;
-    const success = data.successRate || [];
+    const minTs = pts[0].ts;
+    const maxTs = pts[pts.length - 1].ts;
+    const tsRange = maxTs - minTs || 1;
+
+    const requests = pts.map(p => p.requests || 0);
+    const success = pts.map(p => p.success_rate || 0);
     const maxReq = Math.max(...requests, 1);
+
+    const xOfTs = ts => pad.left + ((ts - minTs) / tsRange) * cw;
 
     // Grid lines
     ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--border-subtle').trim() || '#F3F4F6';
@@ -449,26 +480,26 @@ router.register('overview', (container) => {
       ctx.fillText(val + '%', w - pad.right + 6, y + 3);
     }
 
-    // X-axis labels
+    // X-axis: real time labels at fixed intervals
     ctx.textAlign = 'center';
-    const labels = data.labels || [];
-    const step = Math.max(1, Math.floor(labels.length / 6));
-    labels.forEach((l, i) => {
-      if (i % step === 0) {
-        const x = pad.left + (i / (labels.length - 1)) * cw;
-        ctx.fillText(l, x, h - 6);
+    const range = data.range || '1h';
+    const labelInterval = range === '24h' ? 3600 : range === '6h' ? 1800 : 600;
+    const startTs = Math.ceil(minTs / labelInterval) * labelInterval;
+    for (let ts = startTs; ts <= maxTs; ts += labelInterval) {
+      const x = xOfTs(ts);
+      if (x >= pad.left && x <= w - pad.right) {
+        ctx.fillText(fmtTimeLabel(ts, range), x, h - 6);
       }
-    });
+    }
 
-    // Draw requests area
     const accentColor = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#4F46E5';
     const successColor = getComputedStyle(document.documentElement).getPropertyValue('--success').trim() || '#10B981';
 
     // Requests line
     ctx.beginPath();
-    requests.forEach((v, i) => {
-      const x = pad.left + (i / (requests.length - 1)) * cw;
-      const y = pad.top + ch - (v / maxReq) * ch;
+    pts.forEach((p, i) => {
+      const x = xOfTs(p.ts);
+      const y = pad.top + ch - ((p.requests || 0) / maxReq) * ch;
       i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
     });
     ctx.strokeStyle = accentColor;
@@ -476,8 +507,8 @@ router.register('overview', (container) => {
     ctx.stroke();
 
     // Requests area fill
-    ctx.lineTo(pad.left + cw, pad.top + ch);
-    ctx.lineTo(pad.left, pad.top + ch);
+    ctx.lineTo(xOfTs(maxTs), pad.top + ch);
+    ctx.lineTo(xOfTs(minTs), pad.top + ch);
     ctx.closePath();
     ctx.fillStyle = accentColor + '20';
     ctx.fill();
@@ -485,9 +516,9 @@ router.register('overview', (container) => {
     // Success rate line
     if (success.length > 0) {
       ctx.beginPath();
-      success.forEach((v, i) => {
-        const x = pad.left + (i / (success.length - 1)) * cw;
-        const y = pad.top + ch - (v / 100) * ch;
+      pts.forEach((p, i) => {
+        const x = xOfTs(p.ts);
+        const y = pad.top + ch - ((p.success_rate || 0) / 100) * ch;
         i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
       });
       ctx.strokeStyle = successColor;
@@ -659,45 +690,9 @@ router.register('overview', (container) => {
   // --- Polling ---
   let lastEventSeq = 0;
 
-  // Rolling performance data buffer
-  let perfData = { labels: [], requests: [], successRate: [] };
-  const MAX_PERF_POINTS = 31;
-
-  function initPerformanceData() {
-    const now = Date.now();
-    for (let i = MAX_PERF_POINTS - 1; i >= 0; i--) {
-      const t = new Date(now - i * 60000);
-      perfData.labels.push(t.getHours().toString().padStart(2, '0') + ':' + t.getMinutes().toString().padStart(2, '0'));
-      perfData.requests.push(Math.floor(Math.random() * 600 + 100));
-      perfData.successRate.push(Math.floor(Math.random() * 30 + 50));
-    }
-  }
-
-  function appendPerformancePoint() {
-    const now = new Date();
-    perfData.labels.push(now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0'));
-    perfData.requests.push(Math.floor(Math.random() * 600 + 100));
-    perfData.successRate.push(Math.floor(Math.random() * 30 + 50));
-    if (perfData.labels.length > MAX_PERF_POINTS) {
-      perfData.labels.shift();
-      perfData.requests.shift();
-      perfData.successRate.shift();
-    }
-  }
-
-  function getPerformanceRange() {
-    const sel = document.getElementById('perf-range');
-    const val = sel ? sel.value : 'Last 1 hour';
-    if (val === 'Last 6 hours') return perfData.requests.slice(-31);
-    if (val === 'Last 24 hours') return perfData.requests.slice(-31);
-    return perfData.requests;
-  }
-
-  initPerformanceData();
-
   async function poll() {
     try {
-      let ps = {}, s = {}, ev = [];
+      let ps = {}, s = {}, ev = {};
       try { ps = await api.proxyStatus(); } catch (e) { console.error('proxyStatus', e); }
       try { s = await api.snapshot(); } catch (e) { console.error('snapshot', e); }
       try { ev = await api.events(lastEventSeq); } catch (e) { console.error('events', e); }
@@ -778,12 +773,18 @@ router.register('overview', (container) => {
       // Current proxy
       renderCurrentProxy(ps);
 
-      // Performance chart (rolling buffer)
-      appendPerformancePoint();
-      const perfRange = getPerformanceRange();
-      const perfLabels = perfData.labels.slice(-perfRange.length);
-      const perfSuccess = perfData.successRate.slice(-perfRange.length);
-      renderPerformanceChart({ labels: perfLabels, requests: perfRange, successRate: perfSuccess });
+      // Performance chart — load history for all ranges
+      try {
+        const [h1, h6, h24] = await Promise.all([
+          api.history('1h'),
+          api.history('6h'),
+          api.history('24h'),
+        ]);
+        perfCache['1h'] = h1 || [];
+        perfCache['6h'] = h6 || [];
+        perfCache['24h'] = h24 || [];
+        renderPerformanceFromCache();
+      } catch (e) { console.error('history', e); }
 
     } catch (e) {
       console.error('overview poll', e);
