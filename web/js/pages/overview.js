@@ -510,7 +510,7 @@ router.register('overview', (container) => {
   function buildCurrentProxyCard() {
     const card = ui.el('div', 'card');
     card.id = 'current-proxy-card';
-    card.appendChild(ui.el('div', 'card-title', { text: 'Current Proxy', style: 'margin-bottom:10px' }));
+    card.appendChild(ui.el('div', 'card-title', { id: 'proxy-card-title', text: 'Local Proxy', style: 'margin-bottom:10px' }));
 
     const body = ui.el('div', '', { id: 'current-proxy-body' });
     body.innerHTML = '<div class="empty" style="font-size:12px;padding:16px">No upstream selected</div>';
@@ -521,11 +521,23 @@ router.register('overview', (container) => {
 
   function renderCurrentProxy(ps) {
     const body = document.getElementById('current-proxy-body');
+    const card = document.getElementById('current-proxy-card');
+    const titleEl = document.getElementById('proxy-card-title');
     if (!body) return;
+
+    const running = ps && ps.running;
+
+    if (card) {
+      card.style.background = running ? '' : 'rgba(239,68,68,0.06)';
+      card.style.borderColor = running ? '' : 'rgba(239,68,68,0.25)';
+    }
+    if (titleEl) {
+      titleEl.textContent = running ? 'Local Proxy' : 'Local Proxy — Остановлено';
+      titleEl.style.color = running ? '' : 'var(--danger)';
+    }
 
     body.innerHTML = '';
 
-    const running = ps && ps.running;
     const port = ps ? (ps.port || 17277) : 17277;
     const bindHost = ps ? (ps.bind_host || '127.0.0.1') : '127.0.0.1';
     const ap = ps && ps.active_proxy;
