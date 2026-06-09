@@ -426,7 +426,7 @@ router.register('overview', (container) => {
     ctx.scale(dpr, dpr);
 
     const w = rect.width, h = rect.height;
-    const pad = { top: 10, right: 40, bottom: 24, left: 40 };
+    const pad = { top: 10, right: 10, bottom: 24, left: 40 };
     const cw = w - pad.left - pad.right;
     const ch = h - pad.top - pad.bottom;
 
@@ -441,17 +441,60 @@ router.register('overview', (container) => {
       return;
     }
 
+    const okData = pts.map(p => p.connections_ok || 0);
+    const failData = pts.map(p => p.connections_failed || 0);
+    const maxVal = Math.max(...okData, ...failData, 1);
+    const hasTraffic = okData.some(v => v > 0) || failData.some(v => v > 0);
+
+    if (!hasTraffic) {
+      ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--border-subtle').trim() || '#F3F4F6';
+      ctx.lineWidth = 0.5;
+      for (let i = 0; i <= 4; i++) {
+        const y = pad.top + (ch / 4) * i;
+        ctx.beginPath();
+        ctx.moveTo(pad.left, y);
+        ctx.lineTo(w - pad.right, y);
+        ctx.stroke();
+      }
+      ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text-muted').trim() || '#9CA3AF';
+      ctx.font = '12px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('No proxy traffic yet', w / 2, h / 2);
+
+      ctx.font = '10px sans-serif';
+      const minTs = pts[0].ts;
+      const maxTs = pts[pts.length - 1].ts;
+      const tsRange = maxTs - minTs || 1;
+      const xOfTs = ts => pad.left + ((ts - minTs) / tsRange) * cw;
+      const range = data.range || '1h';
+      const labelInterval = range === '24h' ? 3600 : range === '6h' ? 1800 : 600;
+      const startTs = Math.ceil(minTs / labelInterval) * labelInterval;
+      ctx.textAlign = 'center';
+      for (let ts = startTs; ts <= maxTs; ts += labelInterval) {
+        const x = xOfTs(ts);
+        if (x >= pad.left && x <= w - pad.right) {
+          ctx.fillText(fmtTimeLabel(ts, range), x, h - 6);
+        }
+      }
+
+      ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--success').trim() || '#10B981';
+      ctx.fillRect(pad.left, 2, 10, 3);
+      ctx.fillText('OK', pad.left + 14, 7);
+      ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--danger').trim() || '#EF4444';
+      ctx.fillRect(pad.left + 40, 2, 10, 3);
+      ctx.fillText('Failed', pad.left + 54, 7);
+      return;
+    }
+
     const minTs = pts[0].ts;
     const maxTs = pts[pts.length - 1].ts;
     const tsRange = maxTs - minTs || 1;
-
-    const requests = pts.map(p => p.requests || 0);
-    const success = pts.map(p => p.success_rate || 0);
-    const maxReq = Math.max(...requests, 1);
-
     const xOfTs = ts => pad.left + ((ts - minTs) / tsRange) * cw;
 
-    // Grid lines
+    const accentColor = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#4F46E5';
+    const successColor = getComputedStyle(document.documentElement).getPropertyValue('--success').trim() || '#10B981';
+    const dangerColor = getComputedStyle(document.documentElement).getPropertyValue('--danger').trim() || '#EF4444';
+
     ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--border-subtle').trim() || '#F3F4F6';
     ctx.lineWidth = 0.5;
     for (let i = 0; i <= 4; i++) {
@@ -462,25 +505,15 @@ router.register('overview', (container) => {
       ctx.stroke();
     }
 
-    // Y-axis labels (requests)
     ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text-muted').trim() || '#9CA3AF';
     ctx.font = '10px sans-serif';
     ctx.textAlign = 'right';
     for (let i = 0; i <= 4; i++) {
       const y = pad.top + (ch / 4) * i;
-      const val = Math.round(maxReq * (1 - i / 4));
+      const val = Math.round(maxVal * (1 - i / 4));
       ctx.fillText(val, pad.left - 6, y + 3);
     }
 
-    // Right Y-axis (success %)
-    ctx.textAlign = 'left';
-    for (let i = 0; i <= 4; i++) {
-      const y = pad.top + (ch / 4) * i;
-      const val = Math.round(100 * (1 - i / 4));
-      ctx.fillText(val + '%', w - pad.right + 6, y + 3);
-    }
-
-    // X-axis: real time labels at fixed intervals
     ctx.textAlign = 'center';
     const range = data.range || '1h';
     const labelInterval = range === '24h' ? 3600 : range === '6h' ? 1800 : 600;
@@ -492,49 +525,44 @@ router.register('overview', (container) => {
       }
     }
 
-    const accentColor = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#4F46E5';
-    const successColor = getComputedStyle(document.documentElement).getPropertyValue('--success').trim() || '#10B981';
-
-    // Requests line
     ctx.beginPath();
     pts.forEach((p, i) => {
       const x = xOfTs(p.ts);
-      const y = pad.top + ch - ((p.requests || 0) / maxReq) * ch;
+      const y = pad.top + ch - ((p.connections_ok || 0) / maxVal) * ch;
       i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
     });
-    ctx.strokeStyle = accentColor;
+    ctx.strokeStyle = successColor;
     ctx.lineWidth = 2;
     ctx.stroke();
-
-    // Requests area fill
     ctx.lineTo(xOfTs(maxTs), pad.top + ch);
     ctx.lineTo(xOfTs(minTs), pad.top + ch);
     ctx.closePath();
-    ctx.fillStyle = accentColor + '20';
+    ctx.fillStyle = successColor + '15';
     ctx.fill();
 
-    // Success rate line
-    if (success.length > 0) {
-      ctx.beginPath();
-      pts.forEach((p, i) => {
-        const x = xOfTs(p.ts);
-        const y = pad.top + ch - ((p.success_rate || 0) / 100) * ch;
-        i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
-      });
-      ctx.strokeStyle = successColor;
-      ctx.lineWidth = 2;
-      ctx.stroke();
-    }
+    ctx.beginPath();
+    pts.forEach((p, i) => {
+      const x = xOfTs(p.ts);
+      const y = pad.top + ch - ((p.connections_failed || 0) / maxVal) * ch;
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    });
+    ctx.strokeStyle = dangerColor;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.lineTo(xOfTs(maxTs), pad.top + ch);
+    ctx.lineTo(xOfTs(minTs), pad.top + ch);
+    ctx.closePath();
+    ctx.fillStyle = dangerColor + '10';
+    ctx.fill();
 
-    // Legend
     ctx.font = '10px sans-serif';
     ctx.textAlign = 'left';
-    ctx.fillStyle = accentColor;
-    ctx.fillRect(pad.left, 2, 10, 3);
-    ctx.fillText('Requests', pad.left + 14, 7);
     ctx.fillStyle = successColor;
-    ctx.fillRect(pad.left + 70, 2, 10, 3);
-    ctx.fillText('Success Rate (%)', pad.left + 84, 7);
+    ctx.fillRect(pad.left, 2, 10, 3);
+    ctx.fillText('OK', pad.left + 14, 7);
+    ctx.fillStyle = dangerColor;
+    ctx.fillRect(pad.left + 40, 2, 10, 3);
+    ctx.fillText('Failed', pad.left + 54, 7);
   }
 
   // --- Current Proxy Card ---

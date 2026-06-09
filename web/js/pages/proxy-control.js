@@ -123,7 +123,6 @@ router.register('proxy-control', (container) => {
   }
 
   function renderTrafficGraph(card, traffic) {
-    // Remove old graph content but keep header and tabs
     const existing = card.querySelector('.traffic-body');
     if (existing) existing.remove();
 
@@ -143,15 +142,24 @@ router.register('proxy-control', (container) => {
     body.appendChild(left);
 
     const right = ui.el('div', '', { style: 'width:180px;flex-shrink:0;display:flex;flex-direction:column;gap:10px' });
-    const total = pts.length ? (pts[pts.length-1].requests || 0) : 0;
-    const success = total; // placeholder
-    const failed = 0; // placeholder
+    const last = pts.length ? pts[pts.length-1] : null;
+    const totalReq = pts.reduce((s, p) => s + (p.requests || 0), 0);
+    const totalOk = pts.reduce((s, p) => s + (p.connections_ok || 0), 0);
+    const totalFailed = pts.reduce((s, p) => s + (p.connections_failed || 0), 0);
+    const totalBwIn = pts.reduce((s, p) => s + (p.bandwidth_in || 0), 0);
+    const totalBwOut = pts.reduce((s, p) => s + (p.bandwidth_out || 0), 0);
+    const fmtBytes = b => {
+      if (b >= 1024*1024*1024) return (b/(1024*1024*1024)).toFixed(2) + ' GB';
+      if (b >= 1024*1024) return (b/(1024*1024)).toFixed(1) + ' MB';
+      if (b >= 1024) return (b/1024).toFixed(1) + ' KB';
+      return b + ' B';
+    };
     const items = [
-      { label: 'Total Requests', value: total.toLocaleString(), color: 'var(--text-primary)' },
-      { label: 'Successful', value: success.toLocaleString(), color: 'var(--success)' },
-      { label: 'Failed', value: failed.toLocaleString(), color: 'var(--danger)' },
-      { label: 'Bandwidth In', value: '—', color: 'var(--text-secondary)' },
-      { label: 'Bandwidth Out', value: '—', color: 'var(--text-secondary)' },
+      { label: 'Total Requests', value: totalReq.toLocaleString(), color: 'var(--text-primary)' },
+      { label: 'Successful', value: totalOk.toLocaleString(), color: 'var(--success)' },
+      { label: 'Failed', value: totalFailed.toLocaleString(), color: 'var(--danger)' },
+      { label: 'Bandwidth In', value: fmtBytes(totalBwIn), color: 'var(--text-secondary)' },
+      { label: 'Bandwidth Out', value: fmtBytes(totalBwOut), color: 'var(--text-secondary)' },
     ];
     items.forEach(item => {
       const row = ui.el('div', '', { style: 'display:flex;justify-content:space-between;align-items:center;font-size:12px;padding:4px 0;border-bottom:1px solid var(--border-subtle)' });
@@ -312,23 +320,30 @@ router.register('proxy-control', (container) => {
   function updateBandwidth(card, bw) {
     card.innerHTML = '';
     const header = ui.el('div', 'card-header');
-    header.appendChild(ui.el('div', 'card-title', { text: 'Bandwidth Usage' }));
-    const dd = ui.el('button', 'btn btn-sm btn-ghost', { text: 'Last 24 hours ▼' });
-    header.appendChild(dd);
+    header.appendChild(ui.el('div', 'card-title', { text: 'Bandwidth Usage (24h)' }));
     card.appendChild(header);
 
-    const wrap = ui.el('div', 'grid grid-2');
-    const incoming = ui.el('div', '', { style: 'text-align:center;padding:12px;background:var(--surface-raised);border-radius:var(--radius-xs)' });
-    incoming.appendChild(ui.el('div', '', { style: 'font-size:11px;color:var(--text-secondary);margin-bottom:4px', text: 'Incoming' }));
-    incoming.appendChild(ui.el('div', '', { style: 'font-size:20px;font-weight:700', text: '—' }));
-    incoming.appendChild(ui.el('div', '', { style: 'font-size:11px;color:var(--success)', text: '↑ —%' }));
-    wrap.appendChild(incoming);
+    const fmtBytes = b => {
+      if (b >= 1024*1024*1024) return (b/(1024*1024*1024)).toFixed(2) + ' GB';
+      if (b >= 1024*1024) return (b/(1024*1024)).toFixed(1) + ' MB';
+      if (b >= 1024) return (b/1024).toFixed(1) + ' KB';
+      return b + ' B';
+    };
+    const incoming = bw ? (bw.incoming || 0) : 0;
+    const outgoing = bw ? (bw.outgoing || 0) : 0;
 
-    const outgoing = ui.el('div', '', { style: 'text-align:center;padding:12px;background:var(--surface-raised);border-radius:var(--radius-xs)' });
-    outgoing.appendChild(ui.el('div', '', { style: 'font-size:11px;color:var(--text-secondary);margin-bottom:4px', text: 'Outgoing' }));
-    outgoing.appendChild(ui.el('div', '', { style: 'font-size:20px;font-weight:700', text: '—' }));
-    outgoing.appendChild(ui.el('div', '', { style: 'font-size:11px;color:var(--success)', text: '↑ —%' }));
-    wrap.appendChild(outgoing);
+    const wrap = ui.el('div', 'grid grid-2');
+    const incomingEl = ui.el('div', '', { style: 'text-align:center;padding:12px;background:var(--surface-raised);border-radius:var(--radius-xs)' });
+    incomingEl.appendChild(ui.el('div', '', { style: 'font-size:11px;color:var(--text-secondary);margin-bottom:4px', text: 'Incoming' }));
+    incomingEl.appendChild(ui.el('div', '', { style: 'font-size:20px;font-weight:700', text: incoming ? fmtBytes(incoming) : '—' }));
+    incomingEl.appendChild(ui.el('div', '', { style: 'font-size:11px;color:var(--success)', text: incoming ? (bw.incoming_gb || 0).toFixed(3) + ' GB' : '↑ —%' }));
+    wrap.appendChild(incomingEl);
+
+    const outgoingEl = ui.el('div', '', { style: 'text-align:center;padding:12px;background:var(--surface-raised);border-radius:var(--radius-xs)' });
+    outgoingEl.appendChild(ui.el('div', '', { style: 'font-size:11px;color:var(--text-secondary);margin-bottom:4px', text: 'Outgoing' }));
+    outgoingEl.appendChild(ui.el('div', '', { style: 'font-size:20px;font-weight:700', text: outgoing ? fmtBytes(outgoing) : '—' }));
+    outgoingEl.appendChild(ui.el('div', '', { style: 'font-size:11px;color:var(--success)', text: outgoing ? (bw.outgoing_gb || 0).toFixed(3) + ' GB' : '↑ —%' }));
+    wrap.appendChild(outgoingEl);
     card.appendChild(wrap);
   }
 
@@ -344,30 +359,36 @@ router.register('proxy-control', (container) => {
       return;
     }
 
+    const fmtBytes = b => {
+      if (!b) return '—';
+      if (b >= 1024*1024) return (b/(1024*1024)).toFixed(1) + ' MB';
+      if (b >= 1024) return (b/1024).toFixed(1) + ' KB';
+      return b + ' B';
+    };
+
     const headers = [
       { label: 'Time', width: '60px' },
       { label: 'Client IP', width: '100px' },
-      { label: 'Method', width: '60px', align: 'center' },
-      { label: 'URL', width: '200px' },
+      { label: 'Target', width: '180px' },
       { label: 'Status', width: '50px', align: 'center' },
-      { label: 'Response Time', width: '80px', align: 'right' },
-      { label: 'Size', width: '60px', align: 'right' },
+      { label: 'Duration', width: '70px', align: 'right' },
+      { label: 'Size In', width: '60px', align: 'right' },
+      { label: 'Size Out', width: '60px', align: 'right' },
       { label: 'Proxy', width: '120px' },
-      { label: 'Actions', width: '40px', align: 'center' },
     ];
-    const rows = list.slice(-10).reverse().map(r => {
+    const rows = list.slice(0, 10).map(r => {
       const st = (r.status || '').toString();
-      const isOk = st.startsWith('2') || st === 'ok' || st === '200' || st === 'OK';
+      const isOk = st === 'ok' || st === '200';
+      const dur = r.duration ? r.duration.toFixed(3) + 's' : '—';
       return [
         ui.fmtTime(r.ts || 0).split(' ')[0],
         r.client || '—',
-        'GET', // placeholder
-        `<span style="max-width:180px;overflow:hidden;text-overflow:ellipsis;display:inline-block;white-space:nowrap">${r.target || '—'}</span>`,
+        `<span style="max-width:160px;overflow:hidden;text-overflow:ellipsis;display:inline-block;white-space:nowrap">${r.target || '—'}</span>`,
         `<span style="color:${isOk ? 'var(--success)' : 'var(--danger)'}">${st || '—'}</span>`,
-        '—', // placeholder
-        '—', // placeholder
+        dur,
+        fmtBytes(r.bytes_in),
+        fmtBytes(r.bytes_out),
         r.upstream || '—',
-        '<svg width="14" height="14" style="color:var(--text-muted);cursor:pointer"><use href="#icon-overview"/></svg>',
       ];
     });
     card.appendChild(ui.table(headers, rows));
@@ -381,7 +402,7 @@ router.register('proxy-control', (container) => {
 
     const pts = history && history.length ? history.slice(-48) : [];
     if (pts.length >= 2) {
-      const data = pts.map(p => p.success_rate || 0);
+      const data = pts.map(p => p.traffic_success_rate != null ? p.traffic_success_rate : (p.success_rate || 0));
       const labels = pts.map(p => {
         const d = new Date(p.ts * 1000);
         return `${d.getHours()}:${d.getMinutes().toString().padStart(2,'0')}`;
@@ -399,10 +420,11 @@ router.register('proxy-control', (container) => {
     const failures = ap ? (ap.checks_total - ap.checks_ok) : 0;
     const avgLat = ap ? ap.last_latency : 0;
     const checks = ap ? ap.checks_total : 0;
+    const avgResp = pts.length ? (pts.reduce((s,p) => s + (p.avg_latency || 0), 0) / pts.length).toFixed(3) + 's' : '—';
     const items = [
       { label: 'Health Score', value: healthScore + '%', color: 'var(--success)' },
       { label: 'Failures', value: failures.toString(), color: 'var(--danger)' },
-      { label: 'Avg Latency', value: ui.fmtLatency(avgLat), color: 'var(--text-primary)' },
+      { label: 'Avg Response', value: avgResp, color: 'var(--text-primary)' },
       { label: 'Checks', value: checks.toLocaleString(), color: 'var(--text-primary)' },
     ];
     items.forEach(item => {

@@ -216,7 +216,16 @@ class HuntState:
 
         self.started_at = time.time()
         self._db_path = DATA_DIR / "stats.db"
+        self._last_history_ts = time.time()
         self._init_db()
+        try:
+            conn = self._db()
+            row = conn.execute("SELECT MAX(ts) as last_ts FROM history").fetchone()
+            conn.close()
+            if row and row["last_ts"]:
+                self._last_history_ts = row["last_ts"]
+        except Exception:
+            pass
         self._load_blacklist()
         self._load_state()
         self._load_working_file()
@@ -250,21 +259,65 @@ class HuntState:
                 requests INTEGER DEFAULT 0,
                 connections_ok INTEGER DEFAULT 0,
                 connections_failed INTEGER DEFAULT 0,
-                success_rate REAL DEFAULT 0
+                success_rate REAL DEFAULT 0,
+                traffic_success_rate REAL DEFAULT 0,
+                bandwidth_in INTEGER DEFAULT 0,
+                bandwidth_out INTEGER DEFAULT 0,
+                avg_latency REAL DEFAULT 0
             );
             CREATE INDEX IF NOT EXISTS idx_history_ts ON history(ts);
+            CREATE TABLE IF NOT EXISTS traffic_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ts REAL NOT NULL,
+                client TEXT DEFAULT '',
+                target TEXT DEFAULT '',
+                status TEXT DEFAULT '',
+                upstream TEXT DEFAULT '',
+                bytes_in INTEGER DEFAULT 0,
+                bytes_out INTEGER DEFAULT 0,
+                duration REAL DEFAULT 0
+            );
+            CREATE INDEX IF NOT EXISTS idx_traffic_ts ON traffic_log(ts);
+            CREATE INDEX IF NOT EXISTS idx_traffic_target ON traffic_log(target);
+            CREATE TABLE IF NOT EXISTS events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ts REAL NOT NULL,
+                seq INTEGER DEFAULT 0,
+                type TEXT DEFAULT 'info',
+                msg TEXT DEFAULT ''
+            );
+            CREATE INDEX IF NOT EXISTS idx_events_ts ON events(ts);
         """)
+        conn.commit()
+        for col, default in [
+            ("traffic_success_rate", "REAL DEFAULT 0"),
+            ("bandwidth_in", "INTEGER DEFAULT 0"),
+            ("bandwidth_out", "INTEGER DEFAULT 0"),
+            ("avg_latency", "REAL DEFAULT 0"),
+        ]:
+            try:
+                conn.execute(f"ALTER TABLE history ADD COLUMN {col} {default}")
+            except Exception:
+                pass
         conn.commit()
         conn.close()
 
     def _emit(self, msg: str, kind: str = "info", **kwargs):
         self._event_seq += 1
-        ev = {"seq": self._event_seq, "ts": time.time(), "type": kind, "msg": msg}
+        ts = time.time()
+        ev = {"seq": self._event_seq, "ts": ts, "type": kind, "msg": msg}
         ev.update(kwargs)
         self.events.append(ev)
         if len(self.events) > 500:
             self.events = self.events[-300:]
         self.last_event = msg
+        try:
+            conn = self._db()
+            conn.execute("INSERT INTO events (ts, seq, type, msg) VALUES (?,?,?,?)", (ts, self._event_seq, kind, msg))
+            conn.commit()
+            conn.close()
+        except Exception:
+            pass
         try:
             loop = asyncio.get_event_loop()
             loop.call_soon_threadsafe(self._notify)
@@ -355,14 +408,24 @@ class HuntState:
             if "started" in msg.lower(): return "started"
             return "info"
         out = []
-        for ev in reversed(self.events[-limit:]):
-            out.append({
-                "seq": ev["seq"],
-                "ts": ev["ts"],
-                "type": ev["type"],
-                "msg": ev["msg"],
-                "icon": _icon(ev["type"], ev["msg"]),
-            })
+        if self.events:
+            for ev in reversed(self.events[-limit:]):
+                out.append({
+                    "seq": ev["seq"],
+                    "ts": ev["ts"],
+                    "type": ev["type"],
+                    "msg": ev["msg"],
+                    "icon": _icon(ev["type"], ev["msg"]),
+                })
+        else:
+            try:
+                conn = self._db()
+                rows = conn.execute("SELECT ts, seq, type, msg FROM events ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+                conn.close()
+                for r in rows:
+                    out.append({"seq": r["seq"], "ts": r["ts"], "type": r["type"], "msg": r["msg"], "icon": _icon(r["type"], r["msg"])})
+            except Exception:
+                pass
         return out
 
     def get_history(self, last: str = "1h") -> list:
@@ -378,7 +441,7 @@ class HuntState:
         try:
             conn = self._db()
             rows = conn.execute(
-                "SELECT ts, alive, dead, total, requests, connections_ok, connections_failed, success_rate FROM history WHERE ts > ? ORDER BY ts",
+                "SELECT ts, alive, dead, total, requests, connections_ok, connections_failed, success_rate, traffic_success_rate, bandwidth_in, bandwidth_out, avg_latency FROM history WHERE ts > ? ORDER BY ts",
                 (cutoff,)
             ).fetchall()
             conn.close()
@@ -436,19 +499,50 @@ class HuntState:
     def _push_history(self):
         alive = sum(1 for r in self.ratings.values() if r.last_status == "ok" and not r.in_blacklist)
         dead = sum(1 for r in self.ratings.values() if r.last_status == "failed")
-        ok = sum(1 for e in self.proxy.log if e["status"] == "ok") if hasattr(self, 'proxy') and self.proxy else 0
-        total = len(self.proxy.log) if hasattr(self, 'proxy') and self.proxy else 0
-        sr = (alive / max(1, alive + dead)) * 100
+        pool_sr = (alive / max(1, alive + dead)) * 100
+
+        since = getattr(self, '_last_history_ts', time.time() - 60)
+        now = time.time()
+        total_req = 0
+        ok_req = 0
+        bw_in = 0
+        bw_out = 0
+        avg_lat = 0.0
+        try:
+            conn = self._db()
+            row = conn.execute(
+                "SELECT COUNT(*) as total, "
+                "SUM(CASE WHEN status='ok' THEN 1 ELSE 0 END) as ok, "
+                "COALESCE(SUM(bytes_in), 0) as bw_in, "
+                "COALESCE(SUM(bytes_out), 0) as bw_out, "
+                "COALESCE(AVG(CASE WHEN duration > 0 THEN duration END), 0) as avg_lat "
+                "FROM traffic_log WHERE ts > ?",
+                (since,)
+            ).fetchone()
+            conn.close()
+            if row:
+                total_req = row["total"] or 0
+                ok_req = row["ok"] or 0
+                bw_in = row["bw_in"] or 0
+                bw_out = row["bw_out"] or 0
+                avg_lat = row["avg_lat"] or 0.0
+        except Exception as e:
+            logger.error("DB traffic query: %s", e)
+
+        traffic_sr = (ok_req / max(1, total_req)) * 100 if total_req else 0
+
         try:
             conn = self._db()
             conn.execute(
-                "INSERT INTO history (ts, alive, dead, total, requests, connections_ok, connections_failed, success_rate) VALUES (?,?,?,?,?,?,?,?)",
-                (time.time(), alive, dead, len(self.ratings), total, ok, total - ok, sr)
+                "INSERT INTO history (ts, alive, dead, total, requests, connections_ok, connections_failed, success_rate, traffic_success_rate, bandwidth_in, bandwidth_out, avg_latency) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                (now, alive, dead, len(self.ratings), total_req, ok_req, total_req - ok_req, pool_sr, traffic_sr, bw_in, bw_out, avg_lat)
             )
             conn.commit()
             conn.close()
         except Exception as e:
             logger.error("DB push history: %s", e)
+
+        self._last_history_ts = now
 
     def start_hunt(self) -> bool:
         if self.phase not in (self.PHASE_IDLE, self.PHASE_DONE):
@@ -1058,6 +1152,16 @@ class HuntState:
                 self._push_history()
             except Exception:
                 pass
+            try:
+                conn = self._db()
+                cutoff_traffic = time.time() - 7 * 86400
+                cutoff_events = time.time() - 30 * 86400
+                conn.execute("DELETE FROM traffic_log WHERE ts < ?", (cutoff_traffic,))
+                conn.execute("DELETE FROM events WHERE ts < ?", (cutoff_events,))
+                conn.commit()
+                conn.close()
+            except Exception:
+                pass
 
     async def _health_check(self):
         candidates = [r for r in self.ratings.values()
@@ -1340,6 +1444,7 @@ class ProxyRunner:
     async def _handle(self, reader, writer):
         peer = writer.get_extra_info("peername")
         target_host = "?"
+        t0 = time.monotonic()
         try:
             line = await asyncio.wait_for(reader.readline(), timeout=15)
             if not line:
@@ -1373,23 +1478,26 @@ class ProxyRunner:
                     writer.write(b"HTTP/1.1 502 Bad Gateway\r\n\r\n")
                     await writer.drain()
                     writer.close()
-                    self._log(peer, target_host, "502 no upstream")
+                    dur = time.monotonic() - t0
+                    self._log(peer, target_host, "502 no upstream", duration=dur)
                     return
 
                 up_r, up_w, up_addr = upstream
                 writer.write(b"HTTP/1.1 200 Connection Established\r\n\r\n")
                 await writer.drain()
-                await self._relay(reader, up_w, up_r, writer)
-                self._log(peer, target_host, "ok", up_addr)
+                bi, bo = await self._relay(reader, up_w, up_r, writer)
+                dur = time.monotonic() - t0
+                self._log(peer, target_host, "ok", up_addr, bytes_in=bi, bytes_out=bo, duration=dur)
             else:
-                await self._handle_http_forward(reader, writer, method, parts[1], peer)
+                await self._handle_http_forward(reader, writer, method, parts[1], peer, t0)
         except Exception as e:
-            self._log(peer, target_host, f"err: {e}")
+            dur = time.monotonic() - t0
+            self._log(peer, target_host, f"err: {e}", duration=dur)
         finally:
             try: writer.close()
             except: pass
 
-    async def _handle_http_forward(self, reader, writer, method, url, peer):
+    async def _handle_http_forward(self, reader, writer, method, url, peer, t0):
         target = url.decode(errors="replace")
         target_host = ""
         target_port = 80
@@ -1422,7 +1530,8 @@ class ProxyRunner:
         upstream = await self._connect_upstream(target_host, target_port)
         if not upstream:
             writer.write(b"HTTP/1.1 502 Bad Gateway\r\n\r\n"); await writer.drain()
-            self._log(peer, target_host, "502 no upstream"); return
+            dur = time.monotonic() - t0
+            self._log(peer, target_host, "502 no upstream", duration=dur); return
 
         up_r, up_w, up_addr = upstream
 
@@ -1450,31 +1559,28 @@ class ProxyRunner:
                 writer.write(b"\r\n"); break
             writer.write(line)
         await writer.drain()
-        await self._relay(up_r, writer, reader, up_w)
-        self._log(peer, target_host, "ok", up_addr)
+        bi, bo = await self._relay(up_r, writer, reader, up_w)
+        dur = time.monotonic() - t0
+        self._log(peer, target_host, "ok", up_addr, bytes_in=bi, bytes_out=bo, duration=dur)
 
     async def _connect_upstream(self, host: str, port: int):
         if self.direct_mode:
             try:
                 reader, writer = await asyncio.wait_for(
                     asyncio.open_connection(host, port), timeout=15)
-                self._log(None, f"direct connect ok", f"{host}:{port}", "direct")
                 return reader, writer, "direct"
-            except Exception as e:
-                self._log(None, f"direct connect fail", str(e)[:40], "direct")
+            except Exception:
                 return None
 
         if self.active_proxy_addr:
             r = self.state.ratings.get(self.active_proxy_addr)
             if not r or r.in_blacklist:
-                self._log(None, f"selected proxy {self.active_proxy_addr} not available", "")
                 return None
             phost, pport_str = r.address.rsplit(":", 1)
             try:
                 reader, writer = await asyncio.wait_for(
                     asyncio.open_connection(phost, int(pport_str)), timeout=10)
-            except Exception as e:
-                self._log(None, f"selected {r.address} connect fail", str(e)[:40], r.address)
+            except Exception:
                 return None
             if r.protocol == "socks4":
                 ok = await self._socks4_cmd(reader, writer, host, port)
@@ -1483,11 +1589,9 @@ class ProxyRunner:
             else:
                 ok = await self._http_connect_cmd(reader, writer, host, port)
             if not ok:
-                self._log(None, f"selected {r.address} CONNECT fail", f"{host}:{port}", r.address)
                 try: writer.close()
                 except: pass
                 return None
-            self._log(None, f"selected {r.address} ok", f"{host}:{port}", r.address)
             return reader, writer, r.address
 
         pool = [r for r in self.state.ratings.values()
@@ -1503,8 +1607,7 @@ class ProxyRunner:
             try:
                 reader, writer = await asyncio.wait_for(
                     asyncio.open_connection(phost, int(pport_str)), timeout=10)
-            except Exception as e:
-                self._log(None, f"upstream {p.address} connect fail", str(e)[:40], p.address)
+            except Exception:
                 continue
 
             ok = False
@@ -1516,16 +1619,13 @@ class ProxyRunner:
                 ok = await self._http_connect_cmd(reader, writer, host, port)
 
             if not ok:
-                self._log(None, f"upstream {p.address} CONNECT fail", f"{host}:{port}", p.address)
                 try: writer.close()
                 except: pass
                 continue
 
             self._failover_idx = (attempt + 1) % len(pool)
-            self._log(None, f"upstream {p.address} ok", f"{host}:{port}", p.address)
             return reader, writer, p.address
 
-        self._log(None, "502: no working upstream", f"{host}:{port}")
         return None
 
     async def _http_connect_cmd(self, r, w, h, p):
@@ -1534,13 +1634,10 @@ class ProxyRunner:
         try:
             resp = await asyncio.wait_for(r.readuntil(b"\r\n\r\n"), timeout=15)
             status_line = resp.split(b"\r\n")[0]
-            self._log(None, f"CONNECT response", status_line.decode(errors="replace"))
             return b"200" in status_line
         except asyncio.TimeoutError:
-            self._log(None, f"CONNECT timeout (15s)", f"{h}:{p}")
             return False
-        except Exception as e:
-            self._log(None, f"CONNECT error", str(e)[:60])
+        except Exception:
             return False
 
     async def _socks5_cmd(self, r, w, h, p):
@@ -1583,32 +1680,40 @@ class ProxyRunner:
             return False
 
     async def _relay(self, r1, w1, r2, w2):
-        first_c2u = True
-        first_u2c = True
+        bytes_in = 0
+        bytes_out = 0
         async def pipe(r, w, label):
-            nonlocal first_c2u, first_u2c
+            nonlocal bytes_in, bytes_out
             try:
                 while True:
                     data = await r.read(65536)
                     if not data: break
-                    if label == "c2u" and first_c2u:
-                        first_c2u = False
-                        self._log(None, f"relay c2u first len={len(data)} hex={data[:30].hex()}", "")
-                    if label == "u2c" and first_u2c:
-                        first_u2c = False
-                        self._log(None, f"relay u2c first len={len(data)} hex={data[:30].hex()}", "")
+                    n = len(data)
+                    if label == "c2u":
+                        bytes_in += n
+                    else:
+                        bytes_out += n
                     w.write(data); await w.drain()
             except: pass
             finally:
                 try: w.close()
                 except: pass
         await asyncio.gather(pipe(r1, w1, "c2u"), pipe(r2, w2, "u2c"))
+        return bytes_in, bytes_out
 
-    def _log(self, peer, target, status, upstream=""):
-        entry = {"ts": time.time(), "client": f"{peer[0]}:{peer[1]}" if peer else "?", "target": target, "status": status, "upstream": upstream}
+    def _log(self, peer, target, status, upstream="", bytes_in=0, bytes_out=0, duration=0.0):
+        entry = {"ts": time.time(), "client": f"{peer[0]}:{peer[1]}" if peer else "?", "target": target, "status": status, "upstream": upstream, "bytes_in": bytes_in, "bytes_out": bytes_out, "duration": round(duration, 3)}
         self.log.append(entry)
         if len(self.log) > 200:
             self.log = self.log[-150:]
+        try:
+            conn = self.state._db()
+            conn.execute("INSERT INTO traffic_log (ts, client, target, status, upstream, bytes_in, bytes_out, duration) VALUES (?,?,?,?,?,?,?,?)",
+                         (entry["ts"], entry["client"], target, status, upstream, bytes_in, bytes_out, round(duration, 3)))
+            conn.commit()
+            conn.close()
+        except Exception:
+            pass
 
     def get_status(self) -> dict:
         ok = sum(1 for e in self.log if e["status"] == "ok")
@@ -2430,31 +2535,63 @@ class HuntServer:
             return json.dumps({"points": self.state.get_history("24h")}), 200, "application/json"
 
         if path.startswith("/api/requests"):
-            return json.dumps({"requests": list(self.proxy.log)[-50:]}), 200, "application/json"
+            mem = list(self.proxy.log)[-50:]
+            try:
+                conn = self.state._db()
+                rows = conn.execute("SELECT ts, client, target, status, upstream, bytes_in, bytes_out, duration FROM traffic_log ORDER BY id DESC LIMIT 50").fetchall()
+                conn.close()
+                db_reqs = [dict(r) for r in rows]
+            except Exception:
+                db_reqs = []
+            reqs = db_reqs if db_reqs else mem
+            return json.dumps({"requests": reqs}), 200, "application/json"
 
         if path.startswith("/api/clients"):
             clients = {}
-            for entry in self.proxy.log:
-                c = entry.get("client", "?")
-                if c not in clients:
-                    clients[c] = {"client": c, "requests": 0, "last_seen": entry.get("ts", 0)}
-                clients[c]["requests"] += 1
-                clients[c]["last_seen"] = max(clients[c]["last_seen"], entry.get("ts", 0))
+            try:
+                conn = self.state._db()
+                rows = conn.execute("SELECT client, COUNT(*) as requests, MAX(ts) as last_seen FROM traffic_log GROUP BY client ORDER BY requests DESC LIMIT 20").fetchall()
+                conn.close()
+                for r in rows:
+                    clients[r["client"]] = {"client": r["client"], "requests": r["requests"], "last_seen": r["last_seen"]}
+            except Exception:
+                for entry in self.proxy.log:
+                    c = entry.get("client", "?")
+                    if c not in clients:
+                        clients[c] = {"client": c, "requests": 0, "last_seen": entry.get("ts", 0)}
+                    clients[c]["requests"] += 1
+                    clients[c]["last_seen"] = max(clients[c]["last_seen"], entry.get("ts", 0))
             return json.dumps({"clients": sorted(clients.values(), key=lambda x: x["requests"], reverse=True)[:20]}), 200, "application/json"
 
         if path.startswith("/api/domains"):
             domains = {}
-            for entry in self.proxy.log:
-                t = entry.get("target", "")
-                try:
-                    h = urlparse(t if t.startswith("http") else f"http://{t}").hostname or t
-                except Exception:
-                    h = t
-                if not h:
-                    continue
-                if h not in domains:
-                    domains[h] = {"domain": h, "requests": 0, "response_time": 0, "count": 0}
-                domains[h]["requests"] += 1
+            try:
+                conn = self.state._db()
+                rows = conn.execute("SELECT target, COUNT(*) as requests FROM traffic_log WHERE client != '?' GROUP BY target ORDER BY requests DESC LIMIT 50").fetchall()
+                conn.close()
+                for r in rows:
+                    t = r["target"]
+                    try:
+                        h = urlparse(t if t.startswith("http") else f"http://{t}").hostname or t
+                    except Exception:
+                        h = t
+                    if not h:
+                        continue
+                    if h not in domains:
+                        domains[h] = {"domain": h, "requests": 0}
+                    domains[h]["requests"] += r["requests"]
+            except Exception:
+                for entry in self.proxy.log:
+                    t = entry.get("target", "")
+                    try:
+                        h = urlparse(t if t.startswith("http") else f"http://{t}").hostname or t
+                    except Exception:
+                        h = t
+                    if not h:
+                        continue
+                    if h not in domains:
+                        domains[h] = {"domain": h, "requests": 0}
+                    domains[h]["requests"] += 1
             top = sorted(domains.values(), key=lambda x: x["requests"], reverse=True)[:10]
             total = sum(d["requests"] for d in top) or 1
             for d in top:
@@ -2463,18 +2600,36 @@ class HuntServer:
 
         if path.startswith("/api/errors"):
             errors = {"timeout": 0, "connect_failed": 0, "4xx": 0, "5xx": 0, "other": 0}
-            for entry in self.proxy.log:
-                st = entry.get("status", "")
-                if "timeout" in st.lower():
-                    errors["timeout"] += 1
-                elif "connect" in st.lower() or "fail" in st.lower():
-                    errors["connect_failed"] += 1
-                elif st.startswith("4"):
-                    errors["4xx"] += 1
-                elif st.startswith("5") or st.startswith("502") or st.startswith("503"):
-                    errors["5xx"] += 1
-                else:
-                    errors["other"] += 1
+            try:
+                conn = self.state._db()
+                rows = conn.execute("SELECT status, COUNT(*) as cnt FROM traffic_log WHERE status != 'ok' GROUP BY status").fetchall()
+                conn.close()
+                for r in rows:
+                    st = r["status"]
+                    cnt = r["cnt"]
+                    if "timeout" in st.lower():
+                        errors["timeout"] += cnt
+                    elif "connect" in st.lower() or "fail" in st.lower():
+                        errors["connect_failed"] += cnt
+                    elif st.startswith("4"):
+                        errors["4xx"] += cnt
+                    elif st.startswith("5") or st.startswith("502") or st.startswith("503"):
+                        errors["5xx"] += cnt
+                    else:
+                        errors["other"] += cnt
+            except Exception:
+                for entry in self.proxy.log:
+                    st = entry.get("status", "")
+                    if "timeout" in st.lower():
+                        errors["timeout"] += 1
+                    elif "connect" in st.lower() or "fail" in st.lower():
+                        errors["connect_failed"] += 1
+                    elif st.startswith("4"):
+                        errors["4xx"] += 1
+                    elif st.startswith("5") or st.startswith("502") or st.startswith("503"):
+                        errors["5xx"] += 1
+                    else:
+                        errors["other"] += 1
             total = sum(errors.values()) or 1
             result = []
             for k, v in errors.items():
@@ -2483,8 +2638,25 @@ class HuntServer:
             return json.dumps({"errors": result, "total": total}), 200, "application/json"
 
         if path.startswith("/api/bandwidth"):
-            # Placeholder — real bandwidth tracking requires per-request byte counting
-            return json.dumps({"incoming": 0, "outgoing": 0, "incoming_gb": 0.0, "outgoing_gb": 0.0}), 200, "application/json"
+            try:
+                conn = self.state._db()
+                row = conn.execute(
+                    "SELECT COALESCE(SUM(bytes_in),0) as incoming, COALESCE(SUM(bytes_out),0) as outgoing "
+                    "FROM traffic_log WHERE ts > ?",
+                    (time.time() - 86400,)
+                ).fetchone()
+                conn.close()
+                incoming = row["incoming"] if row else 0
+                outgoing = row["outgoing"] if row else 0
+            except Exception:
+                incoming = 0
+                outgoing = 0
+            return json.dumps({
+                "incoming": incoming,
+                "outgoing": outgoing,
+                "incoming_gb": round(incoming / (1024**3), 3),
+                "outgoing_gb": round(outgoing / (1024**3), 3),
+            }), 200, "application/json"
 
         return json.dumps({"error": "not found"}), 404, "application/json"
 
