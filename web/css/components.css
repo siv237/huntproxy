@@ -84,8 +84,8 @@
   margin-top: 2px;
 }
 
-.stat-delta.up { color: var(--success); }
-.stat-delta.down { color: var(--danger); }
+.stat-delta.up, .stat-delta.positive { color: var(--success); }
+.stat-delta.down, .stat-delta.negative { color: var(--danger); }
 .stat-delta.neutral { color: var(--text-muted); }
 
 .stat-sparkline {

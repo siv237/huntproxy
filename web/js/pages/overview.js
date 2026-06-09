@@ -41,6 +41,7 @@ router.register('overview', (container) => {
   // --- Stat Card ---
   // Sparkline data buffer (updated from real stats during poll)
   let sparklineBuffers = { total: [], alive: [], dead: [], blacklisted: [] };
+  let sparklinePrev = { total: null, alive: null, dead: null, blacklisted: null };
   const MAX_SPARK_POINTS = 9;
 
   function buildStatCard(id, label, value, delta, deltaDir, icon) {
@@ -123,6 +124,36 @@ router.register('overview', (container) => {
       sparklineBuffers[key].push(val);
       if (sparklineBuffers[key].length > MAX_SPARK_POINTS) sparklineBuffers[key].shift();
     });
+  }
+
+  function renderSparklines() {
+    ['total', 'alive', 'dead', 'blacklisted'].forEach(key => {
+      const sparkEl = document.querySelector('#stat-' + key + ' .stat-sparkline');
+      if (sparkEl) sparkEl.innerHTML = buildSparkline(key);
+    });
+  }
+
+  function updateDelta(id, current) {
+    const el = document.getElementById('stat-delta-' + id);
+    if (!el) return;
+    const prev = sparklinePrev[id];
+    if (prev === null) {
+      el.textContent = '—';
+      el.className = 'stat-delta neutral';
+      return;
+    }
+    const diff = current - prev;
+    if (diff === 0) {
+      el.textContent = '±0';
+      el.className = 'stat-delta neutral';
+    } else if (diff > 0) {
+      el.textContent = '↑' + diff;
+      el.className = id === 'dead' || id === 'blacklisted' ? 'stat-delta negative' : 'stat-delta positive';
+    } else {
+      el.textContent = '↓' + Math.abs(diff);
+      el.className = id === 'dead' || id === 'blacklisted' ? 'stat-delta positive' : 'stat-delta negative';
+    }
+    sparklinePrev[id] = current;
   }
 
   // --- Pool Progress Card ---
@@ -737,8 +768,11 @@ router.register('overview', (container) => {
       if (el('stat-val-alive')) el('stat-val-alive').textContent = alive.toLocaleString();
       if (el('stat-val-dead')) el('stat-val-dead').textContent = dead.toLocaleString();
       if (el('stat-val-blacklisted')) el('stat-val-blacklisted').textContent = bl.toLocaleString();
-      if (el('stat-delta-alive')) el('stat-delta-alive').textContent = total > 0 ? (alive / total * 100).toFixed(1) + '% of total' : '0% of total';
-      if (el('stat-delta-dead')) el('stat-delta-dead').textContent = total > 0 ? (dead / total * 100).toFixed(1) + '% of total' : '0% of total';
+      updateDelta('total', total);
+      updateDelta('alive', alive);
+      updateDelta('dead', dead);
+      updateDelta('blacklisted', bl);
+      renderSparklines();
 
       // Pool progress
       const p = s.progress || {};
@@ -811,6 +845,22 @@ router.register('overview', (container) => {
         perfCache['1h'] = h1 || [];
         perfCache['6h'] = h6 || [];
         perfCache['24h'] = h24 || [];
+
+        if (sparklineBuffers.total.length < 2 && h1 && h1.length) {
+          const recent = h1.slice(-MAX_SPARK_POINTS);
+          sparklineBuffers.total = recent.map(p => p.total || 0);
+          sparklineBuffers.alive = recent.map(p => p.alive || 0);
+          sparklineBuffers.dead = recent.map(p => p.dead || 0);
+          sparklineBuffers.blacklisted = recent.map(p => Math.max(0, p.total - p.alive - p.dead));
+          if (recent.length >= 2) {
+            sparklinePrev.total = recent[recent.length - 2].total || 0;
+            sparklinePrev.alive = recent[recent.length - 2].alive || 0;
+            sparklinePrev.dead = recent[recent.length - 2].dead || 0;
+            sparklinePrev.blacklisted = Math.max(0, recent[recent.length - 2].total - recent[recent.length - 2].alive - recent[recent.length - 2].dead);
+          }
+          renderSparklines();
+        }
+
         renderPerformanceFromCache();
       } catch (e) { console.error('history', e); }
 
