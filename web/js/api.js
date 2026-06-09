@@ -27,6 +27,7 @@ const api = {
   proxyStart(port) { return this.request(`/api/proxy/start?port=${port}`, 'POST'); },
   proxyStop() { return this.request('/api/proxy/stop', 'POST'); },
   proxySelect(addr) { return this.request(`/api/proxy/select?address=${encodeURIComponent(addr || '')}`, 'POST'); },
+  proxyNext() { return this.request('/api/proxy/next', 'POST'); },
   proxyRecheck(addr) { return this.request(`/api/proxy/recheck?address=${encodeURIComponent(addr)}`, 'POST'); },
   toggleDirect(on) { return this.request(`/api/proxy/direct?on=${on}`, 'POST'); },
   blAdd(addr, reason) { return this.request('/api/blacklist/add', 'POST', { address: addr, reason }); },

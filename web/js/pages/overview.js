@@ -522,43 +522,124 @@ router.register('overview', (container) => {
   function renderCurrentProxy(ps) {
     const body = document.getElementById('current-proxy-body');
     if (!body) return;
-    const ap = ps && ps.active_proxy;
-    if (!ap) {
-      body.innerHTML = '<div class="empty" style="font-size:12px;padding:16px">No upstream selected</div>';
-      return;
-    }
 
     body.innerHTML = '';
 
-    // Green header
-    const header = ui.el('div', '', { style: 'display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:var(--success-bg);border-radius:var(--radius-xs);margin-bottom:12px' });
-    const left = ui.el('div', '', { style: 'display:flex;flex-direction:column;gap:2px' });
-    const addrRow = ui.el('div', '', { style: 'display:flex;align-items:center;gap:8px' });
-    addrRow.appendChild(ui.el('span', '', { style: 'font-family:monospace;font-size:14px;font-weight:700;color:var(--success)', text: ap.address }));
-    addrRow.appendChild(ui.el('span', 'flag', { text: ui.flag(ap.country_code), style: 'font-size:16px' }));
-    left.appendChild(addrRow);
-    left.appendChild(ui.el('div', '', { style: 'display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text-secondary)' }));
-    const countryLine = left.children[1];
-    countryLine.appendChild(ui.el('span', 'flag', { text: ui.flag(ap.country_code), style: 'font-size:12px' }));
-    countryLine.appendChild(ui.el('span', '', { text: ap.country || ap.country_code || '' }));
-    header.appendChild(left);
-    header.appendChild(ui.el('span', '', { style: 'font-size:11px;color:var(--success);display:flex;align-items:center;gap:4px', innerHTML: '<span class="pulse"></span> Alive' }));
-    body.appendChild(header);
+    const running = ps && ps.running;
+    const port = ps ? (ps.port || 17277) : 17277;
+    const bindHost = ps ? (ps.bind_host || '127.0.0.1') : '127.0.0.1';
+    const ap = ps && ps.active_proxy;
 
-    // Stats row
-    const grid = ui.el('div', '', { style: 'display:grid;grid-template-columns:repeat(4,1fr);gap:8px' });
-    [
-      { l: 'Latency', v: ap.last_latency ? ap.last_latency.toFixed(2) + 's' : '—' },
-      { l: 'Success Rate', v: ap.success_rate != null ? ap.success_rate.toFixed(0) + '%' : '—' },
-      { l: 'Uptime', v: `${ap.checks_ok || 0}/${ap.checks_total || 0}` },
-      { l: 'Last Check', v: ui.ago(ap.last_check) },
-    ].forEach(it => {
-      const cell = ui.el('div', '', { style: 'text-align:left' });
-      cell.appendChild(ui.el('div', '', { style: 'font-size:10px;color:var(--text-secondary);margin-bottom:4px', text: it.l }));
-      cell.appendChild(ui.el('div', '', { style: 'font-size:14px;font-weight:600;color:var(--text-primary)', text: it.v }));
-      grid.appendChild(cell);
+    const srvColor = running ? 'var(--success)' : 'var(--danger)';
+
+    const mkBtn = (char, title, color, fn) => {
+      const b = ui.el('button', '', { style: `font-size:1.6em;padding:0.1em 0.35em;border:1px solid var(--border);border-radius:0.25em;background:var(--surface-raised);color:${color};cursor:pointer;line-height:1` });
+      b.textContent = char; b.title = title;
+      b.addEventListener('click', fn);
+      return b;
+    };
+
+    const chainRow = ui.el('div', '', { style: 'display:flex;align-items:center;gap:0.4em;margin-bottom:0.6em' });
+
+    const localAddr = ui.el('span', '', { style: `font-family:monospace;font-weight:700;color:${srvColor}`, text: bindHost + ':' + port });
+    chainRow.appendChild(localAddr);
+
+    const arrowSpan = ui.el('span', '', { style: 'color:var(--text-muted);font-weight:700', text: '→' });
+    chainRow.appendChild(arrowSpan);
+
+    const addrWrap = ui.el('div', '', { style: 'flex:1;min-width:0;overflow:hidden' });
+    if (ap) {
+      addrWrap.appendChild(ui.el('span', '', { style: 'font-family:monospace;font-weight:700;color:var(--success);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block', text: ap.address }));
+    } else if (ps && ps.direct_mode) {
+      addrWrap.appendChild(ui.el('span', '', { style: 'font-weight:600;color:var(--text-muted)', text: 'прямой' }));
+    } else {
+      addrWrap.appendChild(ui.el('span', '', { style: 'color:var(--text-muted)', text: '—' }));
+    }
+    chainRow.appendChild(addrWrap);
+
+    if (running) {
+      chainRow.appendChild(mkBtn('■', 'Stop', 'var(--danger)', () => api.proxyStop().then(() => app.toast('Proxy stopped')).catch(e => app.toast('Error: ' + e.message, 'error'))));
+    } else {
+      chainRow.appendChild(mkBtn('▶', 'Start', 'var(--success)', () => api.proxyStart(17277).then(() => app.toast('Proxy started')).catch(e => app.toast('Error: ' + e.message, 'error'))));
+    }
+    if (ap) {
+      chainRow.appendChild(mkBtn('»', 'Next proxy', 'var(--accent)', () => api.proxyNext().then(() => app.toast('Switched to next proxy')).catch(e => app.toast('Error: ' + e.message, 'error'))));
+    }
+    body.appendChild(chainRow);
+
+    if (!ap) {
+      const nextBtn = ui.el('button', '', { style: 'padding:0.4em 1em;border:1px solid var(--border);border-radius:0.3em;background:var(--surface-raised);color:var(--accent);cursor:pointer', text: 'Select best proxy' });
+      nextBtn.addEventListener('click', () => api.proxyNext().then(() => app.toast('Proxy selected')).catch(e => app.toast('Error: ' + e.message, 'error')));
+      body.appendChild(nextBtn);
+      return;
+    }
+
+    const infoRow = ui.el('div', '', { style: 'display:flex;align-items:center;gap:0.6em;margin-bottom:0.3em' });
+    infoRow.appendChild(ui.el('span', 'flag', { text: ui.flag(ap.country_code), style: 'flex-shrink:0' }));
+    infoRow.appendChild(ui.el('span', '', { style: 'color:var(--text-secondary);font-weight:500', text: ap.egress_country || ap.country || ap.country_code || '' }));
+    const mode = ap.supports_connect ? 'HTTPS' : (ap.protocol || 'HTTP').toUpperCase();
+    infoRow.appendChild(ui.el('span', '', { style: 'color:var(--accent);font-weight:600', text: mode }));
+    infoRow.appendChild(ui.el('span', '', { style: `color:${ap.last_status === 'ok' ? 'var(--success)' : 'var(--danger)'}`, text: ap.last_status === 'ok' ? '●' : '○' }));
+    infoRow.appendChild(ui.el('span', '', { style: 'color:var(--success);font-weight:600', text: '✓' + (ps.connections_ok || 0) }));
+    infoRow.appendChild(ui.el('span', '', { style: 'color:var(--danger);font-weight:600', text: '✗' + (ps.connections_failed || 0) }));
+    body.appendChild(infoRow);
+
+    // Geo details
+    const geoRow = ui.el('div', '', { style: 'font-size:0.75em;color:var(--text-muted);line-height:1.5;margin-bottom:0.5em;padding-left:0.2em' });
+    let geoHtml = '';
+    if (ap.listen_country) geoHtml += 'server: ' + ap.listen_country + (ap.listen_city ? ', ' + ap.listen_city : '') + (ap.listen_isp ? ', ' + ap.listen_isp : '') + '<br>';
+    if (ap.egress_isp) geoHtml += 'isp: ' + ap.egress_isp + '<br>';
+    if (ap.egress_ip) geoHtml += 'exit ip: ' + ap.egress_ip;
+    geoRow.innerHTML = geoHtml || '';
+    body.appendChild(geoRow);
+
+    const statsRow = ui.el('div', '', { style: 'display:grid;grid-template-columns:repeat(6,1fr);gap:0.4em' });
+    const stats = [
+      { l: 'Latency', v: ap.last_latency ? ap.last_latency.toFixed(2) + 's' : '–' },
+      { l: 'Avg Lat', v: ap.latency_avg ? ap.latency_avg.toFixed(2) + 's' : '–' },
+      { l: 'Speed', v: ap.speed_avg ? ap.speed_avg.toFixed(0) + ' KB/s' : '–' },
+      { l: 'Succ', v: ap.success_rate != null ? Math.round(ap.success_rate * 100) + '%' : '–' },
+      { l: 'Up', v: (ap.checks_ok || 0) + '/' + (ap.checks_total || 0) },
+      { l: 'Last', v: ui.ago(ap.last_check) },
+    ];
+    stats.forEach(it => {
+      const cell = ui.el('div', '', { style: 'text-align:center;padding:0.4em;background:var(--surface-raised);border-radius:0.3em' });
+      cell.appendChild(ui.el('div', '', { style: 'font-size:0.75em;color:var(--text-muted);text-transform:uppercase;margin-bottom:0.15em', text: it.l }));
+      cell.appendChild(ui.el('div', '', { style: 'font-weight:600;color:var(--text-primary)', text: it.v }));
+      statsRow.appendChild(cell);
     });
-    body.appendChild(grid);
+    body.appendChild(statsRow);
+
+    // Recheck button
+    const recheckBtn = ui.el('button', '', { style: `font-size:1.6em;padding:0.1em 0.35em;border:1px solid var(--border);border-radius:0.25em;background:var(--surface-raised);color:var(--info);cursor:pointer;line-height:1` });
+    const recheckIcon = ui.el('span', '', { style: 'display:inline-block' });
+    recheckIcon.textContent = '↻';
+    recheckBtn.appendChild(recheckIcon);
+    recheckBtn.title = 'Recheck';
+    recheckBtn.addEventListener('click', () => {
+      recheckBtn.disabled = true;
+      recheckBtn.style.color = 'var(--text-muted)';
+      recheckIcon.style.animation = 'recheckSpin 0.8s linear infinite';
+      api.proxyRecheck(ap.address).then(() => poll()).then(() => {
+        recheckIcon.style.animation = '';
+        recheckBtn.disabled = false;
+        recheckBtn.style.color = 'var(--info)';
+      }).catch(e => {
+        recheckIcon.style.animation = '';
+        recheckBtn.disabled = false;
+        recheckBtn.style.color = 'var(--info)';
+        app.toast('Error: ' + e.message, 'error');
+      });
+    });
+    chainRow.appendChild(recheckBtn);
+
+    // Inject spin keyframes once
+    if (!document.getElementById('recheck-spin-style')) {
+      const s = document.createElement('style');
+      s.id = 'recheck-spin-style';
+      s.textContent = '@keyframes recheckSpin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}';
+      document.head.appendChild(s);
+    }
   }
 
   build();

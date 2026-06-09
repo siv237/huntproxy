@@ -1567,12 +1567,17 @@ class ProxyRunner:
             self.log = self.log[-150:]
 
     def get_status(self) -> dict:
+        ok = sum(1 for e in self.log if e["status"] == "ok")
+        failed = len(self.log) - ok
         return {
             "running": self.running,
             "port": self.port,
+            "bind_host": self.proxy_host,
             "active_proxy": self.selected_proxy.to_dict() if self.selected_proxy else None,
             "direct_mode": self.direct_mode,
             "connections": len(self.log),
+            "connections_ok": ok,
+            "connections_failed": failed,
             "log": list(reversed(self.log[-50:])),
         }
 
@@ -2163,6 +2168,23 @@ class HuntServer:
             self.state._proxy_direct_mode = self.proxy.direct_mode
             self.state._save_state()
             return json.dumps({"ok": True, "address": address}), 200, "application/json"
+
+        if path == "/api/proxy/next":
+            alive = [r for r in self.state.ratings.values()
+                     if r.last_status == "ok" and not r.in_blacklist]
+            alive.sort(key=lambda r: r.score, reverse=True)
+            current = self.proxy.active_proxy_addr
+            next_proxy = None
+            for r in alive:
+                if r.address != current:
+                    next_proxy = r
+                    break
+            if next_proxy:
+                self.proxy.select(next_proxy.address)
+                self.state._proxy_active_addr = self.proxy.active_proxy_addr
+                self.state._save_state()
+                return json.dumps({"ok": True, "address": next_proxy.address}), 200, "application/json"
+            return json.dumps({"ok": False, "error": "no other alive proxy"}), 200, "application/json"
 
         if path.startswith("/api/proxy/recheck"):
             qs = _qs(path)
