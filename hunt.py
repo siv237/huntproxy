@@ -368,6 +368,7 @@ class HuntState:
                 "country_filter": self.country_filter,
             },
             "top_proxies": [r.to_dict() for r in sorted_alive[:30]],
+            "top_countries": self.get_countries(),
             "blacklist": self._blacklist_view(),
             "last_event": self.last_event,
             "uptime_seconds": int(time.time() - self.started_at),
@@ -664,7 +665,7 @@ class HuntState:
                     self.checked += 1
                 return
             async with sem:
-                ok, country, supports_connect, mitm_suspect, egress, listen, http_latency = await self._check_proxy(addr)
+                ok, country, supports_connect, mitm_suspect, egress, listen, http_latency, cc = await self._check_proxy(addr)
                 speed = 0.0
                 if ok:
                     host, port_str = addr.rsplit(":", 1)
@@ -683,7 +684,7 @@ class HuntState:
                     else:
                         fail_count += 1
                         self.failed = fail_count
-                    self._update_rating(addr, ok, country, http_latency, supports_connect, mitm_suspect, egress, listen, speed)
+                    self._update_rating(addr, ok, country, http_latency, supports_connect, mitm_suspect, egress, listen, speed, country_code=cc)
                     if self.checked % 25 == 0 or ok:
                         pct = int(100 * self.checked / max(1, self.checking_total))
                         self._emit(
@@ -703,7 +704,7 @@ class HuntState:
         try:
             port = int(port_str)
         except ValueError:
-            return False, "", False, False, {}, {}, 0.0
+            return False, "", False, False, {}, {}, 0.0, ""
         is_socks = port in (1080, 10808, 9050, 4145)
 
         t0 = time.monotonic()
@@ -713,7 +714,7 @@ class HuntState:
                 timeout=self.timeout,
             )
         except (asyncio.TimeoutError, OSError):
-            return False, "", False, False, {}, {}, 0.0
+            return False, "", False, False, {}, {}, 0.0, ""
 
         listen_task = asyncio.create_task(self._resolve_geo(host))
         country = ""
@@ -731,7 +732,7 @@ class HuntState:
             except: pass
             if not ok:
                 listen = await listen_task
-                return False, "", False, False, {}, listen, 0.0
+                return False, "", False, False, {}, listen, 0.0, ""
             egress = await self._socks_egress(host, port)
             if egress:
                 country = egress.get("egress_country", "")
@@ -764,7 +765,7 @@ class HuntState:
                         break
             except Exception:
                 listen = await listen_task
-                return False, "", False, False, {}, listen, 0.0
+                return False, "", False, False, {}, listen, 0.0, ""
             finally:
                 try:
                     writer.close()
@@ -776,12 +777,12 @@ class HuntState:
                 sep = buf.find(b"\n\n")
             if sep == -1:
                 listen = await listen_task
-                return False, "", False, False, {}, listen, 0.0
+                return False, "", False, False, {}, listen, 0.0, ""
             try:
                 data = json.loads(buf[sep:].strip())
             except Exception:
                 listen = await listen_task
-                return False, "", False, False, {}, listen, 0.0
+                return False, "", False, False, {}, listen, 0.0, ""
             country = data.get("country", "")
             country_code = data.get("countryCode", "")
             http_latency = time.monotonic() - t0
@@ -794,19 +795,19 @@ class HuntState:
 
         listen = await listen_task
         if self.country_filter and country_code != self.country_filter:
-            return False, country, False, False, egress, listen, 0.0
+            return False, country, False, False, egress, listen, 0.0, country_code
         if self.us_only and country != "United States":
-            return False, country, False, False, egress, listen, 0.0
+            return False, country, False, False, egress, listen, 0.0, country_code
 
         connect_ok, mitm_suspect = await self._check_proxy_connect(host, port, is_socks)
         supports_connect = connect_ok
 
         if not connect_ok and not is_socks:
-            return True, country, False, mitm_suspect, egress, listen, http_latency
+            return True, country, False, mitm_suspect, egress, listen, http_latency, country_code
 
         if not connect_ok:
-            return False, country, False, mitm_suspect, egress, listen, http_latency
-        return True, country, True, mitm_suspect, egress, listen, http_latency
+            return False, country, False, mitm_suspect, egress, listen, http_latency, country_code
+        return True, country, True, mitm_suspect, egress, listen, http_latency, country_code
 
     async def _check_proxy_connect(self, host: str, port: int, is_socks: bool = False) -> tuple:
         try:
@@ -1108,13 +1109,13 @@ class HuntState:
     def _update_rating(self, addr: str, ok: bool, country: str, latency: float,
                         supports_connect: bool = False, mitm_suspect: bool = False,
                         egress: dict = None, listen: dict = None,
-                        speed: float = 0.0):
+                        speed: float = 0.0, country_code: str = ""):
         r = self.ratings.get(addr)
         if not r:
             r = ProxyRating(
                 address=addr,
                 country=country,
-                country_code=country_code_from_name(country),
+                country_code=country_code or country_code_from_name(country),
                 first_seen=time.time(),
             )
             try:
@@ -1143,6 +1144,9 @@ class HuntState:
                 r.speed_fails += 1
             if country and not r.country:
                 r.country = country
+            if country_code and not r.country_code:
+                r.country_code = country_code
+            elif country and not r.country_code:
                 r.country_code = country_code_from_name(country)
             r.supports_connect = supports_connect
             if mitm_suspect:
@@ -1206,7 +1210,7 @@ class HuntState:
         async def check(r: ProxyRating):
             nonlocal ok_count, fail_count
             async with sem:
-                ok, country, supports_connect, mitm_suspect, egress, listen, http_latency = await self._check_proxy(r.address)
+                ok, country, supports_connect, mitm_suspect, egress, listen, http_latency, cc = await self._check_proxy(r.address)
                 speed = 0.0
                 if ok:
                     host, port_str = r.address.rsplit(":", 1)
@@ -1223,7 +1227,7 @@ class HuntState:
                     else:
                         fail_count += 1
                         self.failed = fail_count
-                    self._update_rating(r.address, ok, country, http_latency, supports_connect, mitm_suspect, egress, listen, speed)
+                    self._update_rating(r.address, ok, country, http_latency, supports_connect, mitm_suspect, egress, listen, speed, country_code=cc)
 
         tasks = [asyncio.create_task(check(r)) for r in candidates]
         await asyncio.gather(*tasks)
@@ -2365,14 +2369,14 @@ class HuntServer:
                 host, port_str = address.rsplit(":", 1)
                 port = int(port_str)
                 is_socks = port in (1080, 10808, 9050, 4145)
-                ok, country, supports_connect, mitm_suspect, egress, listen, http_latency = await self.state._check_proxy(address)
+                ok, country, supports_connect, mitm_suspect, egress, listen, http_latency, cc = await self.state._check_proxy(address)
                 speed = 0.0
                 if ok:
                     try:
                         speed = await self.state._measure_speed(host, port, is_socks)
                     except Exception:
                         speed = 0.0
-                self.state._update_rating(address, ok, country, http_latency, supports_connect, mitm_suspect, egress, listen, speed)
+                self.state._update_rating(address, ok, country, http_latency, supports_connect, mitm_suspect, egress, listen, speed, country_code=cc)
                 self.state._save_state()
                 self.state._save_working_file()
                 return json.dumps({"ok": ok, "address": address}), 200, "application/json"

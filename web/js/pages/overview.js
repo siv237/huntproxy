@@ -223,9 +223,11 @@ router.register('overview', (container) => {
     const max = Math.max(...countries.map(c => c.count));
     list.innerHTML = '';
     countries.forEach(c => {
+      const code = c.country_code || c.code || '';
+      const name = c.country || c.name || code;
       const row = ui.el('div', '', { style: 'display:flex;align-items:center;gap:8px' });
-      row.appendChild(ui.el('span', 'flag', { text: ui.flag(c.code), style: 'font-size:14px;width:20px;text-align:center' }));
-      row.appendChild(ui.el('span', '', { style: 'font-size:12px;color:var(--text-primary);width:80px;flex-shrink:0', text: c.name }));
+      row.appendChild(ui.el('span', 'flag', { text: ui.flag(code), style: 'font-size:14px;width:20px;text-align:center' }));
+      row.appendChild(ui.el('span', '', { style: 'font-size:12px;color:var(--text-primary);width:80px;flex-shrink:0', text: name }));
       const barWrap = ui.el('div', '', { style: 'flex:1;height:6px;background:var(--surface-raised);border-radius:3px;overflow:hidden' });
       barWrap.appendChild(ui.el('div', '', { style: `width:${(c.count / max) * 100}%;height:100%;background:var(--accent);border-radius:3px;transition:width 0.4s ease` }));
       row.appendChild(barWrap);
