@@ -254,11 +254,13 @@
 }
 
 /* Stat cards row stays compact */
-.content .grid-4 {
+.content .grid-4,
+.content .grid-6 {
   flex: 0 0 auto;
 }
 
-.content .grid-4 > .card {
+.content .grid-4 > .card,
+.content .grid-6 > .card {
   height: auto;
   flex: none;
 }
@@ -276,6 +278,15 @@
   flex-direction: column;
   overflow: hidden;
   height: 100%;
+}
+
+.content .grid.row-stretch > .stat-card {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.content .card svg {
+  max-width: 100%;
 }
 
 .content > .card {

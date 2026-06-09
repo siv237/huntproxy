@@ -12,9 +12,14 @@ router.register('proxies', (container) => {
 
   function build() {
     container.innerHTML = '';
+    container.style.display = 'flex';
+    container.style.flexDirection = 'column';
+    container.style.gap = '10px';
+    container.style.minHeight = '0';
+    container.style.flex = '1';
 
     // Filter bar
-    const filterBar = ui.el('div', '', { style: 'display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:16px' });
+    const filterBar = ui.el('div', '', { style: 'display:flex;gap:8px;flex-wrap:wrap;align-items:center;flex-shrink:0' });
     const tabs = ['All', 'Alive', 'Dead', 'Blacklisted'];
     tabs.forEach(t => {
       const btn = ui.el('button', `btn ${state.status === t.toLowerCase() || (t === 'All' && !state.status) ? 'btn-primary' : 'btn-secondary'}`, { text: t });
@@ -48,10 +53,15 @@ router.register('proxies', (container) => {
     // Table card
     const card = ui.card('Proxies');
     card.id = 'proxies-table-card';
+    card.style.flex = '1';
+    card.style.minHeight = '0';
+    card.style.overflow = 'hidden';
+    card.style.display = 'flex';
+    card.style.flexDirection = 'column';
     container.appendChild(card);
 
     // Pagination
-    const pagWrap = ui.el('div', '', { style: 'display:flex;justify-content:space-between;align-items:center;margin-top:12px' });
+    const pagWrap = ui.el('div', '', { style: 'display:flex;justify-content:space-between;align-items:center;flex-shrink:0' });
     const left = ui.el('div', '', { style: 'font-size:12px;color:var(--text-secondary)' });
     left.id = 'proxies-pag-info';
     pagWrap.appendChild(left);
@@ -144,7 +154,9 @@ router.register('proxies', (container) => {
         `<button class="btn btn-xs btn-danger" onclick="blAdd('${p.address}')">BL</button>`,
       ];
     });
-    card.appendChild(ui.table(headers, bodyRows));
+    const tblWrap = ui.el('div', 'table-wrap', { style: 'flex:1;min-height:0;overflow-y:auto' });
+    tblWrap.appendChild(ui.table(headers, bodyRows));
+    card.appendChild(tblWrap);
   }
 
   function renderPagination() {

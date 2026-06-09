@@ -16,6 +16,11 @@ router.register('proxy-pool', (container) => {
 
   function build() {
     container.innerHTML = '';
+    container.style.display = 'flex';
+    container.style.flexDirection = 'column';
+    container.style.gap = '10px';
+    container.style.minHeight = '0';
+    container.style.flex = '1';
 
     const row1 = ui.el('div', 'grid grid-2 row-stretch');
     row1.appendChild(buildProxyControlCard());
@@ -115,7 +120,7 @@ router.register('proxy-pool', (container) => {
     card.id = 'client-log-card';
     card.appendChild(ui.el('div', 'card-title', { text: 'Client Log', style: 'margin-bottom:8px' }));
 
-    const log = ui.el('div', '', { id: 'proxy-log', style: 'font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11px;line-height:1.5;overflow-y:auto;color:var(--text-primary)' });
+    const log = ui.el('div', '', { id: 'proxy-log', style: 'font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11px;line-height:1.5;overflow-y:auto;flex:1;min-height:0;color:var(--text-primary)' });
     log.innerHTML = '<div class="empty" style="padding:8px;font-size:11px">proxy not started</div>';
     card.appendChild(log);
     return card;

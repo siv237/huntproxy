@@ -7,8 +7,13 @@ router.register('logs', (container) => {
 
   function build() {
     container.innerHTML = '';
+    container.style.display = 'flex';
+    container.style.flexDirection = 'column';
+    container.style.gap = '10px';
+    container.style.minHeight = '0';
+    container.style.flex = '1';
 
-    const filterBar = ui.el('div', '', { style: 'display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:16px' });
+    const filterBar = ui.el('div', '', { style: 'display:flex;gap:8px;flex-wrap:wrap;align-items:center;flex-shrink:0' });
     const search = ui.el('input', '', { type: 'text', placeholder: 'Filter logs...', value: state.filter, style: 'padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--bg);color:var(--text-primary);font-size:13px;min-width:220px' });
     search.addEventListener('input', (e) => {
       state.filter = e.target.value.toLowerCase();
@@ -53,6 +58,11 @@ router.register('logs', (container) => {
 
     const card = ui.card('System Logs');
     card.id = 'logs-card';
+    card.style.flex = '1';
+    card.style.minHeight = '0';
+    card.style.overflow = 'hidden';
+    card.style.display = 'flex';
+    card.style.flexDirection = 'column';
     container.appendChild(card);
   }
 
@@ -91,7 +101,7 @@ router.register('logs', (container) => {
       return;
     }
 
-    const wrap = ui.el('div', '', { style: 'font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;line-height:1.6;max-height:500px;overflow-y:auto' });
+    const wrap = ui.el('div', '', { style: 'font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;line-height:1.6;flex:1;min-height:0;overflow-y:auto' });
     lines.forEach(line => {
       const row = ui.el('div', '', { style: 'padding:2px 0;border-bottom:1px solid var(--border-subtle);white-space:pre-wrap;word-break:break-all' });
       let color = 'var(--text-primary)';

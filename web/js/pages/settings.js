@@ -3,9 +3,17 @@ router.register('settings', (container) => {
 
   function build() {
     container.innerHTML = '';
+    container.style.display = 'flex';
+    container.style.flexDirection = 'column';
+    container.style.gap = '10px';
+    container.style.minHeight = '0';
+    container.style.flex = '1';
 
     const card = ui.card('Settings');
     card.id = 'settings-card';
+    card.style.flex = '1';
+    card.style.minHeight = '0';
+    card.style.overflow = 'auto';
     container.appendChild(card);
 
     const btns = ui.el('div', '', { style: 'display:flex;gap:8px;margin-top:16px' });

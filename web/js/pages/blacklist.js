@@ -11,8 +11,13 @@ router.register('blacklist', (container) => {
 
   function build() {
     container.innerHTML = '';
+    container.style.display = 'flex';
+    container.style.flexDirection = 'column';
+    container.style.gap = '10px';
+    container.style.minHeight = '0';
+    container.style.flex = '1';
 
-    const filterBar = ui.el('div', '', { style: 'display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:16px' });
+    const filterBar = ui.el('div', '', { style: 'display:flex;gap:8px;flex-wrap:wrap;align-items:center;flex-shrink:0' });
     const search = ui.el('input', '', { type: 'text', placeholder: 'Search blacklisted proxy...', value: state.search, style: 'padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--bg);color:var(--text-primary);font-size:13px;min-width:200px' });
     search.addEventListener('input', (e) => {
       state.search = e.target.value.toLowerCase();
@@ -38,9 +43,14 @@ router.register('blacklist', (container) => {
 
     const card = ui.card('Blacklist');
     card.id = 'blacklist-table-card';
+    card.style.flex = '1';
+    card.style.minHeight = '0';
+    card.style.overflow = 'hidden';
+    card.style.display = 'flex';
+    card.style.flexDirection = 'column';
     container.appendChild(card);
 
-    const pagWrap = ui.el('div', '', { style: 'display:flex;justify-content:space-between;align-items:center;margin-top:12px' });
+    const pagWrap = ui.el('div', '', { style: 'display:flex;justify-content:space-between;align-items:center;flex-shrink:0' });
     const left = ui.el('div', '', { style: 'font-size:12px;color:var(--text-secondary)' });
     left.id = 'bl-pag-info';
     pagWrap.appendChild(left);
@@ -120,7 +130,9 @@ router.register('blacklist', (container) => {
       Math.round(b.score || 0),
       `<button class="btn btn-xs btn-secondary" onclick="blRemove('${b.address}')">Remove</button>`,
     ]);
-    card.appendChild(ui.table(headers, bodyRows));
+    const tblWrap = ui.el('div', 'table-wrap', { style: 'flex:1;min-height:0;overflow-y:auto' });
+    tblWrap.appendChild(ui.table(headers, bodyRows));
+    card.appendChild(tblWrap);
   }
 
   function renderPagination() {

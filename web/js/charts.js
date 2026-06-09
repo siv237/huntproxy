@@ -25,9 +25,9 @@ const charts = {
   },
 
   lineChart(data, opts = {}) {
-    const { width = 600, height = 200, color = 'var(--accent)', strokeWidth = 2, fillArea = true, grid = true, labels = [] } = opts;
+    const { width = 600, height = 200, color = 'var(--accent)', strokeWidth = 2, fillArea = true, grid = true, labels = [], responsive = false } = opts;
     if (!data || data.length < 2) {
-      return `<svg width="${width}" height="${height}"><text x="${width/2}" y="${height/2}" text-anchor="middle" fill="var(--text-muted)" font-size="12">No data</text></svg>`;
+      return `<svg ${responsive ? `width="100%" height="100%"` : `width="${width}" height="${height}"`} viewBox="0 0 ${width} ${height}"><text x="${width/2}" y="${height/2}" text-anchor="middle" fill="var(--text-muted)" font-size="12">No data</text></svg>`;
     }
     const pad = { top: 10, right: 10, bottom: 30, left: 40 };
     const w = width - pad.left - pad.right;
@@ -74,7 +74,7 @@ const charts = {
     });
 
     return `
-      <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+      <svg ${responsive ? `width="100%" height="100%"` : `width="${width}" height="${height}"`} viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet">
         ${gridLines}
         ${yText}
         ${fillArea ? `<path d="${areaD}" fill="${color}" fill-opacity="0.1" stroke="none"/>` : ''}

@@ -5,16 +5,21 @@ router.register('hunt', (container) => {
 
   function build() {
     container.innerHTML = '';
+    container.style.display = 'flex';
+    container.style.flexDirection = 'column';
+    container.style.gap = '10px';
+    container.style.minHeight = '0';
+    container.style.flex = '1';
 
     // Row 1: Controls + Progress + Blacklist mini
-    const row1 = ui.el('div', 'grid grid-3');
+    const row1 = ui.el('div', 'grid grid-3 row-stretch');
     row1.appendChild(buildControlCard());
     row1.appendChild(buildProgressCard());
     row1.appendChild(buildBlacklistCard());
     container.appendChild(row1);
 
     // Row 2: Top Proxies + Hunt Log
-    const row2 = ui.el('div', 'grid grid-2');
+    const row2 = ui.el('div', 'grid grid-2 row-stretch');
     row2.appendChild(buildTopProxiesCard());
     row2.appendChild(buildLogCard());
     container.appendChild(row2);
@@ -116,7 +121,7 @@ router.register('hunt', (container) => {
     const card = ui.el('div', 'card');
     card.id = 'log-card';
     card.appendChild(ui.el('div', 'card-title', { text: 'Hunt Log', style: 'margin-bottom:8px' }));
-    const log = ui.el('div', '', { id: 'hunt-log', style: 'font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11px;line-height:1.5;overflow-y:auto;max-height:240px;color:var(--text-primary)' });
+    const log = ui.el('div', '', { id: 'hunt-log', style: 'font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11px;line-height:1.5;overflow-y:auto;flex:1;min-height:0;color:var(--text-primary)' });
     card.appendChild(log);
     return card;
   }

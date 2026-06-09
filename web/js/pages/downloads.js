@@ -1,6 +1,11 @@
 router.register('downloads', (container) => {
   function build() {
     container.innerHTML = '';
+    container.style.display = 'flex';
+    container.style.flexDirection = 'column';
+    container.style.gap = '10px';
+    container.style.minHeight = '0';
+    container.style.flex = '1';
 
     const card = ui.card('Downloads');
     card.id = 'downloads-card';
