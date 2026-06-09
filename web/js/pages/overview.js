@@ -262,10 +262,12 @@ router.register('overview', (container) => {
     list.innerHTML = '';
     events.slice(0, 8).forEach(e => {
       const item = ui.el('div', 'activity-item');
-      item.appendChild(ui.el('div', `activity-icon ${e.icon || 'blue'}`, { innerHTML: getActivityIcon(e.type) }));
+      item.appendChild(ui.el('div', `activity-icon ${e.icon || 'blue'}`, { html: getActivityIcon(e.type) }));
       const body = ui.el('div', 'activity-body');
-      body.appendChild(ui.el('div', 'activity-text', { innerHTML: e.html || e.msg }));
-      body.appendChild(ui.el('div', 'activity-time', { text: e.ago || ui.ago(e.ts) }));
+      body.appendChild(ui.el('div', 'activity-text', { html: e.html || e.msg }));
+      const meta = ui.el('div', 'activity-time');
+      meta.textContent = e.ago || ui.ago(e.ts);
+      body.appendChild(meta);
       item.appendChild(body);
       list.appendChild(item);
     });
@@ -279,6 +281,7 @@ router.register('overview', (container) => {
       trash: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>',
       list: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></svg>',
       x: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
+      link: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>',
     };
     return icons[type] || icons.check;
   }
@@ -750,6 +753,8 @@ router.register('overview', (container) => {
 
   // --- Polling ---
   let lastEventSeq = 0;
+  let trafficThrottle = 0;
+  let lastTrafficItems = [];
 
   async function poll() {
     try {
@@ -805,21 +810,57 @@ router.register('overview', (container) => {
       // Top countries
       if (s.top_countries) renderCountries(s.top_countries);
 
-      // Recent activity
+      // Recent activity — merge system events with traffic log
       if (ev && ev.length) {
         lastEventSeq = Math.max(...ev.map(e => e.seq), lastEventSeq);
-        const formatted = ev.slice(0, 8).map(e => {
-          const msg = e.msg || '';
-          let icon = 'check', iconClass = 'green';
-          if (msg.includes('failed')) { icon = 'x'; iconClass = 'red'; }
-          else if (msg.includes('removed')) { icon = 'trash'; iconClass = 'yellow'; }
-          else if (msg.includes('added')) { icon = 'add'; iconClass = 'blue'; }
-          else if (msg.includes('Health')) { icon = 'heart'; iconClass = 'green'; }
-          else if (msg.includes('Blacklist')) { icon = 'list'; iconClass = 'yellow'; }
-          return { ...e, icon: iconClass, type: icon, ago: ui.ago(e.ts), html: msg.replace(/([\d.]+:\d+)/g, '<span class="addr">$1</span>') };
-        });
-        renderActivity(formatted);
       }
+
+      let trafficItems = [];
+      try {
+        if (!trafficThrottle || trafficThrottle <= 0) {
+          const reqs = await api.requests();
+          const reqList = (reqs && reqs.requests) || [];
+          const esc = s => (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+          trafficItems = reqList.slice(0, 20).map(r => {
+            const client = r.client || '?';
+            const target = r.target || '?';
+            const upstream = r.upstream || '';
+            const ok = (r.status || '').toString().startsWith('ok') || (r.status || '').toString().startsWith('2');
+            const clientHost = client.replace(/:\d+$/, '');
+            const targetShort = target.replace(/^https?:\/\//, '').replace(/:\d+$/, '');
+            const html = `<span class="addr">${esc(clientHost)}</span> <span style="color:var(--text-muted)">→</span> <span class="addr">${esc(targetShort)}</span>${upstream && upstream !== 'direct' ? ` <span style="color:var(--text-muted)">via</span> <span style="color:var(--accent);font-size:10px">${esc(upstream)}</span>` : ''}`;
+            return {
+              ts: r.ts,
+              icon: ok ? 'green' : 'red',
+              type: 'link',
+              ago: ui.ago(r.ts),
+              html,
+              _sortTs: r.ts,
+            };
+          });
+          lastTrafficItems = trafficItems;
+          trafficThrottle = 3;
+        } else {
+          trafficThrottle--;
+          trafficItems = lastTrafficItems;
+        }
+      } catch (e) { /* ignore */ }
+
+      const eventItems = (ev || []).map(e => {
+        const msg = e.msg || '';
+        let icon = 'check', iconClass = 'green';
+        if (msg.includes('failed')) { icon = 'x'; iconClass = 'red'; }
+        else if (msg.includes('removed')) { icon = 'trash'; iconClass = 'yellow'; }
+        else if (msg.includes('added')) { icon = 'add'; iconClass = 'blue'; }
+        else if (msg.includes('Health')) { icon = 'heart'; iconClass = 'green'; }
+        else if (msg.includes('Blacklist')) { icon = 'list'; iconClass = 'yellow'; }
+        return { ...e, icon: iconClass, type: icon, ago: ui.ago(e.ts), html: msg.replace(/([\d.]+:\d+)/g, '<span class="addr">$1</span>'), _sortTs: e.ts };
+      });
+
+      const merged = [...trafficItems, ...eventItems]
+        .sort((a, b) => (b._sortTs || 0) - (a._sortTs || 0))
+        .slice(0, 8);
+      if (merged.length) renderActivity(merged);
 
       // Top rated proxies
       renderTopRated(s.top_proxies);
