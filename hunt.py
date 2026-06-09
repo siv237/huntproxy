@@ -2034,7 +2034,7 @@ class HuntServer:
         self.state = state
         self.host = host
         self.port = port
-        self.proxy = ProxyRunner(state)
+        self.proxy = ProxyRunner(state, host)
         self._server: Optional[asyncio.AbstractServer] = None
         if hasattr(state, '_proxy_direct_mode'):
             self.proxy.direct_mode = state._proxy_direct_mode
