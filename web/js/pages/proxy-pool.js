@@ -24,12 +24,16 @@ router.register('proxy-pool', (container) => {
 
     const row1 = ui.el('div', 'grid grid-2 row-stretch');
     row1.appendChild(buildProxyControlCard());
-    row1.appendChild(buildSelectedProxyCard());
+    row1.appendChild(buildSocks5ControlCard());
     container.appendChild(row1);
 
-    const row2 = ui.el('div', 'grid grid-2 row-stretch');
+    const row1b = ui.el('div', 'grid grid-2 row-stretch');
+    row1b.appendChild(buildSelectedProxyCard());
+    row1b.appendChild(buildClientLogCard());
+    container.appendChild(row1b);
+
+    const row2 = ui.el('div', '');
     row2.appendChild(buildSelectProxyCard());
-    row2.appendChild(buildClientLogCard());
     container.appendChild(row2);
   }
 
@@ -70,6 +74,40 @@ router.register('proxy-pool', (container) => {
     // Connections
     const conn = ui.el('div', '', { style: 'display:flex;align-items:baseline;gap:6px' });
     conn.appendChild(ui.el('span', '', { id: 'proxy-connections', style: 'font-size:18px;font-weight:700;color:var(--accent)', text: '0' }));
+    conn.appendChild(ui.el('span', '', { style: 'font-size:11px;color:var(--text-secondary)', text: 'connections' }));
+    card.appendChild(conn);
+    return card;
+  }
+
+  function buildSocks5ControlCard() {
+    const card = ui.el('div', 'card');
+    card.id = 'socks5-control-card';
+    card.appendChild(ui.el('div', 'card-title', { text: 'SOCKS5 Server', style: 'margin-bottom:8px' }));
+
+    const status = ui.el('div', '', { id: 'socks5-status-bar', style: 'display:flex;align-items:center;gap:6px;padding:4px 8px;border-radius:var(--radius-xs);margin-bottom:8px;font-size:12px;font-weight:500;background:var(--surface-raised);border:1px solid var(--border);color:var(--text-secondary)' });
+    status.innerHTML = '<span id="socks5-dot" style="width:8px;height:8px;border-radius:50%;background:var(--text-muted);flex-shrink:0"></span><span id="socks5-status-text">stopped</span>';
+    card.appendChild(status);
+
+    const row = ui.el('div', '', { style: 'display:flex;gap:4px;align-items:center;margin-bottom:6px' });
+    row.appendChild(ui.el('span', '', { style: 'font-size:11px;color:var(--text-secondary)', text: 'Port:' }));
+    const portInp = ui.el('input', '', { id: 'socks5-port', type: 'number', value: '17278', min: '1024', max: '65535', style: 'width:60px;padding:3px 6px;font-size:11px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--bg);color:var(--text-primary)' });
+    row.appendChild(portInp);
+
+    const startBtn = ui.el('button', 'btn btn-xs btn-primary', { text: 'Start', id: 'btn-socks5-start' });
+    startBtn.addEventListener('click', () => api.socks5Start(portInp.value).then(() => app.toast('SOCKS5 proxy started')).catch(e => app.toast('Error: ' + e.message, 'error')));
+    row.appendChild(startBtn);
+
+    const stopBtn = ui.el('button', 'btn btn-xs btn-danger', { text: 'Stop', id: 'btn-socks5-stop' });
+    stopBtn.addEventListener('click', () => api.socks5Stop().then(() => app.toast('SOCKS5 proxy stopped')).catch(e => app.toast('Error: ' + e.message, 'error')));
+    row.appendChild(stopBtn);
+    card.appendChild(row);
+
+    const note = ui.el('div', '', { style: 'font-size:10px;color:var(--text-muted);margin-bottom:6px' });
+    note.textContent = 'Uses same upstream pool as HTTP proxy';
+    card.appendChild(note);
+
+    const conn = ui.el('div', '', { style: 'display:flex;align-items:baseline;gap:6px' });
+    conn.appendChild(ui.el('span', '', { id: 'socks5-connections', style: 'font-size:18px;font-weight:700;color:var(--accent)', text: '0' }));
     conn.appendChild(ui.el('span', '', { style: 'font-size:11px;color:var(--text-secondary)', text: 'connections' }));
     card.appendChild(conn);
     return card;
@@ -129,6 +167,26 @@ router.register('proxy-pool', (container) => {
   build();
 
   // --- Updaters ---
+  function updateSocks5Control(ss) {
+    const el = id => document.getElementById(id);
+    const bar = el('socks5-status-bar');
+    const dot = el('socks5-dot');
+    const txt = el('socks5-status-text');
+    if (ss && ss.running) {
+      if (bar) { bar.style.background = 'var(--success-bg)'; bar.style.borderColor = 'var(--success)'; bar.style.color = 'var(--success)'; }
+      if (dot) dot.style.background = 'var(--success)';
+      if (txt) txt.textContent = 'running on :' + (ss.port || 17278);
+    } else {
+      if (bar) { bar.style.background = 'var(--surface-raised)'; bar.style.borderColor = 'var(--border)'; bar.style.color = 'var(--text-secondary)'; }
+      if (dot) dot.style.background = 'var(--text-muted)';
+      if (txt) txt.textContent = 'stopped';
+    }
+    if (el('btn-socks5-start')) el('btn-socks5-start').disabled = ss && ss.running;
+    if (el('btn-socks5-stop')) el('btn-socks5-stop').disabled = !(ss && ss.running);
+    if (el('socks5-connections')) el('socks5-connections').textContent = ss ? (ss.connections || 0) : 0;
+    if (el('socks5-port') && ss && ss.port) el('socks5-port').value = ss.port;
+  }
+
   function updateProxyControl(ps) {
     const el = id => document.getElementById(id);
     const bar = el('proxy-status-bar');
@@ -302,12 +360,14 @@ router.register('proxy-pool', (container) => {
   // --- Polling ---
   async function load() {
     try {
-      let ps = {}, proxies = [];
+      let ps = {}, ss = {}, proxies = [];
       try { ps = await api.proxyStatus(); } catch (e) { console.error('proxyStatus', e); }
+      try { ss = await api.socks5Status(); } catch (e) { console.error('socks5Status', e); }
       try { proxies = await api.proxyAlive(); } catch (e) { console.error('proxyAlive', e); }
       state.selected = ps && ps.active_proxy ? ps.active_proxy.address : null;
       state.proxies = proxies;
       updateProxyControl(ps);
+      updateSocks5Control(ss);
       updateSelectedProxy(ps);
       updateProxyLog(ps);
       updateSelectProxy(proxies);

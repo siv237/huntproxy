@@ -719,7 +719,7 @@ router.register('overview', (container) => {
     return card;
   }
 
-  function renderCurrentProxy(ps) {
+  function renderCurrentProxy(ps, ss) {
     const body = document.getElementById('current-proxy-body');
     const statsWrap = document.getElementById('proxy-stats-row');
     const card = document.getElementById('current-proxy-card');
@@ -780,6 +780,24 @@ router.register('overview', (container) => {
       chainRow.appendChild(mkBtn('»', 'Next proxy', 'var(--accent)', () => api.proxyNext().then(() => app.toast('Switched to next proxy')).catch(e => app.toast('Error: ' + e.message, 'error'))));
     }
     body.appendChild(chainRow);
+
+    // SOCKS5 server row
+    const s5running = ss && ss.running;
+    const s5port = ss ? (ss.port || 17278) : 17278;
+    const s5host = ss ? (ss.bind_host || '127.0.0.1') : '127.0.0.1';
+    const s5color = s5running ? 'var(--success)' : 'var(--text-muted)';
+    const s5row = ui.el('div', '', { style: 'display:flex;align-items:center;gap:0.4em;margin-bottom:0.4em;font-size:11px' });
+    s5row.appendChild(ui.el('span', '', { style: 'color:var(--text-muted);font-weight:600', text: 'SOCKS5' }));
+    s5row.appendChild(ui.el('span', '', { style: `font-family:monospace;font-weight:700;color:${s5color}`, text: s5host + ':' + s5port }));
+    if (s5running) {
+      s5row.appendChild(mkBtn('■', 'Stop SOCKS5', 'var(--danger)', () => api.socks5Stop().then(() => app.toast('SOCKS5 stopped')).catch(e => app.toast('Error: ' + e.message, 'error'))));
+    } else {
+      s5row.appendChild(mkBtn('▶', 'Start SOCKS5', 'var(--success)', () => api.socks5Start(s5port).then(() => app.toast('SOCKS5 started')).catch(e => app.toast('Error: ' + e.message, 'error'))));
+    }
+    if (s5running) {
+      s5row.appendChild(ui.el('span', '', { style: 'color:var(--success);font-size:10px', text: (ss.connections || 0) + ' conn' }));
+    }
+    body.appendChild(s5row);
 
     if (!ap) {
       const nextBtn = ui.el('button', '', { style: 'padding:0.4em 1em;border:1px solid var(--border);border-radius:0.3em;background:var(--surface-raised);color:var(--accent);cursor:pointer', text: 'Select best proxy' });
@@ -895,8 +913,9 @@ router.register('overview', (container) => {
 
   async function poll() {
     try {
-      let ps = {}, s = {}, ev = {};
+      let ps = {}, ss = {}, s = {}, ev = {};
       try { ps = await api.proxyStatus(); } catch (e) { console.error('proxyStatus', e); }
+      try { ss = await api.socks5Status(); } catch (e) { console.error('socks5Status', e); }
       try { s = await api.snapshot(); } catch (e) { console.error('snapshot', e); }
       try { ev = await api.events(lastEventSeq); } catch (e) { console.error('events', e); }
 
@@ -1037,7 +1056,7 @@ router.register('overview', (container) => {
       }
 
       // Current proxy
-      renderCurrentProxy(ps);
+      renderCurrentProxy(ps, ss);
 
       // Performance chart — load history for all ranges
       try {
