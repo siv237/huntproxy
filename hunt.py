@@ -191,6 +191,7 @@ class HuntState:
     PHASE_VALIDATE = "validating"
     PHASE_HEALTH = "health"
     PHASE_DONE = "done"
+    PHASE_PAUSED = "paused"
 
     def __init__(self, config: dict):
         self.config = config
@@ -201,6 +202,15 @@ class HuntState:
         self.phase: str = self.PHASE_IDLE
         self.phase_started: float = 0.0
         self.task: Optional[asyncio.Task] = None
+
+        self._paused: bool = False
+        self._manual_pause: bool = False
+        self._pause_event: asyncio.Event = asyncio.Event()
+        self._pause_event.set()
+        self._phase_before_pause: str = self.PHASE_DONE
+        self._internet_suspect: bool = False
+        self._fail_streak: int = 0
+        self._check_streak: int = 0
 
         # Hunt progress counters
         self.sources_total: int = 0
@@ -230,6 +240,7 @@ class HuntState:
         self._canary_last_check: float = 0
         self._canary_interval: float = 30
         self._internet_alive: Optional[bool] = None
+        self._canary_cache: dict = {}
 
         self.started_at = time.time()
         self._db_path = DATA_DIR / "stats.db"
@@ -411,7 +422,9 @@ class HuntState:
         return {
             "phase": self.phase,
             "phase_started": self.phase_started,
-            "running": self.phase not in (self.PHASE_IDLE, self.PHASE_DONE),
+            "running": self.phase not in (self.PHASE_IDLE, self.PHASE_DONE, self.PHASE_PAUSED),
+            "paused": self._paused,
+            "manual_pause": self._manual_pause,
             "progress": {
                 "sources_total": self.sources_total,
                 "sources_done": self.sources_done,
@@ -639,6 +652,12 @@ class HuntState:
     def start_hunt(self) -> bool:
         if self.phase not in (self.PHASE_IDLE, self.PHASE_DONE):
             return False
+        self._paused = False
+        self._manual_pause = False
+        self._internet_suspect = False
+        self._fail_streak = 0
+        self._check_streak = 0
+        self._pause_event.set()
         try:
             loop = asyncio.get_event_loop()
             self.task = loop.create_task(self._hunt_cycle())
@@ -649,10 +668,41 @@ class HuntState:
     def stop_hunt(self):
         if self.task and not self.task.done():
             self.task.cancel()
+        self._paused = False
+        self._manual_pause = False
+        self._pause_event.set()
         self.phase = self.PHASE_IDLE
         self._save_state()
         self._save_working_file()
         self._emit("Hunt stopped by user", "warn")
+
+    def pause_hunt(self, manual: bool = True) -> bool:
+        if self._paused or not self.task or self.task.done():
+            return False
+        self._paused = True
+        self._manual_pause = manual
+        self._pause_event.clear()
+        self._phase_before_pause = self.phase
+        self.phase = self.PHASE_PAUSED
+        self.phase_started = time.time()
+        self._emit("Hunt PAUSED (%s)" % ("manually" if manual else "internet down"), "warn")
+        return True
+
+    def resume_hunt(self, manual: bool = False) -> bool:
+        if not self._paused:
+            return False
+        if self._manual_pause and not manual:
+            return False
+        self._paused = False
+        self._manual_pause = False
+        self._internet_suspect = False
+        self._fail_streak = 0
+        self._check_streak = 0
+        self._pause_event.set()
+        self.phase = self._phase_before_pause
+        self.phase_started = time.time()
+        self._emit("Hunt RESUMED", "ok")
+        return True
 
     async def _hunt_cycle(self):
         try:
@@ -673,6 +723,7 @@ class HuntState:
             self._emit(f"Validating {len(raw)} proxies...", "info")
 
             await self._validate_all(raw)
+            await self._pause_event.wait()
 
             self.phase = self.PHASE_HEALTH
             self.phase_started = time.time()
@@ -725,44 +776,71 @@ class HuntState:
         lock = asyncio.Lock()
         ok_count = 0
         fail_count = 0
+        self._fail_streak = 0
+        self._check_streak = 0
 
         async def check_one(addr: str):
             nonlocal ok_count, fail_count
-            if addr in self.blacklist:
-                async with lock:
-                    self.checked += 1
-                return
-            async with sem:
-                ok, country, supports_connect, mitm_suspect, egress, listen, http_latency, cc = await self._check_proxy(addr)
-                speed = 0.0
-                if ok:
-                    host, port_str = addr.rsplit(":", 1)
-                    try:
-                        speed = await self._measure_speed(host, int(port_str),
-                                                           port_str.isdigit() and int(port_str) in (1080, 10808, 9050, 4145))
-                    except Exception:
-                        speed = 0.0
-                async with lock:
-                    self.checked += 1
+            while True:
+                if self._paused:
+                    await self._pause_event.wait()
+                if addr in self.blacklist:
+                    async with lock:
+                        self.checked += 1
+                    return
+                async with sem:
+                    if self._internet_suspect:
+                        await self._pause_event.wait()
+                        continue
+                    ok, country, supports_connect, mitm_suspect, egress, listen, http_latency, cc, fast_fail = await self._check_proxy(addr)
+                    if fast_fail and not ok:
+                        async with lock:
+                            self._fail_streak += 1
+                            self._check_streak += 1
+                            if self._check_streak >= 3 and self._fail_streak / self._check_streak > 0.7:
+                                await self._auto_pause_if_internet_down()
+                        if self._internet_suspect:
+                            await self._pause_event.wait()
+                            continue
+                        return
+                    speed = 0.0
                     if ok:
-                        ok_count += 1
-                        self.working = ok_count
-                        self.last_proxy = addr
-                        self.last_country = country
-                    else:
-                        fail_count += 1
-                        self.failed = fail_count
-                    self._update_rating(addr, ok, country, http_latency, supports_connect, mitm_suspect, egress, listen, speed, country_code=cc)
-                    if self.checked % 25 == 0 or ok:
-                        pct = int(100 * self.checked / max(1, self.checking_total))
-                        self._emit(
-                            f"{pct}% {self.checked}/{self.checking_total} | "
-                            f"working: {ok_count} | last: {addr} {country}",
-                            "progress"
-                        )
+                        host, port_str = addr.rsplit(":", 1)
+                        try:
+                            speed = await self._measure_speed(host, int(port_str),
+                                                               port_str.isdigit() and int(port_str) in (1080, 10808, 9050, 4145))
+                        except Exception:
+                            speed = 0.0
+                    async with lock:
+                        if self._internet_suspect:
+                            await self._pause_event.wait()
+                            continue
+                        self.checked += 1
+                        self._check_streak += 1
+                        if ok:
+                            ok_count += 1
+                            self.working = ok_count
+                            self.last_proxy = addr
+                            self.last_country = country
+                            self._fail_streak = 0
+                        else:
+                            fail_count += 1
+                            self.failed = fail_count
+                            self._fail_streak += 1
+                        self._update_rating(addr, ok, country, http_latency, supports_connect, mitm_suspect, egress, listen, speed, country_code=cc)
+                        if self.checked % 25 == 0 or ok:
+                            pct = int(100 * self.checked / max(1, self.checking_total))
+                            self._emit(
+                                f"{pct}% {self.checked}/{self.checking_total} | "
+                                f"working: {ok_count} | last: {addr} {country}",
+                                "progress"
+                            )
+                        if self._check_streak >= 10 and self._fail_streak / self._check_streak > 0.7:
+                            await self._auto_pause_if_internet_down()
+                    return
 
         tasks = [asyncio.create_task(check_one(p)) for p in proxies]
-        await asyncio.gather(*tasks)
+        await asyncio.gather(*tasks, return_exceptions=True)
         self._save_state()
         self._save_working_file()
         self._push_history()
@@ -772,7 +850,7 @@ class HuntState:
         try:
             port = int(port_str)
         except ValueError:
-            return False, "", False, False, {}, {}, 0.0, ""
+            return False, "", False, False, {}, {}, 0.0, "", False
         is_socks = port in (1080, 10808, 9050, 4145)
 
         t0 = time.monotonic()
@@ -782,7 +860,10 @@ class HuntState:
                 timeout=self.timeout,
             )
         except (asyncio.TimeoutError, OSError):
-            return False, "", False, False, {}, {}, 0.0, ""
+            elapsed = time.monotonic() - t0
+            if elapsed < 0.3:
+                return False, "", False, False, {}, {}, 0.0, "", True
+            return False, "", False, False, {}, {}, 0.0, "", False
 
         listen_task = asyncio.create_task(self._resolve_geo(host))
         country = ""
@@ -796,11 +877,14 @@ class HuntState:
                 ok = await self._socks4_test(reader, writer)
             else:
                 ok = await self._socks5_test(reader, writer)
-            try: writer.close()
-            except: pass
+            try:
+                writer.close()
+                await writer.wait_closed()
+            except Exception:
+                pass
             if not ok:
                 listen = await listen_task
-                return False, "", False, False, {}, listen, 0.0, ""
+                return False, "", False, False, {}, listen, 0.0, "", False
             egress = await self._socks_egress(host, port)
             if egress:
                 country = egress.get("egress_country", "")
@@ -833,10 +917,11 @@ class HuntState:
                         break
             except Exception:
                 listen = await listen_task
-                return False, "", False, False, {}, listen, 0.0, ""
+                return False, "", False, False, {}, listen, 0.0, "", False
             finally:
                 try:
                     writer.close()
+                    await writer.wait_closed()
                 except Exception:
                     pass
 
@@ -845,12 +930,12 @@ class HuntState:
                 sep = buf.find(b"\n\n")
             if sep == -1:
                 listen = await listen_task
-                return False, "", False, False, {}, listen, 0.0, ""
+                return False, "", False, False, {}, listen, 0.0, "", False
             try:
                 data = json.loads(buf[sep:].strip())
             except Exception:
                 listen = await listen_task
-                return False, "", False, False, {}, listen, 0.0, ""
+                return False, "", False, False, {}, listen, 0.0, "", False
             country = data.get("country", "")
             country_code = data.get("countryCode", "")
             http_latency = time.monotonic() - t0
@@ -863,19 +948,19 @@ class HuntState:
 
         listen = await listen_task
         if self.country_filter and country_code != self.country_filter:
-            return False, country, False, False, egress, listen, 0.0, country_code
+            return False, country, False, False, egress, listen, 0.0, country_code, False
         if self.us_only and country != "United States":
-            return False, country, False, False, egress, listen, 0.0, country_code
+            return False, country, False, False, egress, listen, 0.0, country_code, False
 
         connect_ok, mitm_suspect = await self._check_proxy_connect(host, port, is_socks)
         supports_connect = connect_ok
 
         if not connect_ok and not is_socks:
-            return True, country, False, mitm_suspect, egress, listen, http_latency, country_code
+            return True, country, False, mitm_suspect, egress, listen, http_latency, country_code, False
 
         if not connect_ok:
-            return False, country, False, mitm_suspect, egress, listen, http_latency, country_code
-        return True, country, True, mitm_suspect, egress, listen, http_latency, country_code
+            return False, country, False, mitm_suspect, egress, listen, http_latency, country_code, False
+        return True, country, True, mitm_suspect, egress, listen, http_latency, country_code, False
 
     async def _check_proxy_connect(self, host: str, port: int, is_socks: bool = False) -> tuple:
         try:
@@ -1236,15 +1321,37 @@ class HuntState:
             r.last_status = "failed"
         self.ratings[addr] = r
 
+    async def _auto_pause_if_internet_down(self):
+        self._internet_suspect = True
+        self._emit("Suspect internet down (%d/%d fast fails) — checking canary..." % (self._fail_streak, self._check_streak), "warn")
+        try:
+            alive = await self.is_internet_alive()
+            if not alive:
+                self.pause_hunt(manual=False)
+            else:
+                self._internet_suspect = False
+                self._fail_streak = 0
+                self._check_streak = 0
+                self._emit("Canary OK — failures are proxy issues, not internet", "info")
+        except Exception:
+            self.pause_hunt(manual=False)
+
     async def _health_loop(self):
         while True:
             await asyncio.sleep(self.health_interval)
             try:
                 internet_ok = await self.is_internet_alive()
                 if not internet_ok:
-                    self._emit("Internet appears down (canary check failed) — skipping health check", "warn")
+                    if not self._paused:
+                        self.pause_hunt(manual=False)
+                    self._emit("Internet down — pausing, will resume when restored", "warn")
+                    await self._pause_event.wait()
                     continue
+                if self._paused and not self._manual_pause:
+                    self.resume_hunt(manual=False)
                 await self._health_check()
+            except asyncio.CancelledError:
+                return
             except Exception as e:
                 self._emit(f"Health check error: {e}", "error")
 
@@ -1257,7 +1364,11 @@ class HuntState:
             try:
                 reader, writer = await asyncio.wait_for(
                     asyncio.open_connection(host, 443), timeout=5)
-                writer.close()
+                try:
+                    writer.close()
+                    await writer.wait_closed()
+                except Exception:
+                    pass
                 lat = int((time.monotonic() - t0) * 1000)
                 results[host] = True
                 latencies[host] = lat
@@ -1273,8 +1384,12 @@ class HuntState:
 
         if was_alive is True and not alive:
             self._emit("Internet DOWN — all canary hosts unreachable", "error")
+            if not self._paused:
+                self.pause_hunt(manual=False)
         elif was_alive is False and alive:
             self._emit("Internet RESTORED — canary hosts reachable", "ok")
+            if self._paused and not self._manual_pause:
+                self.resume_hunt(manual=False)
 
         direct_ip = ""
         direct_country = ""
@@ -1291,8 +1406,11 @@ class HuntState:
                     chunk = await asyncio.wait_for(reader.read(4096), timeout=5)
                     if not chunk: break
                     resp += chunk
-                try: writer.close()
-                except: pass
+                try:
+                    writer.close()
+                    await writer.wait_closed()
+                except Exception:
+                    pass
                 body_start = resp.find(b"\r\n\r\n")
                 if body_start >= 0:
                     import json as _json
@@ -1310,6 +1428,8 @@ class HuntState:
                     direct_city = new_city
                     self._canary_last_ip = new_ip
                     self._canary_last_isp = new_isp
+                    self._canary_last_country = new_country
+                    self._canary_last_city = new_city
             except Exception:
                 pass
 
@@ -1325,7 +1445,7 @@ class HuntState:
         except Exception:
             pass
 
-        return {
+        result = {
             "alive": alive,
             "hosts": results,
             "latencies": latencies,
@@ -1336,6 +1456,8 @@ class HuntState:
             "direct_isp": direct_isp,
             "direct_city": direct_city,
         }
+        self._canary_cache = result
+        return result
 
     async def is_internet_alive(self) -> bool:
         if self._internet_alive is not None and (time.time() - self._canary_last_check) < self._canary_interval:
@@ -1344,14 +1466,20 @@ class HuntState:
         return result["alive"]
 
     def get_canary_status(self) -> dict:
+        if self._canary_cache:
+            return self._canary_cache
         return {
             "alive": self._internet_alive,
+            "hosts": {},
+            "latencies": {},
+            "alive_count": 0,
+            "total": len(self.canary_hosts),
             "last_check": self._canary_last_check,
             "canary_hosts": self.canary_hosts,
-            "direct_ip": "",
-            "direct_country": "",
-            "direct_isp": "",
-            "direct_city": "",
+            "direct_ip": getattr(self, '_canary_last_ip', ''),
+            "direct_country": getattr(self, '_canary_last_country', ''),
+            "direct_isp": getattr(self, '_canary_last_isp', ''),
+            "direct_city": getattr(self, '_canary_last_city', ''),
         }
 
     def set_canary_hosts(self, hosts: list):
@@ -1410,6 +1538,8 @@ class HuntState:
         self.checked = 0
         self.working = 0
         self.failed = 0
+        self._fail_streak = 0
+        self._check_streak = 0
         self._emit(f"Health-checking {len(candidates)} alive proxies", "info")
 
         sem = asyncio.Semaphore(self.health_parallel)
@@ -1418,28 +1548,53 @@ class HuntState:
 
         async def check(r: ProxyRating):
             nonlocal ok_count, fail_count
-            async with sem:
-                ok, country, supports_connect, mitm_suspect, egress, listen, http_latency, cc = await self._check_proxy(r.address)
-                speed = 0.0
-                if ok:
-                    host, port_str = r.address.rsplit(":", 1)
-                    try:
-                        speed = await self._measure_speed(host, int(port_str),
-                                                           port_str.isdigit() and int(port_str) in (1080, 10808, 9050, 4145))
-                    except Exception:
-                        speed = 0.0
-                async with lock:
-                    self.checked += 1
+            while True:
+                if self._paused:
+                    await self._pause_event.wait()
+                async with sem:
+                    if self._internet_suspect:
+                        await self._pause_event.wait()
+                        continue
+                    ok, country, supports_connect, mitm_suspect, egress, listen, http_latency, cc, fast_fail = await self._check_proxy(r.address)
+                    if fast_fail and not ok:
+                        async with lock:
+                            self._fail_streak += 1
+                            self._check_streak += 1
+                            if self._check_streak >= 3 and self._fail_streak / self._check_streak > 0.7:
+                                await self._auto_pause_if_internet_down()
+                        if self._internet_suspect:
+                            await self._pause_event.wait()
+                            continue
+                        return
+                    speed = 0.0
                     if ok:
-                        ok_count += 1
-                        self.working = ok_count
-                    else:
-                        fail_count += 1
-                        self.failed = fail_count
-                    self._update_rating(r.address, ok, country, http_latency, supports_connect, mitm_suspect, egress, listen, speed, country_code=cc)
+                        host, port_str = r.address.rsplit(":", 1)
+                        try:
+                            speed = await self._measure_speed(host, int(port_str),
+                                                               port_str.isdigit() and int(port_str) in (1080, 10808, 9050, 4145))
+                        except Exception:
+                            speed = 0.0
+                    async with lock:
+                        if self._internet_suspect:
+                            await self._pause_event.wait()
+                            continue
+                        self.checked += 1
+                        self._check_streak += 1
+                        if ok:
+                            ok_count += 1
+                            self.working = ok_count
+                            self._fail_streak = 0
+                        else:
+                            fail_count += 1
+                            self.failed = fail_count
+                            self._fail_streak += 1
+                        self._update_rating(r.address, ok, country, http_latency, supports_connect, mitm_suspect, egress, listen, speed, country_code=cc)
+                        if self._check_streak >= 10 and self._fail_streak / self._check_streak > 0.7:
+                            await self._auto_pause_if_internet_down()
+                    return
 
         tasks = [asyncio.create_task(check(r)) for r in candidates]
-        await asyncio.gather(*tasks)
+        await asyncio.gather(*tasks, return_exceptions=True)
         self._save_state()
         self._save_working_file()
         self._push_history()
@@ -2824,6 +2979,7 @@ button.danger:hover{background:#fff0f0}
 .phase-validating{background:#f4e8ff;color:#8250df}
 .phase-health{background:#dafbe1;color:#1a7f37}
 .phase-done{background:#dafbe1;color:#1a7f37}
+.phase-paused{background:#fff8c5;color:#9a6700}
 .bar{height:8px;background:#e8eaed;border-radius:4px;overflow:hidden;margin:8px 0}
 .bar .fill{height:100%;background:linear-gradient(90deg,#0969da,#8250df);transition:width .4s}
 .last-proxy{font:12px/1.4 Menlo,Consolas,monospace;color:#1a7f37;margin-top:6px;display:flex;align-items:center;gap:6px}
@@ -3316,6 +3472,14 @@ class HuntServer:
         if path == "/api/hunt/stop" and method == "POST":
             self.state.stop_hunt()
             return json.dumps({"ok": True}), 200, "application/json"
+
+        if path == "/api/hunt/pause" and method == "POST":
+            ok = self.state.pause_hunt(manual=True)
+            return json.dumps({"ok": ok, "error": None if ok else "not running or already paused"}), 200, "application/json"
+
+        if path == "/api/hunt/resume" and method == "POST":
+            ok = self.state.resume_hunt(manual=True)
+            return json.dumps({"ok": ok, "error": None if ok else "not paused or manual pause requires manual resume"}), 200, "application/json"
 
         if path == "/api/blacklist/add" and method == "POST":
             try:
@@ -3850,7 +4014,8 @@ class HuntServer:
 
         # === Canary / Internet Connectivity ===
         if path == "/api/canary/status" and method == "GET":
-            result = await self.state._check_canary()
+            result = self.state.get_canary_status()
+            asyncio.ensure_future(self.state._check_canary())
             return json.dumps(result), 200, "application/json"
 
         if path.startswith("/api/canary/history") and method == "GET":

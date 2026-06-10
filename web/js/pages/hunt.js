@@ -30,11 +30,21 @@ router.register('hunt', (container) => {
     card.id = 'control-card';
     card.appendChild(ui.el('div', 'card-title', { text: 'Hunt Control', style: 'margin-bottom:8px' }));
 
-    const btnRow = ui.el('div', '', { style: 'display:flex;gap:6px;margin-bottom:8px' });
+    const btnRow = ui.el('div', '', { style: 'display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap' });
     const startBtn = ui.el('button', 'btn btn-primary', { text: 'Start Hunt' });
     startBtn.id = 'btn-hunt-start';
-    startBtn.addEventListener('click', () => api.huntStart().then(() => app.toast('Hunt started')));
+    startBtn.addEventListener('click', () => api.huntStart().then(r => app.toast(r.ok ? 'Hunt started' : r.error)));
     btnRow.appendChild(startBtn);
+
+    const pauseBtn = ui.el('button', 'btn btn-secondary', { text: 'Pause' });
+    pauseBtn.id = 'btn-hunt-pause';
+    pauseBtn.addEventListener('click', () => api.huntPause().then(r => app.toast(r.ok ? 'Paused' : r.error)));
+    btnRow.appendChild(pauseBtn);
+
+    const resumeBtn = ui.el('button', 'btn btn-secondary', { text: 'Resume' });
+    resumeBtn.id = 'btn-hunt-resume';
+    resumeBtn.addEventListener('click', () => api.huntResume().then(r => app.toast(r.ok ? 'Resumed' : r.error)));
+    btnRow.appendChild(resumeBtn);
 
     const stopBtn = ui.el('button', 'btn btn-danger', { text: 'Stop' });
     stopBtn.id = 'btn-hunt-stop';
@@ -132,16 +142,27 @@ router.register('hunt', (container) => {
   function updateStats(s) {
     const c = s.counts || {};
     const el = id => document.getElementById(id);
-    if (el('btn-hunt-start')) el('btn-hunt-start').disabled = s.running;
-    if (el('btn-hunt-stop')) el('btn-hunt-stop').disabled = !s.running;
+    const paused = s.paused || false;
+    const manual = s.manual_pause || false;
+    if (el('btn-hunt-start')) el('btn-hunt-start').disabled = s.running && !paused;
+    if (el('btn-hunt-pause')) el('btn-hunt-pause').disabled = !s.running || paused;
+    if (el('btn-hunt-resume')) el('btn-hunt-resume').disabled = !paused;
+    if (el('btn-hunt-stop')) el('btn-hunt-stop').disabled = !s.running && !paused;
 
     if (el('phase-badge')) {
-      el('phase-badge').textContent = s.phase || 'idle';
-      el('phase-badge').style.color = s.running ? 'var(--accent)' : 'var(--text-secondary)';
-      el('phase-badge').style.background = s.running ? 'var(--accent-light)' : 'var(--surface-raised)';
+      const badge = el('phase-badge');
+      if (paused) {
+        badge.textContent = manual ? 'PAUSED' : 'PAUSED (no inet)';
+        badge.style.color = 'var(--warning,#9a6700)';
+        badge.style.background = 'rgba(154,103,0,0.12)';
+      } else {
+        badge.textContent = s.phase || 'idle';
+        badge.style.color = s.running ? 'var(--accent)' : 'var(--text-secondary)';
+        badge.style.background = s.running ? 'var(--accent-light)' : 'var(--surface-raised)';
+      }
     }
     if (el('last-event')) el('last-event').textContent = s.last_event || 'ready';
-    if (el('live-dot')) el('live-dot').style.background = s.running ? 'var(--accent)' : 'var(--text-muted)';
+    if (el('live-dot')) el('live-dot').style.background = paused ? 'var(--warning,#9a6700)' : s.running ? 'var(--accent)' : 'var(--text-muted)';
   }
 
   function updateProgress(s) {

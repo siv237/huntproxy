@@ -24,6 +24,8 @@ const api = {
   proxyAlive() { return this.request('/api/proxy/alive'); },
   huntStart() { return this.request('/api/hunt/start', 'POST'); },
   huntStop() { return this.request('/api/hunt/stop', 'POST'); },
+  huntPause() { return this.request('/api/hunt/pause', 'POST'); },
+  huntResume() { return this.request('/api/hunt/resume', 'POST'); },
   proxyStart(port) { return this.request(`/api/proxy/start?port=${port}`, 'POST'); },
   proxyStop() { return this.request('/api/proxy/stop', 'POST'); },
   proxySelect(addr) { return this.request(`/api/proxy/select?address=${encodeURIComponent(addr || '')}`, 'POST'); },

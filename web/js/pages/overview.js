@@ -165,10 +165,17 @@ router.register('overview', (container) => {
 
     const header = ui.el('div', 'card-header');
     header.appendChild(ui.el('div', 'card-title', { id: 'pool-title', text: 'Pool Progress' }));
-    const huntBtn = ui.el('button', '', { id: 'pool-hunt-btn', style: 'font-size:1.4em;padding:0.1em 0.35em;border:1px solid var(--border);border-radius:0.25em;background:var(--surface-raised);color:var(--success);cursor:pointer;line-height:1' });
+    const btns = ui.el('div', '', { style: 'display:flex;gap:4px;align-items:center' });
+    const bstyle = 'font-size:11px;padding:2px 6px;border:1px solid var(--border);border-radius:3px;background:var(--surface-raised);cursor:pointer;line-height:1';
+    const huntBtn = ui.el('button', '', { id: 'pool-hunt-btn', style: bstyle + ';color:var(--success)' });
     huntBtn.textContent = '▶';
     huntBtn.title = 'Start hunt';
-    header.appendChild(huntBtn);
+    btns.appendChild(huntBtn);
+    const stopBtn = ui.el('button', '', { id: 'pool-stop-btn', style: bstyle + ';color:var(--danger);display:none' });
+    stopBtn.textContent = '■';
+    stopBtn.title = 'Stop hunt';
+    btns.appendChild(stopBtn);
+    header.appendChild(btns);
     card.appendChild(header);
 
     const body = ui.el('div', '', { style: 'display:flex;align-items:center;gap:20px;flex-wrap:wrap' });
@@ -933,20 +940,32 @@ router.register('overview', (container) => {
       }
       if (el('pool-hunt-btn')) {
         const btn = el('pool-hunt-btn');
-        if (s.running) {
-          btn.textContent = '■';
-          btn.title = 'Stop hunt';
-          btn.style.color = 'var(--danger)';
-          btn.onclick = () => api.huntStop().then(() => app.toast('Hunt stopped')).catch(e => app.toast('Error: ' + e.message, 'error'));
+        const stop = el('pool-stop-btn');
+        if (s.paused) {
+          btn.textContent = '▶';
+          btn.title = 'Resume';
+          btn.style.color = 'var(--warning,#9a6700)';
+          btn.onclick = () => api.huntResume().then(r => app.toast(r.ok ? 'Resumed' : r.error)).catch(e => app.toast('Error: ' + e.message, 'error'));
+        } else if (s.running) {
+          btn.textContent = '⏸';
+          btn.title = 'Pause';
+          btn.style.color = 'var(--warning,#9a6700)';
+          btn.onclick = () => api.huntPause().then(r => app.toast(r.ok ? 'Paused' : r.error)).catch(e => app.toast('Error: ' + e.message, 'error'));
         } else {
           btn.textContent = '▶';
-          btn.title = 'Start hunt';
+          btn.title = 'Start';
           btn.style.color = 'var(--success)';
-          btn.onclick = () => api.huntStart().then(() => app.toast('Hunt started')).catch(e => app.toast('Error: ' + e.message, 'error'));
+          btn.onclick = () => api.huntStart().then(r => app.toast(r.ok ? 'Started' : r.error)).catch(e => app.toast('Error: ' + e.message, 'error'));
+        }
+        if (stop) {
+          stop.style.display = (s.running || s.paused) ? '' : 'none';
+          stop.style.color = 'var(--danger)';
+          stop.onclick = () => api.huntStop().then(() => app.toast('Stopped')).catch(e => app.toast('Error: ' + e.message, 'error'));
         }
       }
       if (el('pool-title')) {
-        el('pool-title').textContent = s.running ? 'Pool Progress — Running' : 'Pool Progress';
+        const p = s.paused || false, m = s.manual_pause || false;
+        el('pool-title').textContent = p ? (m ? 'Pool Progress — Paused' : 'Pool Progress — No Internet') : (s.running ? 'Pool Progress — Running' : 'Pool Progress');
       }
 
       // Top countries
