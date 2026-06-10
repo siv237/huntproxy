@@ -2005,6 +2005,62 @@ class HuntState:
         except Exception:
             return False
 
+    async def test_proxy_direct(self, data: dict) -> dict:
+        host = data.get("host", "").strip()
+        port = int(data.get("port", 0) or 0)
+        protocol = data.get("protocol", "socks5")
+        uname = data.get("username", "")
+        passwd = data.get("password", "")
+        url = data.get("test_url", "") or "http://httpbin.org/ip"
+        if not host or not port:
+            return {"status": "fail", "http_code": 0, "latency_ms": -1, "error": "host and port required"}
+        start = time.monotonic()
+        try:
+            reader, writer = await asyncio.wait_for(
+                asyncio.open_connection(host, port), timeout=10)
+        except asyncio.TimeoutError:
+            return {"status": "timeout", "http_code": 0, "latency_ms": -1, "error": "connection timeout"}
+        except OSError as e:
+            return {"status": "fail", "http_code": 0, "latency_ms": -1, "error": str(e)}
+        proxy = {"protocol": protocol, "username": uname, "password": passwd}
+        try:
+            if protocol == "socks5":
+                ok = await self._socks5_handshake(reader, writer, url, proxy)
+            else:
+                ok = await self._http_proxy_handshake(reader, writer, url, proxy)
+            if not ok:
+                try: writer.close()
+                except: pass
+                return {"status": "fail", "http_code": 0, "latency_ms": -1, "error": "handshake failed"}
+            target = url.split("//", 1)[-1].split("/", 1)[0]
+            req = f"GET {url} HTTP/1.1\r\nHost: {target.split(':')[0]}\r\nConnection: close\r\n\r\n"
+            writer.write(req.encode()); await writer.drain()
+            resp_data = b""
+            while True:
+                chunk = await asyncio.wait_for(reader.read(4096), timeout=10)
+                if not chunk: break
+                resp_data += chunk
+                if len(resp_data) > 65536: break
+            latency = int((time.monotonic() - start) * 1000)
+            try: writer.close()
+            except: pass
+            status_line = resp_data.split(b"\r\n")[0] if resp_data else b""
+            http_code = 0
+            parts = status_line.split(b" ", 2)
+            if len(parts) >= 2:
+                try: http_code = int(parts[1])
+                except: pass
+            check_status = "ok" if 200 <= http_code < 400 else "fail"
+            return {"status": check_status, "http_code": http_code, "latency_ms": latency, "error": ""}
+        except asyncio.TimeoutError:
+            try: writer.close()
+            except: pass
+            return {"status": "timeout", "http_code": 0, "latency_ms": -1, "error": "read timeout"}
+        except Exception as e:
+            try: writer.close()
+            except: pass
+            return {"status": "fail", "http_code": 0, "latency_ms": -1, "error": str(e)}
+
     def _update_proxy_check(self, proxy_id: str, status: str, latency: int):
         try:
             conn = self._db()
@@ -3562,7 +3618,15 @@ class HuntServer:
                 return json.dumps({"ok": True, "proxy": result}), 200, "application/json"
             return json.dumps({"ok": False, "error": "id, name, host and port are required"}), 400, "application/json"
 
-        if path.startswith("/api/custom-proxies/") and not path.endswith("/toggle") and not path.endswith("/test"):
+        if path == "/api/custom-proxies/test-direct" and method == "POST":
+            try:
+                data = json.loads(body or b"{}")
+            except Exception:
+                data = {}
+            result = await self.state.test_proxy_direct(data)
+            return json.dumps(result), 200, "application/json"
+
+        if path.startswith("/api/custom-proxies/") and not path.endswith("/toggle") and not path.endswith("/test") and path != "/api/custom-proxies/test-direct":
             proxy_id = unquote(path[len("/api/custom-proxies/"):])
             if method == "GET":
                 result = self.state.get_custom_proxy(proxy_id)

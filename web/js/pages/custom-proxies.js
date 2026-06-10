@@ -138,7 +138,38 @@ router.register('custom-proxies', (container) => {
     hints.innerHTML = '<b>Protocol hints:</b><br>SOCKS5 — Tor (127.0.0.1:9050), local SOCKS proxies<br>HTTP — corporate proxies (often with auth)<br>HTTPS — TLS-wrapped proxies (anti-ban services)';
     body.appendChild(hints);
 
-    const btnRow = ui.el('div', '', { style: 'display:flex;gap:8px' });
+    const btnRow = ui.el('div', '', { style: 'display:flex;gap:8px;align-items:center' });
+    const testBtn = ui.el('button', 'btn btn-sm btn-secondary', { text: 'Test Connection' });
+    testBtn.addEventListener('click', () => {
+      const host = document.getElementById('pe-host').value.trim();
+      const port = parseInt(document.getElementById('pe-port').value) || 0;
+      if (!host || !port) { app.toast('Fill host and port first', 'error'); return; }
+      testBtn.disabled = true;
+      testBtn.textContent = 'Testing...';
+      const testData = {
+        host,
+        port,
+        protocol: document.getElementById('pe-protocol').value,
+        username: document.getElementById('pe-username').value.trim(),
+        password: document.getElementById('pe-password').value || (p && p.password === '****' ? '' : ''),
+        test_url: document.getElementById('pe-test-url').value.trim(),
+      };
+      api.customProxyTestDirect(testData).then(result => {
+        testBtn.disabled = false;
+        testBtn.textContent = 'Test Connection';
+        if (result.status === 'ok') {
+          app.toast(`OK — HTTP ${result.http_code} in ${result.latency_ms}ms`);
+        } else {
+          app.toast(`${result.status}: ${result.error || 'HTTP ' + result.http_code}`, 'error');
+        }
+      }).catch(e => {
+        testBtn.disabled = false;
+        testBtn.textContent = 'Test Connection';
+        app.toast('Error: ' + e.message, 'error');
+      });
+    });
+    btnRow.appendChild(testBtn);
+
     const saveBtn = ui.el('button', 'btn btn-sm btn-primary', { text: p ? 'Save Changes' : 'Create Proxy' });
     saveBtn.addEventListener('click', () => {
       const name = document.getElementById('pe-name').value.trim();

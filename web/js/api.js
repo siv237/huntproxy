@@ -88,4 +88,5 @@ const api = {
   customProxyDelete(id) { return this.request(`/api/custom-proxies/${encodeURIComponent(id)}`, 'DELETE'); },
   customProxyToggle(id) { return this.request(`/api/custom-proxies/${encodeURIComponent(id)}/toggle`, 'POST'); },
   customProxyTest(id) { return this.request(`/api/custom-proxies/${encodeURIComponent(id)}/test`, 'POST'); },
+  customProxyTestDirect(data) { return this.request('/api/custom-proxies/test-direct', 'POST', data); },
 };
