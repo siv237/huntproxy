@@ -64,4 +64,19 @@ const api = {
   domains() { return this.request('/api/domains'); },
   errors() { return this.request('/api/errors'); },
   bandwidth() { return this.request('/api/bandwidth'); },
+
+  // Routing & Domain Lists
+  routingStatus() { return this.request('/api/routing/status'); },
+  routingEnable() { return this.request('/api/routing/enable', 'POST'); },
+  routingDisable() { return this.request('/api/routing/disable', 'POST'); },
+  routingSetDefault(route) { return this.request('/api/routing/default', 'POST', { default_route: route }); },
+  routingReorder(listIds) { return this.request('/api/routing/reorder', 'POST', { order: listIds }); },
+  routingTest(domain) { return this.request('/api/routing/test', 'POST', { domain }); },
+
+  domainLists() { return this.request('/api/domain-lists'); },
+  domainListGet(id) { return this.request(`/api/domain-lists/${encodeURIComponent(id)}`); },
+  domainListCreate(data) { return this.request('/api/domain-lists', 'POST', data); },
+  domainListUpdate(id, data) { return this.request(`/api/domain-lists/${encodeURIComponent(id)}`, 'POST', data); },
+  domainListDelete(id) { return this.request(`/api/domain-lists/${encodeURIComponent(id)}`, 'DELETE'); },
+  domainListToggle(id) { return this.request(`/api/domain-lists/${encodeURIComponent(id)}/toggle`, 'POST'); },
 };

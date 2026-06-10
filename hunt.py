@@ -299,6 +299,28 @@ class HuntState:
                 msg TEXT DEFAULT ''
             );
             CREATE INDEX IF NOT EXISTS idx_events_ts ON events(ts);
+            CREATE TABLE IF NOT EXISTS domain_lists (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                source TEXT NOT NULL DEFAULT 'manual',
+                url TEXT DEFAULT '',
+                route TEXT NOT NULL DEFAULT '',
+                enabled INTEGER NOT NULL DEFAULT 1,
+                priority INTEGER NOT NULL DEFAULT 0,
+                created_at REAL NOT NULL DEFAULT 0,
+                updated_at REAL NOT NULL DEFAULT 0
+            );
+            CREATE TABLE IF NOT EXISTS domain_entries (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                list_id TEXT NOT NULL REFERENCES domain_lists(id) ON DELETE CASCADE,
+                pattern TEXT NOT NULL
+            );
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_domain_entries_uniq ON domain_entries(list_id, pattern);
+            CREATE INDEX IF NOT EXISTS idx_domain_entries_list ON domain_entries(list_id);
+            CREATE TABLE IF NOT EXISTS routing_config (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            );
         """)
         conn.commit()
         for col, default in [
@@ -1412,6 +1434,277 @@ class HuntState:
                 f.write(f"{r.address}  {r.country}  {r.last_latency:.3f}\n")
         tmp.rename(self.working_file)
 
+    # ============================================================
+    # Domain Lists & Routing (SQLite)
+    # ============================================================
+
+    def _routing_get(self, key: str, default: str = "") -> str:
+        try:
+            conn = self._db()
+            row = conn.execute("SELECT value FROM routing_config WHERE key=?", (key,)).fetchone()
+            conn.close()
+            return row["value"] if row else default
+        except Exception:
+            return default
+
+    def _routing_set(self, key: str, value: str):
+        try:
+            conn = self._db()
+            conn.execute("INSERT OR REPLACE INTO routing_config (key, value) VALUES (?,?)", (key, value))
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            logger.error("routing_set: %s", e)
+
+    def get_routing_status(self) -> dict:
+        enabled = self._routing_get("routing_enabled", "false") == "true"
+        default_route = self._routing_get("default_route", "direct")
+        lists = self.get_domain_lists()
+        return {
+            "enabled": enabled,
+            "default_route": default_route,
+            "lists": lists,
+        }
+
+    def routing_enable(self):
+        self._routing_set("routing_enabled", "true")
+        self._emit("Routing enabled", "info")
+
+    def routing_disable(self):
+        self._routing_set("routing_enabled", "false")
+        self._emit("Routing disabled", "info")
+
+    def routing_set_default(self, route: str):
+        self._routing_set("default_route", route)
+        self._emit(f"Default route set to: {route}", "info")
+
+    def routing_test(self, domain: str) -> dict:
+        enabled = self._routing_get("routing_enabled", "false") == "true"
+        if not enabled:
+            if hasattr(self, 'proxy_runner') and self.proxy_runner:
+                if self.proxy_runner.direct_mode:
+                    return {"domain": domain, "route": "direct", "matched_list": None, "routing_enabled": False}
+                if self.proxy_runner.active_proxy_addr:
+                    return {"domain": domain, "route": f"proxy:{self.proxy_runner.active_proxy_addr}", "matched_list": None, "routing_enabled": False}
+            return {"domain": domain, "route": "pool", "matched_list": None, "routing_enabled": False}
+
+        default_route = self._routing_get("default_route", "direct")
+        conn = self._db()
+        try:
+            rows = conn.execute(
+                "SELECT dl.id, dl.name, dl.route FROM domain_lists dl "
+                "WHERE dl.enabled=1 AND dl.route!='' ORDER BY dl.priority ASC"
+            ).fetchall()
+            for row in rows:
+                match = conn.execute(
+                    "SELECT 1 FROM domain_entries WHERE list_id=? AND pattern=? LIMIT 1",
+                    (row["id"], domain.lower())
+                ).fetchone()
+                if match:
+                    return {"domain": domain, "route": row["route"], "matched_list": row["name"], "routing_enabled": True}
+                suffix_patterns = conn.execute(
+                    "SELECT pattern FROM domain_entries WHERE list_id=? AND (pattern LIKE '.%%' OR pattern LIKE '*.%%')",
+                    (row["id"],)
+                ).fetchall()
+                for sp in suffix_patterns:
+                    if self._domain_matches(domain, [sp["pattern"]]):
+                        return {"domain": domain, "route": row["route"], "matched_list": row["name"], "routing_enabled": True}
+        finally:
+            conn.close()
+        return {"domain": domain, "route": default_route, "matched_list": None, "routing_enabled": True}
+
+    def get_domain_lists(self) -> list:
+        try:
+            conn = self._db()
+            rows = conn.execute(
+                "SELECT dl.id, dl.name, dl.source, dl.url, dl.route, dl.enabled, dl.priority, dl.created_at, dl.updated_at, "
+                "(SELECT COUNT(*) FROM domain_entries WHERE list_id=dl.id) as domain_count "
+                "FROM domain_lists dl ORDER BY dl.priority ASC"
+            ).fetchall()
+            conn.close()
+            return [dict(r) for r in rows]
+        except Exception as e:
+            logger.error("get_domain_lists: %s", e)
+            return []
+
+    def get_domain_list(self, list_id: str) -> Optional[dict]:
+        try:
+            conn = self._db()
+            row = conn.execute(
+                "SELECT dl.id, dl.name, dl.source, dl.url, dl.route, dl.enabled, dl.priority, dl.created_at, dl.updated_at, "
+                "(SELECT COUNT(*) FROM domain_entries WHERE list_id=dl.id) as domain_count "
+                "FROM domain_lists dl WHERE dl.id=?", (list_id,)
+            ).fetchone()
+            if not row:
+                conn.close()
+                return None
+            patterns = conn.execute(
+                "SELECT pattern FROM domain_entries WHERE list_id=? ORDER BY id", (list_id,)
+            ).fetchall()
+            conn.close()
+            result = dict(row)
+            result["domains"] = [p["pattern"] for p in patterns]
+            return result
+        except Exception as e:
+            logger.error("get_domain_list: %s", e)
+            return None
+
+    def create_domain_list(self, data: dict) -> Optional[dict]:
+        list_id = data.get("id", "").strip()
+        name = data.get("name", "").strip()
+        if not list_id or not name:
+            return None
+        domains = data.get("domains", [])
+        now = time.time()
+        try:
+            conn = self._db()
+            max_pri = conn.execute("SELECT COALESCE(MAX(priority),-1)+1 as next FROM domain_lists").fetchone()
+            priority = max_pri["next"] if max_pri else 0
+            conn.execute(
+                "INSERT INTO domain_lists (id, name, source, url, route, enabled, priority, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
+                (list_id, name, data.get("source", "manual"), data.get("url", ""), data.get("route", ""),
+                 1 if data.get("enabled", True) else 0, priority, now, now)
+            )
+            for pattern in domains:
+                p = pattern.strip().lower()
+                if p:
+                    conn.execute("INSERT OR IGNORE INTO domain_entries (list_id, pattern) VALUES (?,?)", (list_id, p))
+            conn.commit()
+            conn.close()
+            self._emit(f"Domain list created: {name} ({len(domains)} domains)", "info")
+            return self.get_domain_list(list_id)
+        except Exception as e:
+            logger.error("create_domain_list: %s", e)
+            return None
+
+    def update_domain_list(self, list_id: str, data: dict) -> Optional[dict]:
+        now = time.time()
+        try:
+            conn = self._db()
+            existing = conn.execute("SELECT id FROM domain_lists WHERE id=?", (list_id,)).fetchone()
+            if not existing:
+                conn.close()
+                return None
+            name = data.get("name", "").strip()
+            if name:
+                conn.execute(
+                    "UPDATE domain_lists SET name=?, source=?, url=?, route=?, enabled=?, updated_at=? WHERE id=?",
+                    (name, data.get("source", "manual"), data.get("url", ""), data.get("route", ""),
+                     1 if data.get("enabled", True) else 0, now, list_id)
+                )
+            if "domains" in data:
+                conn.execute("DELETE FROM domain_entries WHERE list_id=?", (list_id,))
+                for pattern in data["domains"]:
+                    p = pattern.strip().lower() if isinstance(pattern, str) else str(pattern).strip().lower()
+                    if p:
+                        conn.execute("INSERT OR IGNORE INTO domain_entries (list_id, pattern) VALUES (?,?)", (list_id, p))
+            conn.commit()
+            conn.close()
+            self._emit(f"Domain list updated: {list_id}", "info")
+            return self.get_domain_list(list_id)
+        except Exception as e:
+            logger.error("update_domain_list: %s", e)
+            return None
+
+    def delete_domain_list(self, list_id: str) -> bool:
+        try:
+            conn = self._db()
+            conn.execute("DELETE FROM domain_entries WHERE list_id=?", (list_id,))
+            conn.execute("DELETE FROM domain_lists WHERE id=?", (list_id,))
+            conn.commit()
+            conn.close()
+            self._emit(f"Domain list deleted: {list_id}", "warn")
+            return True
+        except Exception as e:
+            logger.error("delete_domain_list: %s", e)
+            return False
+
+    def toggle_domain_list(self, list_id: str) -> Optional[dict]:
+        try:
+            conn = self._db()
+            row = conn.execute("SELECT enabled FROM domain_lists WHERE id=?", (list_id,)).fetchone()
+            if not row:
+                conn.close()
+                return None
+            new_val = 0 if row["enabled"] else 1
+            conn.execute("UPDATE domain_lists SET enabled=?, updated_at=? WHERE id=?", (new_val, time.time(), list_id))
+            conn.commit()
+            conn.close()
+            status = "enabled" if new_val else "disabled"
+            self._emit(f"Domain list {list_id} {status}", "info")
+            return self.get_domain_list(list_id)
+        except Exception as e:
+            logger.error("toggle_domain_list: %s", e)
+            return None
+
+    def reorder_domain_lists(self, order: list):
+        try:
+            conn = self._db()
+            for i, list_id in enumerate(order):
+                conn.execute("UPDATE domain_lists SET priority=? WHERE id=?", (i, list_id))
+            conn.commit()
+            conn.close()
+            self._emit("Routes reordered", "info")
+        except Exception as e:
+            logger.error("reorder_domain_lists: %s", e)
+
+    def _resolve_route(self, host: str) -> str:
+        enabled = self._routing_get("routing_enabled", "false") == "true"
+        if not enabled:
+            if hasattr(self, 'proxy_runner') and self.proxy_runner:
+                if self.proxy_runner.direct_mode:
+                    return "direct"
+                if self.proxy_runner.active_proxy_addr:
+                    return f"proxy:{self.proxy_runner.active_proxy_addr}"
+            return "pool"
+
+        host_lower = host.lower()
+        conn = self._db()
+        try:
+            rows = conn.execute(
+                "SELECT dl.id, dl.route FROM domain_lists dl "
+                "WHERE dl.enabled=1 AND dl.route!='' ORDER BY dl.priority ASC"
+            ).fetchall()
+            for row in rows:
+                exact = conn.execute(
+                    "SELECT 1 FROM domain_entries WHERE list_id=? AND pattern=? LIMIT 1",
+                    (row["id"], host_lower)
+                ).fetchone()
+                if exact:
+                    return row["route"]
+                suffix_patterns = conn.execute(
+                    "SELECT pattern FROM domain_entries WHERE list_id=? AND (pattern LIKE '.%%' OR pattern LIKE '*.%%')",
+                    (row["id"],)
+                ).fetchall()
+                for sp in suffix_patterns:
+                    if self._domain_matches(host, [sp["pattern"]]):
+                        return row["route"]
+        except Exception as e:
+            logger.error("_resolve_route: %s", e)
+        finally:
+            conn.close()
+        return self._routing_get("default_route", "direct")
+
+    @staticmethod
+    def _domain_matches(host: str, patterns: list) -> bool:
+        host_lower = host.lower()
+        for pattern in patterns:
+            p = pattern.lower().strip()
+            if p.startswith("exact:"):
+                if host_lower == p[6:]:
+                    return True
+            elif p.startswith("*."):
+                suffix = p[1:]
+                if host_lower.endswith(suffix) or host_lower == p[2:]:
+                    return True
+            elif p.startswith("."):
+                if host_lower.endswith(p) or host_lower == p[1:]:
+                    return True
+            else:
+                if host_lower == p or host_lower.endswith("." + p):
+                    return True
+        return False
+
 
 # ============================================================
 # Proxy Runner — local proxy server with upstream selection
@@ -1613,6 +1906,76 @@ class ProxyRunner:
         self._log(peer, target_host, "ok", up_addr, bytes_in=bi, bytes_out=bo, duration=dur)
 
     async def _connect_upstream(self, host: str, port: int):
+        route = self.state._resolve_route(host)
+        return await self._connect_by_route(route, host, port)
+
+    async def _connect_by_route(self, route: str, host: str, port: int):
+        if route == "direct":
+            try:
+                reader, writer = await asyncio.wait_for(
+                    asyncio.open_connection(host, port), timeout=15)
+                return reader, writer, "direct"
+            except Exception:
+                return None
+
+        if route.startswith("proxy:"):
+            addr = route[6:]
+            r = self.state.ratings.get(addr)
+            if r and not r.in_blacklist:
+                phost, pport_str = r.address.rsplit(":", 1)
+                try:
+                    reader, writer = await asyncio.wait_for(
+                        asyncio.open_connection(phost, int(pport_str)), timeout=10)
+                except Exception:
+                    return None
+                if r.protocol == "socks4":
+                    ok = await self._socks4_cmd(reader, writer, host, port)
+                elif r.protocol == "socks5":
+                    ok = await self._socks5_cmd(reader, writer, host, port)
+                else:
+                    ok = await self._http_connect_cmd(reader, writer, host, port)
+                if not ok:
+                    try: writer.close()
+                    except: pass
+                    return None
+                return reader, writer, r.address
+            phost, pport_str = addr.rsplit(":", 1)
+            try:
+                reader, writer = await asyncio.wait_for(
+                    asyncio.open_connection(phost, int(pport_str)), timeout=10)
+            except Exception:
+                return None
+            return reader, writer, addr
+
+        if route == "pool" or route == "":
+            pool = [r for r in self.state.ratings.values()
+                    if r.last_status == "ok" and not r.in_blacklist]
+            if not pool:
+                return None
+            pool.sort(key=lambda r: r.score, reverse=True)
+            for attempt in range(min(len(pool), 8)):
+                p = pool[attempt]
+                phost, pport_str = p.address.rsplit(":", 1)
+                try:
+                    reader, writer = await asyncio.wait_for(
+                        asyncio.open_connection(phost, int(pport_str)), timeout=10)
+                except Exception:
+                    continue
+                ok = False
+                if p.protocol == "socks4":
+                    ok = await self._socks4_cmd(reader, writer, host, port)
+                elif p.protocol == "socks5":
+                    ok = await self._socks5_cmd(reader, writer, host, port)
+                else:
+                    ok = await self._http_connect_cmd(reader, writer, host, port)
+                if not ok:
+                    try: writer.close()
+                    except: pass
+                    continue
+                self._failover_idx = (attempt + 1) % len(pool)
+                return reader, writer, p.address
+            return None
+
         if self.direct_mode:
             try:
                 reader, writer = await asyncio.wait_for(
@@ -1648,17 +2011,14 @@ class ProxyRunner:
         if not pool:
             return None
         pool.sort(key=lambda r: r.score, reverse=True)
-
         for attempt in range(min(len(pool), 8)):
             p = pool[attempt]
-
             phost, pport_str = p.address.rsplit(":", 1)
             try:
                 reader, writer = await asyncio.wait_for(
                     asyncio.open_connection(phost, int(pport_str)), timeout=10)
             except Exception:
                 continue
-
             ok = False
             if p.protocol == "socks4":
                 ok = await self._socks4_cmd(reader, writer, host, port)
@@ -1666,15 +2026,12 @@ class ProxyRunner:
                 ok = await self._socks5_cmd(reader, writer, host, port)
             else:
                 ok = await self._http_connect_cmd(reader, writer, host, port)
-
             if not ok:
                 try: writer.close()
                 except: pass
                 continue
-
             self._failover_idx = (attempt + 1) % len(pool)
             return reader, writer, p.address
-
         return None
 
     async def _http_connect_cmd(self, r, w, h, p):
@@ -2706,6 +3063,93 @@ class HuntServer:
                 "incoming_gb": round(incoming / (1024**3), 3),
                 "outgoing_gb": round(outgoing / (1024**3), 3),
             }), 200, "application/json"
+
+        # === Routing API ===
+        if path == "/api/routing/status":
+            return json.dumps(self.state.get_routing_status()), 200, "application/json"
+
+        if path == "/api/routing/enable" and method == "POST":
+            self.state.routing_enable()
+            return json.dumps({"ok": True}), 200, "application/json"
+
+        if path == "/api/routing/disable" and method == "POST":
+            self.state.routing_disable()
+            return json.dumps({"ok": True}), 200, "application/json"
+
+        if path == "/api/routing/default" and method == "POST":
+            try:
+                data = json.loads(body or b"{}")
+            except Exception:
+                data = {}
+            route = data.get("default_route", "direct")
+            self.state.routing_set_default(route)
+            return json.dumps({"ok": True, "default_route": route}), 200, "application/json"
+
+        if path == "/api/routing/reorder" and method == "POST":
+            try:
+                data = json.loads(body or b"{}")
+            except Exception:
+                data = {}
+            order = data.get("order", [])
+            if order:
+                self.state.reorder_domain_lists(order)
+            return json.dumps({"ok": True}), 200, "application/json"
+
+        if path == "/api/routing/test" and method == "POST":
+            try:
+                data = json.loads(body or b"{}")
+            except Exception:
+                data = {}
+            domain = data.get("domain", "").strip()
+            if not domain:
+                return json.dumps({"error": "domain is required"}), 400, "application/json"
+            result = self.state.routing_test(domain)
+            return json.dumps(result), 200, "application/json"
+
+        # === Domain Lists API ===
+        if path == "/api/domain-lists" and method == "GET":
+            lists = self.state.get_domain_lists()
+            return json.dumps({"lists": lists}), 200, "application/json"
+
+        if path == "/api/domain-lists" and method == "POST":
+            try:
+                data = json.loads(body or b"{}")
+            except Exception:
+                data = {}
+            result = self.state.create_domain_list(data)
+            if result:
+                return json.dumps({"ok": True, "list": result}), 200, "application/json"
+            return json.dumps({"ok": False, "error": "id and name are required"}), 400, "application/json"
+
+        if path.startswith("/api/domain-lists/") and not path.endswith("/toggle"):
+            list_id = unquote(path[len("/api/domain-lists/"):])
+            if method == "GET":
+                result = self.state.get_domain_list(list_id)
+                if result:
+                    return json.dumps(result), 200, "application/json"
+                return json.dumps({"error": "not found"}), 404, "application/json"
+            elif method == "POST":
+                try:
+                    data = json.loads(body or b"{}")
+                except Exception:
+                    data = {}
+                result = self.state.update_domain_list(list_id, data)
+                if result:
+                    return json.dumps({"ok": True, "list": result}), 200, "application/json"
+                return json.dumps({"ok": False, "error": "not found"}), 404, "application/json"
+            elif method == "DELETE":
+                ok = self.state.delete_domain_list(list_id)
+                if ok:
+                    return json.dumps({"ok": True}), 200, "application/json"
+                return json.dumps({"ok": False, "error": "not found"}), 404, "application/json"
+
+        if path.endswith("/toggle") and path.startswith("/api/domain-lists/"):
+            list_id = unquote(path[len("/api/domain-lists/"):-len("/toggle")])
+            if method == "POST":
+                result = self.state.toggle_domain_list(list_id)
+                if result:
+                    return json.dumps({"ok": True, "list": result}), 200, "application/json"
+                return json.dumps({"ok": False, "error": "not found"}), 404, "application/json"
 
         return json.dumps({"error": "not found"}), 404, "application/json"
 

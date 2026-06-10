@@ -223,4 +223,17 @@ const ui = {
     while (b >= 1024 && i < units.length - 1) { b /= 1024; i++; }
     return b.toFixed(2) + ' ' + units[i];
   },
+
+  escHtml(str) {
+    if (str == null) return '';
+    return String(str).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
+  },
+
+  formatRouteLabel(route) {
+    if (!route) return '<span style="color:var(--text-muted)">—</span>';
+    if (route === 'direct') return '<span style="color:var(--success);font-weight:600">Direct</span>';
+    if (route === 'pool') return '<span style="color:var(--accent);font-weight:600">Pool</span>';
+    if (route.startsWith('proxy:')) return '<span style="color:var(--info);font-weight:600">' + ui.escHtml(route) + '</span>';
+    return '<span style="color:var(--text-muted)">' + ui.escHtml(route) + '</span>';
+  },
 };
