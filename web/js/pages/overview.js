@@ -703,7 +703,11 @@ router.register('overview', (container) => {
     card.style.flexDirection = 'column';
 
     const header = ui.el('div', 'card-header');
-    header.appendChild(ui.el('div', 'card-title', { id: 'proxy-card-title', text: 'Local Proxy' }));
+    const titleRow = ui.el('div', '', { style: 'display:flex;align-items:center;gap:8px' });
+    titleRow.appendChild(ui.el('div', 'card-title', { id: 'proxy-card-title', text: 'Local Proxy' }));
+    const upstreamBtns = ui.el('div', '', { id: 'upstream-btns', style: 'display:flex;gap:4px' });
+    titleRow.appendChild(upstreamBtns);
+    header.appendChild(titleRow);
     const poolBtn = ui.el('button', 'card-action', { text: 'Proxy Pool' });
     poolBtn.addEventListener('click', () => router.navigate('proxy-pool'));
     header.appendChild(poolBtn);
@@ -724,27 +728,31 @@ router.register('overview', (container) => {
     const statsWrap = document.getElementById('proxy-stats-row');
     const card = document.getElementById('current-proxy-card');
     const titleEl = document.getElementById('proxy-card-title');
+    const btnsEl = document.getElementById('upstream-btns');
     if (!body) return;
 
     const running = ps && ps.running;
+    const s5running = ss && ss.running;
+    const anyRunning = running || s5running;
 
     if (card) {
-      card.style.background = running ? '' : 'rgba(239,68,68,0.06)';
-      card.style.borderColor = running ? '' : 'rgba(239,68,68,0.25)';
+      card.style.background = anyRunning ? '' : 'rgba(239,68,68,0.06)';
+      card.style.borderColor = anyRunning ? '' : 'rgba(239,68,68,0.25)';
     }
     if (titleEl) {
-      titleEl.textContent = running ? 'Local Proxy' : 'Local Proxy — Остановлено';
-      titleEl.style.color = running ? '' : 'var(--danger)';
+      titleEl.textContent = anyRunning ? 'Local Proxy' : 'Local Proxy — Остановлено';
+      titleEl.style.color = anyRunning ? '' : 'var(--danger)';
     }
 
     body.innerHTML = '';
     if (statsWrap) statsWrap.innerHTML = '';
 
     const port = ps ? (ps.port || 17277) : 17277;
+    const s5port = ss ? (ss.port || 17278) : 17278;
     const bindHost = ps ? (ps.bind_host || '127.0.0.1') : '127.0.0.1';
     const ap = ps && ps.active_proxy;
 
-    const srvColor = running ? 'var(--success)' : 'var(--danger)';
+    const srvColor = anyRunning ? 'var(--success)' : 'var(--danger)';
 
     const mkBtn = (char, title, color, fn) => {
       const b = ui.el('button', '', { style: `font-size:1.4em;padding:0.1em 0.35em;border:1px solid var(--border);border-radius:0.25em;background:var(--surface-raised);color:${color};cursor:pointer;line-height:1` });
@@ -753,51 +761,40 @@ router.register('overview', (container) => {
       return b;
     };
 
-    const chainRow = ui.el('div', '', { style: 'display:flex;align-items:center;gap:0.4em;margin-bottom:0.6em;flex-wrap:wrap' });
-
-    const localAddr = ui.el('span', '', { style: `font-family:monospace;font-weight:700;color:${srvColor};font-size:12px`, text: bindHost + ':' + port });
-    chainRow.appendChild(localAddr);
-
-    const arrowSpan = ui.el('span', '', { style: 'color:var(--text-muted);font-weight:700', text: '→' });
-    chainRow.appendChild(arrowSpan);
-
-    const addrWrap = ui.el('div', '', { style: 'flex:1;min-width:0;overflow:hidden' });
-    if (ap) {
-      addrWrap.appendChild(ui.el('span', '', { style: 'font-family:monospace;font-weight:700;color:var(--success);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;font-size:12px', text: ap.address }));
-    } else if (ps && ps.direct_mode) {
-      addrWrap.appendChild(ui.el('span', '', { style: 'font-weight:600;color:var(--text-muted)', text: 'прямой' }));
-    } else {
-      addrWrap.appendChild(ui.el('span', '', { style: 'color:var(--text-muted)', text: '—' }));
-    }
-    chainRow.appendChild(addrWrap);
-
+    // HTTP row
+    const httpRow = ui.el('div', '', { style: 'display:flex;align-items:center;gap:0.4em;margin-bottom:0.2em' });
+    httpRow.appendChild(ui.el('span', '', { style: 'color:var(--text-muted);font-weight:600;font-size:10px;text-transform:uppercase;width:44px;flex-shrink:0', text: 'HTTP' }));
+    httpRow.appendChild(ui.el('span', '', { style: `font-family:monospace;font-weight:700;color:${running ? 'var(--success)' : 'var(--text-muted)'};font-size:12px`, text: String(port) }));
     if (running) {
-      chainRow.appendChild(mkBtn('■', 'Stop', 'var(--danger)', () => api.proxyStop().then(() => app.toast('Proxy stopped')).catch(e => app.toast('Error: ' + e.message, 'error'))));
+      httpRow.appendChild(mkBtn('■', 'Stop HTTP', 'var(--danger)', () => api.proxyStop().then(() => app.toast('Proxy stopped')).catch(e => app.toast('Error: ' + e.message, 'error'))));
+      httpRow.appendChild(ui.el('span', '', { style: 'color:var(--success);font-weight:600;font-size:11px', text: '✓' + (ps.connections_ok || 0) }));
+      httpRow.appendChild(ui.el('span', '', { style: 'color:var(--danger);font-weight:600;font-size:11px', text: '✗' + (ps.connections_failed || 0) }));
     } else {
-      chainRow.appendChild(mkBtn('▶', 'Start', 'var(--success)', () => api.proxyStart(17277).then(() => app.toast('Proxy started')).catch(e => app.toast('Error: ' + e.message, 'error'))));
+      httpRow.appendChild(mkBtn('▶', 'Start HTTP', 'var(--success)', () => api.proxyStart(port).then(() => app.toast('Proxy started')).catch(e => app.toast('Error: ' + e.message, 'error'))));
     }
-    if (ap) {
-      chainRow.appendChild(mkBtn('»', 'Next proxy', 'var(--accent)', () => api.proxyNext().then(() => app.toast('Switched to next proxy')).catch(e => app.toast('Error: ' + e.message, 'error'))));
-    }
-    body.appendChild(chainRow);
+    body.appendChild(httpRow);
 
-    // SOCKS5 server row
-    const s5running = ss && ss.running;
-    const s5port = ss ? (ss.port || 17278) : 17278;
-    const s5host = ss ? (ss.bind_host || '127.0.0.1') : '127.0.0.1';
-    const s5color = s5running ? 'var(--success)' : 'var(--text-muted)';
-    const s5row = ui.el('div', '', { style: 'display:flex;align-items:center;gap:0.4em;margin-bottom:0.4em;font-size:11px' });
-    s5row.appendChild(ui.el('span', '', { style: 'color:var(--text-muted);font-weight:600', text: 'SOCKS5' }));
-    s5row.appendChild(ui.el('span', '', { style: `font-family:monospace;font-weight:700;color:${s5color}`, text: s5host + ':' + s5port }));
+    // SOCKS5 row
+    const s5Row = ui.el('div', '', { style: 'display:flex;align-items:center;gap:0.4em;margin-bottom:0.4em' });
+    s5Row.appendChild(ui.el('span', '', { style: 'color:var(--text-muted);font-weight:600;font-size:10px;text-transform:uppercase;width:44px;flex-shrink:0', text: 'SOCKS5' }));
+    s5Row.appendChild(ui.el('span', '', { style: `font-family:monospace;font-weight:700;color:${s5running ? 'var(--success)' : 'var(--text-muted)'};font-size:12px`, text: String(s5port) }));
     if (s5running) {
-      s5row.appendChild(mkBtn('■', 'Stop SOCKS5', 'var(--danger)', () => api.socks5Stop().then(() => app.toast('SOCKS5 stopped')).catch(e => app.toast('Error: ' + e.message, 'error'))));
+      s5Row.appendChild(mkBtn('■', 'Stop SOCKS5', 'var(--danger)', () => api.socks5Stop().then(() => app.toast('SOCKS5 stopped')).catch(e => app.toast('Error: ' + e.message, 'error'))));
+      s5Row.appendChild(ui.el('span', '', { style: 'color:var(--success);font-weight:600;font-size:11px', text: '✓' + (ss.connections_ok || 0) }));
+      s5Row.appendChild(ui.el('span', '', { style: 'color:var(--danger);font-weight:600;font-size:11px', text: '✗' + (ss.connections_failed || 0) }));
     } else {
-      s5row.appendChild(mkBtn('▶', 'Start SOCKS5', 'var(--success)', () => api.socks5Start(s5port).then(() => app.toast('SOCKS5 started')).catch(e => app.toast('Error: ' + e.message, 'error'))));
+      s5Row.appendChild(mkBtn('▶', 'Start SOCKS5', 'var(--success)', () => api.socks5Start(s5port).then(() => app.toast('SOCKS5 started')).catch(e => app.toast('Error: ' + e.message, 'error'))));
     }
-    if (s5running) {
-      s5row.appendChild(ui.el('span', '', { style: 'color:var(--success);font-size:10px', text: (ss.connections || 0) + ' conn' }));
+    body.appendChild(s5Row);
+
+    // Upstream buttons in header
+    if (btnsEl) {
+      btnsEl.innerHTML = '';
+      if (ap) {
+        btnsEl.appendChild(mkBtn('»', 'Next proxy', 'var(--accent)', () => api.proxyNext().then(() => app.toast('Switched to next proxy')).catch(e => app.toast('Error: ' + e.message, 'error'))));
+        btnsEl.appendChild(mkBtn('↻', 'Recheck', 'var(--info)', () => api.proxyRecheck(ap.address).then(() => app.toast('Recheck complete')).catch(e => app.toast('Error: ' + e.message, 'error'))));
+      }
     }
-    body.appendChild(s5row);
 
     if (!ap) {
       const nextBtn = ui.el('button', '', { style: 'padding:0.4em 1em;border:1px solid var(--border);border-radius:0.3em;background:var(--surface-raised);color:var(--accent);cursor:pointer', text: 'Select best proxy' });
@@ -811,8 +808,6 @@ router.register('overview', (container) => {
     const metaRow = ui.el('div', '', { style: 'display:flex;align-items:center;gap:0.4em;flex-wrap:wrap;margin-bottom:0.3em' });
     metaRow.appendChild(ui.el('span', '', { style: 'color:var(--accent);font-weight:600;font-size:11px', text: mode }));
     metaRow.appendChild(ui.el('span', '', { style: `color:${ok ? 'var(--success)' : 'var(--danger)'};font-size:14px`, text: ok ? '●' : '○' }));
-    metaRow.appendChild(ui.el('span', '', { style: 'color:var(--success);font-weight:600;font-size:11px', text: '✓' + (ps.connections_ok || 0) }));
-    metaRow.appendChild(ui.el('span', '', { style: 'color:var(--danger);font-weight:600;font-size:11px', text: '✗' + (ps.connections_failed || 0) }));
     body.appendChild(metaRow);
 
     const hasListen = !!(ap.listen_country || ap.listen_city);
@@ -875,33 +870,6 @@ router.register('overview', (container) => {
       });
     }
 
-    const recheckBtn = mkBtn('↻', 'Recheck', 'var(--info)', () => {
-      recheckBtn.disabled = true;
-      recheckBtn.style.color = 'var(--text-muted)';
-      recheckBtn.querySelector('span').style.animation = 'recheckSpin 0.8s linear infinite';
-      api.proxyRecheck(ap.address).then(() => poll()).then(() => {
-        recheckBtn.querySelector('span').style.animation = '';
-        recheckBtn.disabled = false;
-        recheckBtn.style.color = 'var(--info)';
-      }).catch(e => {
-        recheckBtn.querySelector('span').style.animation = '';
-        recheckBtn.disabled = false;
-        recheckBtn.style.color = 'var(--info)';
-        app.toast('Error: ' + e.message, 'error');
-      });
-    });
-    const recheckIcon = ui.el('span', '', { style: 'display:inline-block' });
-    recheckIcon.textContent = '↻';
-    recheckBtn.textContent = '';
-    recheckBtn.appendChild(recheckIcon);
-    chainRow.appendChild(recheckBtn);
-
-    if (!document.getElementById('recheck-spin-style')) {
-      const s = document.createElement('style');
-      s.id = 'recheck-spin-style';
-      s.textContent = '@keyframes recheckSpin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}';
-      document.head.appendChild(s);
-    }
   }
 
   build();
