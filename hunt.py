@@ -2492,11 +2492,42 @@ class ProxyRunner:
         try:
             resp = await asyncio.wait_for(r.readuntil(b"\r\n\r\n"), timeout=15)
             status_line = resp.split(b"\r\n")[0]
-            return b"200" in status_line
+            if b"200" in status_line:
+                return True
+            if b"407" in status_line and uname:
+                await self._drain_chunked_or_content_length(r, resp)
+                cred = base64.b64encode(f"{uname}:{passwd}".encode()).decode()
+                retry = f"CONNECT {h}:{p} HTTP/1.1\r\nHost: {h}:{p}\r\nProxy-Authorization: Basic {cred}\r\n\r\n"
+                w.write(retry.encode()); await w.drain()
+                resp2 = await asyncio.wait_for(r.readuntil(b"\r\n\r\n"), timeout=15)
+                status_line2 = resp2.split(b"\r\n")[0]
+                return b"200" in status_line2
+            return False
         except asyncio.TimeoutError:
             return False
         except Exception:
             return False
+
+    async def _drain_chunked_or_content_length(self, r, header: bytes):
+        try:
+            hdr_text = header.decode(errors="replace")
+            cl_match = None
+            for line in hdr_text.split("\r\n"):
+                if line.lower().startswith("content-length:"):
+                    cl_match = int(line.split(":", 1)[1].strip())
+                    break
+            if cl_match is not None and cl_match > 0:
+                await asyncio.wait_for(r.readexactly(cl_match), timeout=5)
+            elif "transfer-encoding: chunked" in hdr_text.lower():
+                while True:
+                    size_line = await asyncio.wait_for(r.readline(), timeout=5)
+                    chunk_size = int(size_line.strip(), 16)
+                    if chunk_size == 0:
+                        await asyncio.wait_for(r.readline(), timeout=5)
+                        break
+                    await asyncio.wait_for(r.readexactly(chunk_size + 2), timeout=5)
+        except Exception:
+            pass
 
     async def _socks5_cmd(self, r, w, h, p):
         try:
