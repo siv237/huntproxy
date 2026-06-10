@@ -89,4 +89,9 @@ const api = {
   customProxyToggle(id) { return this.request(`/api/custom-proxies/${encodeURIComponent(id)}/toggle`, 'POST'); },
   customProxyTest(id) { return this.request(`/api/custom-proxies/${encodeURIComponent(id)}/test`, 'POST'); },
   customProxyTestDirect(data) { return this.request('/api/custom-proxies/test-direct', 'POST', data); },
+
+  // Canary / Internet Connectivity
+  canaryStatus() { return this.request('/api/canary/status'); },
+  canaryHistory(hours = 24) { return this.request(`/api/canary/history?hours=${hours}`); },
+  canarySetHosts(hosts) { return this.request('/api/canary/hosts', 'POST', { canary_hosts: hosts }); },
 };

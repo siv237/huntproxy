@@ -226,6 +226,11 @@ class HuntState:
         self.health_interval = cfg.get("health_interval", 180)
         self.health_parallel = cfg.get("health_parallel", 20)
 
+        self.canary_hosts = cfg.get("canary_hosts", ["ya.ru", "google.com", "2ip.ru"])
+        self._canary_last_check: float = 0
+        self._canary_interval: float = 30
+        self._internet_alive: Optional[bool] = None
+
         self.started_at = time.time()
         self._db_path = DATA_DIR / "stats.db"
         self._last_history_ts = time.time()
@@ -337,6 +342,19 @@ class HuntState:
                 created_at REAL NOT NULL DEFAULT 0,
                 updated_at REAL NOT NULL DEFAULT 0
             );
+            CREATE TABLE IF NOT EXISTS canary_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ts REAL NOT NULL,
+                alive INTEGER NOT NULL,
+                alive_count INTEGER NOT NULL DEFAULT 0,
+                total_count INTEGER NOT NULL DEFAULT 0,
+                host_results TEXT NOT NULL DEFAULT '',
+                direct_ip TEXT DEFAULT '',
+                direct_country TEXT DEFAULT '',
+                direct_isp TEXT DEFAULT '',
+                direct_city TEXT DEFAULT ''
+            );
+            CREATE INDEX IF NOT EXISTS idx_canary_ts ON canary_history(ts);
         """)
         conn.commit()
         for col, default in [
@@ -1222,9 +1240,125 @@ class HuntState:
         while True:
             await asyncio.sleep(self.health_interval)
             try:
+                internet_ok = await self.is_internet_alive()
+                if not internet_ok:
+                    self._emit("Internet appears down (canary check failed) — skipping health check", "warn")
+                    continue
                 await self._health_check()
             except Exception as e:
                 self._emit(f"Health check error: {e}", "error")
+
+    async def _check_canary(self) -> dict:
+        hosts = self.canary_hosts or ["ya.ru", "google.com", "2ip.ru"]
+        results = {}
+        for host in hosts:
+            try:
+                reader, writer = await asyncio.wait_for(
+                    asyncio.open_connection(host, 443), timeout=5)
+                writer.close()
+                results[host] = True
+            except Exception:
+                results[host] = False
+        alive_count = sum(1 for v in results.values() if v)
+        total = len(results)
+        alive = alive_count > total // 2
+        self._internet_alive = alive
+        self._canary_last_check = time.time()
+
+        direct_ip = ""
+        direct_country = ""
+        direct_isp = ""
+        direct_city = ""
+        if alive:
+            try:
+                reader, writer = await asyncio.wait_for(
+                    asyncio.open_connection("ip-api.com", 80), timeout=5)
+                req = "GET /json/?fields=query,country,isp,city HTTP/1.1\r\nHost: ip-api.com\r\nConnection: close\r\n\r\n"
+                writer.write(req.encode()); await writer.drain()
+                resp = b""
+                while True:
+                    chunk = await asyncio.wait_for(reader.read(4096), timeout=5)
+                    if not chunk: break
+                    resp += chunk
+                try: writer.close()
+                except: pass
+                body_start = resp.find(b"\r\n\r\n")
+                if body_start >= 0:
+                    import json as _json
+                    data = _json.loads(resp[body_start+4:])
+                    direct_ip = data.get("query", "")
+                    direct_country = data.get("country", "")
+                    direct_isp = data.get("isp", "")
+                    direct_city = data.get("city", "")
+            except Exception:
+                pass
+
+        try:
+            conn = self._db()
+            conn.execute(
+                "INSERT INTO canary_history (ts, alive, alive_count, total_count, host_results, direct_ip, direct_country, direct_isp, direct_city) VALUES (?,?,?,?,?,?,?,?,?)",
+                (time.time(), 1 if alive else 0, alive_count, total,
+                 json.dumps(results), direct_ip, direct_country, direct_isp, direct_city)
+            )
+            conn.commit()
+            conn.close()
+        except Exception:
+            pass
+
+        return {
+            "alive": alive,
+            "hosts": results,
+            "alive_count": alive_count,
+            "total": total,
+            "direct_ip": direct_ip,
+            "direct_country": direct_country,
+            "direct_isp": direct_isp,
+            "direct_city": direct_city,
+        }
+
+    async def is_internet_alive(self) -> bool:
+        if self._internet_alive is not None and (time.time() - self._canary_last_check) < self._canary_interval:
+            return self._internet_alive
+        result = await self._check_canary()
+        return result["alive"]
+
+    def get_canary_status(self) -> dict:
+        return {
+            "alive": self._internet_alive,
+            "last_check": self._canary_last_check,
+            "canary_hosts": self.canary_hosts,
+            "direct_ip": "",
+            "direct_country": "",
+            "direct_isp": "",
+            "direct_city": "",
+        }
+
+    def set_canary_hosts(self, hosts: list):
+        self.canary_hosts = hosts
+        self._internet_alive = None
+        self._emit(f"Canary hosts updated: {', '.join(hosts)}", "info")
+
+    def get_canary_history(self, hours: int = 24) -> list:
+        try:
+            conn = self._db()
+            since = time.time() - hours * 3600
+            rows = conn.execute(
+                "SELECT ts, alive, alive_count, total_count, host_results, direct_ip, direct_country, direct_isp, direct_city "
+                "FROM canary_history WHERE ts>? ORDER BY ts ASC", (since,)
+            ).fetchall()
+            conn.close()
+            result = []
+            for r in rows:
+                entry = dict(r)
+                try:
+                    entry["host_results"] = json.loads(entry.get("host_results", "{}"))
+                except Exception:
+                    entry["host_results"] = {}
+                result.append(entry)
+            return result
+        except Exception as e:
+            logger.error("get_canary_history: %s", e)
+            return []
 
     async def _history_loop(self):
         while True:
@@ -3692,6 +3826,27 @@ class HuntServer:
             if method == "POST":
                 result = await self.state.test_custom_proxy(proxy_id)
                 return json.dumps(result), 200, "application/json"
+
+        # === Canary / Internet Connectivity ===
+        if path == "/api/canary/status" and method == "GET":
+            result = await self.state._check_canary()
+            return json.dumps(result), 200, "application/json"
+
+        if path == "/api/canary/history" and method == "GET":
+            qs = _qs(path)
+            hours = int(qs.get("hours", "24"))
+            result = self.state.get_canary_history(hours)
+            return json.dumps(result), 200, "application/json"
+
+        if path == "/api/canary/hosts" and method == "POST":
+            try:
+                data = json.loads(body or b"{}")
+            except Exception:
+                data = {}
+            hosts = data.get("canary_hosts", [])
+            if hosts:
+                self.state.set_canary_hosts(hosts)
+            return json.dumps({"ok": True, "canary_hosts": self.state.canary_hosts}), 200, "application/json"
 
         return json.dumps({"error": "not found"}), 404, "application/json"
 

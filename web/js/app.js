@@ -51,13 +51,36 @@ const app = {
   },
 
   startPollers() {
-    // Global events poller (shared across all pages)
     this._pollers.push(setInterval(() => this.pollEvents(), 2000));
+    this._pollers.push(setInterval(() => this.pollCanary(), 30000));
+    this.pollCanary();
   },
 
   stopPollers() {
     this._pollers.forEach(id => clearInterval(id));
     this._pollers = [];
+  },
+
+  async pollCanary() {
+    try {
+      const result = await api.canaryStatus();
+      const dot = document.getElementById('canary-dot');
+      const text = document.getElementById('canary-text');
+      if (dot && text) {
+        if (result.alive) {
+          dot.className = 'status-dot online';
+          text.textContent = 'Internet: OK';
+        } else {
+          dot.className = 'status-dot offline';
+          text.textContent = 'Internet: DOWN';
+        }
+      }
+    } catch (e) {
+      const dot = document.getElementById('canary-dot');
+      const text = document.getElementById('canary-text');
+      if (dot) dot.className = 'status-dot offline';
+      if (text) text.textContent = 'Internet: unknown';
+    }
   },
 
   async pollEvents() {

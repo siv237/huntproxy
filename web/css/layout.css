@@ -99,6 +99,10 @@
 }
 
 .status-dot.off { background: var(--text-muted); }
+.status-dot.online { background: var(--success); }
+.status-dot.offline { background: var(--danger); animation: blink 1s infinite; }
+
+@keyframes blink { 50% { opacity: 0.4; } }
 
 .theme-toggle {
   display: flex;

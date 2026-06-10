@@ -14,6 +14,7 @@ const router = {
     routes: ['Routes', 'Configure domain-based traffic routing rules'],
     'domain-lists': ['Domain Lists', 'Manage domain lists for routing rules'],
     'custom-proxies': ['Custom Proxies', 'Configure specialized proxies for routing (corporate, Tor, anti-ban)'],
+    'connectivity': ['Connectivity', 'Internet connectivity monitoring and canary hosts'],
     downloads: ['Downloads', 'Export data files'],
     api: ['API', 'API documentation and endpoints'],
   },
