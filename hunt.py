@@ -1251,19 +1251,30 @@ class HuntState:
     async def _check_canary(self) -> dict:
         hosts = self.canary_hosts or ["ya.ru", "google.com", "2ip.ru"]
         results = {}
+        latencies = {}
         for host in hosts:
+            t0 = time.monotonic()
             try:
                 reader, writer = await asyncio.wait_for(
                     asyncio.open_connection(host, 443), timeout=5)
                 writer.close()
+                lat = int((time.monotonic() - t0) * 1000)
                 results[host] = True
+                latencies[host] = lat
             except Exception:
                 results[host] = False
+                latencies[host] = -1
         alive_count = sum(1 for v in results.values() if v)
         total = len(results)
+        was_alive = self._internet_alive
         alive = alive_count > total // 2
         self._internet_alive = alive
         self._canary_last_check = time.time()
+
+        if was_alive is True and not alive:
+            self._emit("Internet DOWN — all canary hosts unreachable", "error")
+        elif was_alive is False and alive:
+            self._emit("Internet RESTORED — canary hosts reachable", "ok")
 
         direct_ip = ""
         direct_country = ""
@@ -1286,10 +1297,19 @@ class HuntState:
                 if body_start >= 0:
                     import json as _json
                     data = _json.loads(resp[body_start+4:])
-                    direct_ip = data.get("query", "")
-                    direct_country = data.get("country", "")
-                    direct_isp = data.get("isp", "")
-                    direct_city = data.get("city", "")
+                    new_ip = data.get("query", "")
+                    new_country = data.get("country", "")
+                    new_isp = data.get("isp", "")
+                    new_city = data.get("city", "")
+                    old_ip = self._canary_last_ip if hasattr(self, '_canary_last_ip') else ""
+                    if old_ip and new_ip and old_ip != new_ip:
+                        self._emit(f"ISP changed: {old_ip} ({getattr(self, '_canary_last_isp', '')}) → {new_ip} ({new_isp})", "warn")
+                    direct_ip = new_ip
+                    direct_country = new_country
+                    direct_isp = new_isp
+                    direct_city = new_city
+                    self._canary_last_ip = new_ip
+                    self._canary_last_isp = new_isp
             except Exception:
                 pass
 
@@ -1308,6 +1328,7 @@ class HuntState:
         return {
             "alive": alive,
             "hosts": results,
+            "latencies": latencies,
             "alive_count": alive_count,
             "total": total,
             "direct_ip": direct_ip,
@@ -3832,7 +3853,7 @@ class HuntServer:
             result = await self.state._check_canary()
             return json.dumps(result), 200, "application/json"
 
-        if path == "/api/canary/history" and method == "GET":
+        if path.startswith("/api/canary/history") and method == "GET":
             qs = _qs(path)
             hours = int(qs.get("hours", "24"))
             result = self.state.get_canary_history(hours)
