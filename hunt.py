@@ -211,6 +211,7 @@ class HuntState:
         self._internet_suspect: bool = False
         self._fail_streak: int = 0
         self._check_streak: int = 0
+        self._canary_task: Optional[asyncio.Task] = None
 
         # Hunt progress counters
         self.sources_total: int = 0
@@ -668,6 +669,9 @@ class HuntState:
     def stop_hunt(self):
         if self.task and not self.task.done():
             self.task.cancel()
+        if self._canary_task and not self._canary_task.done():
+            self._canary_task.cancel()
+            self._canary_task = None
         self._paused = False
         self._manual_pause = False
         self._pause_event.set()
@@ -706,6 +710,7 @@ class HuntState:
 
     async def _hunt_cycle(self):
         try:
+            self._canary_task = asyncio.create_task(self._canary_loop())
             self.phase = self.PHASE_DOWNLOAD
             self.phase_started = time.time()
             self._emit("Hunt started", "phase")
@@ -731,7 +736,6 @@ class HuntState:
             self.phase = self.PHASE_DONE
             self._emit("Hunt cycle complete", "ok")
 
-            # Schedule periodic health-check
             asyncio.create_task(self._health_loop())
         except asyncio.CancelledError:
             self._emit("Hunt cancelled", "warn")
@@ -1336,19 +1340,32 @@ class HuntState:
         except Exception:
             self.pause_hunt(manual=False)
 
+    async def _canary_loop(self):
+        while True:
+            await asyncio.sleep(15)
+            try:
+                was_paused = self._paused
+                result = await self._check_canary()
+                if not result["alive"] and not self._paused:
+                    self.pause_hunt(manual=False)
+                elif result["alive"] and self._paused and not self._manual_pause:
+                    self.resume_hunt(manual=False)
+            except asyncio.CancelledError:
+                return
+            except Exception:
+                pass
+
     async def _health_loop(self):
         while True:
             await asyncio.sleep(self.health_interval)
             try:
-                internet_ok = await self.is_internet_alive()
-                if not internet_ok:
-                    if not self._paused:
-                        self.pause_hunt(manual=False)
-                    self._emit("Internet down — pausing, will resume when restored", "warn")
+                if self._paused:
                     await self._pause_event.wait()
                     continue
-                if self._paused and not self._manual_pause:
-                    self.resume_hunt(manual=False)
+                internet_ok = await self.is_internet_alive()
+                if not internet_ok:
+                    self.pause_hunt(manual=False)
+                    continue
                 await self._health_check()
             except asyncio.CancelledError:
                 return
@@ -1384,12 +1401,8 @@ class HuntState:
 
         if was_alive is True and not alive:
             self._emit("Internet DOWN — all canary hosts unreachable", "error")
-            if not self._paused:
-                self.pause_hunt(manual=False)
         elif was_alive is False and alive:
             self._emit("Internet RESTORED — canary hosts reachable", "ok")
-            if self._paused and not self._manual_pause:
-                self.resume_hunt(manual=False)
 
         direct_ip = ""
         direct_country = ""
