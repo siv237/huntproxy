@@ -1,6 +1,7 @@
 router.register('routes', (container) => {
   let routingStatus = null;
   let domainLists = [];
+  let customProxies = [];
   let _loading = false;
 
   const ROUTE_OPTIONS = [
@@ -50,10 +51,7 @@ router.register('routes', (container) => {
     const defaultRow = ui.el('div', '', { style: 'display:flex;align-items:center;gap:8px;margin-bottom:4px' });
     defaultRow.appendChild(ui.el('span', '', { style: 'font-size:12px;color:var(--text-secondary)', text: 'Default route for unmatched domains:' }));
     const routeSelect = ui.el('select', '', { id: 'default-route-select', style: 'padding:3px 8px;font-size:12px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--bg);color:var(--text-primary)' });
-    ROUTE_OPTIONS.forEach(opt => {
-      const o = ui.el('option', '', { value: opt.value, text: opt.label });
-      routeSelect.appendChild(o);
-    });
+    populateRouteSelect(routeSelect);
     routeSelect.addEventListener('change', () => {
       api.routingSetDefault(routeSelect.value).then(() => app.toast('Default route updated')).catch(e => app.toast('Error: ' + e.message, 'error'));
     });
@@ -102,15 +100,12 @@ router.register('routes', (container) => {
         if (resultEl) {
           const route = result.route || 'unknown';
           const matchedList = result.matched_list || null;
-          const routeSpan = document.createElement('span');
-          routeSpan.style.fontWeight = '700';
-          routeSpan.style.color = route === 'direct' ? 'var(--success)' : 'var(--accent)';
-          routeSpan.textContent = route.toUpperCase();
           resultEl.innerHTML = '';
-          resultEl.appendChild(routeSpan);
+          resultEl.innerHTML = ui.formatRouteLabel(route);
           const viaSpan = document.createElement('span');
           viaSpan.style.color = 'var(--text-secondary)';
-          viaSpan.textContent = matchedList ? ` (via list: ${matchedList})` : ' (default route)';
+          viaSpan.style.marginLeft = '6px';
+          viaSpan.textContent = matchedList ? `(via list: ${matchedList})` : '(default route)';
           resultEl.appendChild(viaSpan);
         }
       }).catch(e => {
@@ -149,10 +144,7 @@ router.register('routes', (container) => {
 
     modal.appendChild(ui.el('div', '', { style: 'font-size:12px;color:var(--text-secondary);margin-bottom:4px', text: 'Route:' }));
     const routeSelect = ui.el('select', '', { id: 'modal-route-select', style: 'width:100%;padding:6px 8px;margin-bottom:16px;font-size:13px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--bg);color:var(--text-primary)' });
-    ROUTE_OPTIONS.forEach(opt => {
-      const o = ui.el('option', '', { value: opt.value, text: opt.label });
-      routeSelect.appendChild(o);
-    });
+    populateRouteSelect(routeSelect);
     modal.appendChild(routeSelect);
 
     const btnRow = ui.el('div', '', { style: 'display:flex;gap:8px;justify-content:flex-end' });
@@ -200,7 +192,9 @@ router.register('routes', (container) => {
         badge.style.color = 'var(--text-muted)';
       }
     }
-    if (select && status) select.value = status.default_route || 'direct';
+    if (select && status) {
+      populateRouteSelect(select, status.default_route || 'direct');
+    }
   }
 
   function updateRulesCard(status, lists) {
@@ -323,19 +317,44 @@ router.register('routes', (container) => {
     }
   }
 
+  function populateRouteSelect(selectEl, selectedValue) {
+    selectEl.innerHTML = '';
+    ROUTE_OPTIONS.forEach(opt => {
+      const o = ui.el('option', '', { value: opt.value, text: opt.label });
+      if (opt.value === selectedValue) o.selected = true;
+      selectEl.appendChild(o);
+    });
+    if (customProxies.length) {
+      const grp = ui.el('optgroup', '', { label: 'Custom Proxies' });
+      customProxies.filter(p => p.enabled).forEach(p => {
+        const label = p.name + ' (' + p.protocol.toUpperCase() + ' ' + p.host + ':' + p.port + ')';
+        const o = ui.el('option', '', { value: 'custom:' + p.id, text: label });
+        if (('custom:' + p.id) === selectedValue) o.selected = true;
+        grp.appendChild(o);
+      });
+      selectEl.appendChild(grp);
+    }
+  }
+
   build();
 
   async function load() {
     if (_loading) return;
     _loading = true;
     try {
-      let status = {}, lists = [];
+      let status = {}, lists = [], cpResult = [];
       try { status = await api.routingStatus(); } catch (e) { console.error('routingStatus', e); }
       try { lists = await api.domainLists(); } catch (e) { console.error('domainLists', e); }
+      try { cpResult = await api.customProxies(); } catch (e) { console.error('customProxies', e); }
       routingStatus = status;
       domainLists = lists.lists || lists || [];
+      customProxies = cpResult.proxies || cpResult || [];
       updateModeCard(status);
       updateRulesCard(status, domainLists);
+      const defSelect = document.getElementById('default-route-select');
+      if (defSelect) {
+        populateRouteSelect(defSelect, status.default_route || 'direct');
+      }
     } catch (e) {
       console.error('routes load', e);
     } finally {

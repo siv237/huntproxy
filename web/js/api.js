@@ -79,4 +79,13 @@ const api = {
   domainListUpdate(id, data) { return this.request(`/api/domain-lists/${encodeURIComponent(id)}`, 'POST', data); },
   domainListDelete(id) { return this.request(`/api/domain-lists/${encodeURIComponent(id)}`, 'DELETE'); },
   domainListToggle(id) { return this.request(`/api/domain-lists/${encodeURIComponent(id)}/toggle`, 'POST'); },
+
+  // Custom Proxies
+  customProxies() { return this.request('/api/custom-proxies'); },
+  customProxyGet(id) { return this.request(`/api/custom-proxies/${encodeURIComponent(id)}`); },
+  customProxyCreate(data) { return this.request('/api/custom-proxies', 'POST', data); },
+  customProxyUpdate(id, data) { return this.request(`/api/custom-proxies/${encodeURIComponent(id)}`, 'POST', data); },
+  customProxyDelete(id) { return this.request(`/api/custom-proxies/${encodeURIComponent(id)}`, 'DELETE'); },
+  customProxyToggle(id) { return this.request(`/api/custom-proxies/${encodeURIComponent(id)}/toggle`, 'POST'); },
+  customProxyTest(id) { return this.request(`/api/custom-proxies/${encodeURIComponent(id)}/test`, 'POST'); },
 };

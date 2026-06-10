@@ -240,6 +240,230 @@ def _domain_matches(self, host: str, patterns: list) -> bool:
 - Страница Routes показывает текущий режим (routing off) и предлагает включить
 - Существующая заглушка Rules заменяется на две вкладки: Routes + Domain Lists
 
+---
+
+## Часть 2: Custom Proxies — специализированные прокси для маршрутизации
+
+### Проблема
+
+Сейчас маршрутизация поддерживает route_type `proxy:addr` где addr — просто `host:port`.
+Но на практике нужны **именованные** прокси с разными протоколами и авторизацией:
+- Корпоративный HTTP-прокси с логином/паролем → для corp.example.com
+- Tor SOCKS5-прокси (127.0.0.1:9050) → для .onion и специфичных доменов
+- Антибан-прокси HTTPS → для заблокированных соцсетей
+- Любой другой named прокси с авторизацией
+
+Нужно: CRUD прокси, проверка связи, интеграция с Routes через dropdown по имени.
+
+### 1. Модель данных
+
+```
+CustomProxy:
+  id: str                    # уникальный slug (auto из name)
+  name: str                  # человекочитаемое: "Корпоративный", "Tor", "Антибан"
+  protocol: str              # "socks5" | "http" | "https"
+  host: str                  # адрес прокси
+  port: int                  # порт
+  username: str              # логин (может быть пустым)
+  password: str              # пароль (хранится в БД, маскируется в UI)
+  test_url: str              # проверочный URL для теста (напр. corp.example.com)
+  last_check_at: float       # UNIX timestamp последней проверки
+  last_check_status: str     # "ok" | "fail" | "timeout" | ""
+  last_check_latency: int    # мс, -1 если fail
+  enabled: bool              # вкл/выкл (выключенный не участвует в маршрутизации)
+  created_at: float
+  updated_at: float
+```
+
+**Route ref**: вместо `proxy:1.2.3.4:8080` используем `custom:<id>` — маршрутизация
+разрезолвит id → (protocol, host, port, username, password) и подключится.
+
+### 2. SQLite
+
+```sql
+CREATE TABLE custom_proxies (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    protocol TEXT NOT NULL DEFAULT 'socks5',  -- socks5 | http | https
+    host TEXT NOT NULL,
+    port INTEGER NOT NULL,
+    username TEXT NOT NULL DEFAULT '',
+    password TEXT NOT NULL DEFAULT '',
+    test_url TEXT NOT NULL DEFAULT '',
+    last_check_at REAL NOT NULL DEFAULT 0,
+    last_check_status TEXT NOT NULL DEFAULT '',
+    last_check_latency INTEGER NOT NULL DEFAULT -1,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    created_at REAL NOT NULL DEFAULT 0,
+    updated_at REAL NOT NULL DEFAULT 0
+);
+```
+
+### 3. API endpoints
+
+| Endpoint | Method | Описание |
+|----------|--------|----------|
+| `/api/custom-proxies` | GET | Список всех прокси (пароли замаскированы `****`) |
+| `/api/custom-proxies` | POST | Создать прокси |
+| `/api/custom-proxies/<id>` | GET | Получить прокси по ID (пароль замаскирован) |
+| `/api/custom-proxies/<id>` | POST | Обновить прокси |
+| `/api/custom-proxies/<id>` | DELETE | Удалить прокси |
+| `/api/custom-proxies/<id>/toggle` | POST | Включить/выключить |
+| `/api/custom-proxies/<id>/test` | POST | Проверить прокси: HTTP-запрос через него к test_url |
+
+**POST/PUT body**:
+```json
+{
+  "id": "corporate",
+  "name": "Корпоративный прокси",
+  "protocol": "http",
+  "host": "proxy.corp.local",
+  "port": 8080,
+  "username": "user123",
+  "password": "pass456",
+  "test_url": "http://intraweb.corp.local/"
+}
+```
+
+**GET ответ** — пароль всегда замаскирован:
+```json
+{
+  "id": "corporate",
+  "name": "Корпоративный прокси",
+  "protocol": "http",
+  "host": "proxy.corp.local",
+  "port": 8080,
+  "username": "user123",
+  "password": "****",
+  "test_url": "http://intraweb.corp.local/",
+  "last_check_status": "ok",
+  "last_check_latency": 145,
+  "last_check_at": 1718000000,
+  "enabled": true
+}
+```
+
+**POST /custom-proxies/<id>/test ответ**:
+```json
+{
+  "status": "ok",        // ok | fail | timeout | auth_fail
+  "http_code": 200,
+  "latency_ms": 145,
+  "error": ""
+}
+```
+
+### 4. Логика проверки прокси (`_test_custom_proxy`)
+
+```python
+async def _test_custom_proxy(proxy_id):
+    proxy = get_custom_proxy(proxy_id)
+    url = proxy["test_url"] or "http://httpbin.org/ip"
+    
+    start = time.monotonic()
+    try:
+        # Через прокси делаем HTTP GET к test_url
+        # socks5 → aiohttp_socks, http/https → обычный CONNECT-туннель
+        connector = make_connector(proxy)  # protocol, host, port, auth
+        async with aiohttp.ClientSession(connector=connector) as session:
+            async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                latency = int((time.monotonic() - start) * 1000)
+                status = "ok" if resp.status < 400 else "fail"
+                return {"status": status, "http_code": resp.status, "latency_ms": latency}
+    except asyncio.TimeoutError:
+        return {"status": "timeout", "http_code": 0, "latency_ms": -1, "error": "timeout"}
+    except aiohttp.ClientProxyConnectionError:
+        return {"status": "fail", "http_code": 0, "latency_ms": -1, "error": "connection refused"}
+    except aiohttp.ClientHttpProxyError:
+        return {"status": "auth_fail", "http_code": 407, "latency_ms": -1, "error": "proxy auth required"}
+```
+
+Результат записывается в `last_check_*` поля прокси.
+
+### 5. Интеграция с маршрутизацией
+
+**Изменение route_type**: расширяем формат маршрутов:
+- `direct` — напрямую
+- `pool` — через пул
+- `proxy:<host>:<port>` — **legacy**, оставляем для совместимости
+- `custom:<proxy_id>` — через именованный кастомный прокси ← **НОВОЕ**
+
+**`_connect_by_route`** — новый ветвление:
+```python
+if route.startswith("custom:"):
+    proxy_id = route[7:]
+    proxy = self._get_custom_proxy(proxy_id)
+    if not proxy or not proxy["enabled"]:
+        return await self._connect_by_route(self._default_route, host, port)
+    return await self._connect_via_proxy(proxy, host, port)
+```
+
+**`_connect_via_proxy(proxy, host, port)`** — универсальный метод:
+```python
+async def _connect_via_proxy(self, proxy, host, port):
+    protocol = proxy["protocol"]
+    p_host, p_port = proxy["host"], proxy["port"]
+    auth = (proxy["username"], proxy["password"]) if proxy["username"] else None
+    
+    if protocol == "socks5":
+        return await self._connect_socks5(p_host, p_port, auth, host, port)
+    elif protocol in ("http", "https"):
+        return await self._connect_http_proxy(p_host, p_port, auth, host, port, tls=(protocol == "https"))
+```
+
+**Routes UI — dropdown маршрута**: при выборе route_type = "Custom Proxy" показываем
+dropdown с именами кастомных прокси из `/api/custom-proxies`. Выбор записывает `custom:<id>`.
+
+### 6. UI — вкладка Custom Proxies — `custom-proxies.js`
+
+**Навигация**: новый пункт в сайдбаре с иконкой (shield/server).
+
+**Секция 1: Таблица прокси**
+| Name | Protocol | Address | Test URL | Status | Latency | Enabled | Actions |
+|------|----------|---------|----------|--------|---------|---------|---------|
+| Корпоративный | HTTP | proxy.corp.local:8080 | intraweb.corp.local/ | ✓ | 145ms | ✓ | ✏ 🔍 ✕ |
+| Tor | SOCKS5 | 127.0.0.1:9050 | check.torproject.org | ✓ | 320ms | ✓ | ✏ 🔍 ✕ |
+| Антибан | HTTPS | antiban.io:443 | twitter.com | ✗ fail | — | ✓ | ✏ 🔍 ✕ |
+
+- 🔍 = кнопка теста (вызывает `/api/custom-proxies/<id>/test`)
+- Status цвет: зелёный (ok), красный (fail/timeout), жёлтый (auth_fail), серый (не проверен)
+
+**Секция 2: Редактор прокси (inline)**
+- Name: текстовое поле → автогенерация slug в ID
+- Protocol: dropdown (SOCKS5 / HTTP / HTTPS)
+- Host + Port: два поля рядом
+- Username + Password: два поля рядом
+  - Password: `<input type="password">` + кнопка-глаз (toggle visibility)
+- Test URL: текстовое поле с placeholder "http://example.com/" — **пользователь указывает
+  конкретный проверочный URL**, который имеет смысл именно для этого прокси
+  (напр. для корпоративного — intraweb.corp.local, для Tor — check.torproject.org)
+- Кнопка "Save" + кнопка "Test"
+
+**Секция 3: Подсказки**
+- SOCKS5: для Tor, локальных SOCKS-прокси
+- HTTP: для корпоративных прокси (часто с авторизацией)
+- HTTPS: для прокси с TLS-обёрткой (антибан-сервисы)
+
+### 7. Порядок реализации
+
+| Шаг | Что | Файлы | Статус |
+|-----|-----|-------|--------|
+| 1 | SQLite-таблица custom_proxies | `hunt.py` (_init_db) | ✅ |
+| 2 | HuntState: CRUD custom_proxies + _test_custom_proxy + _get_custom_proxy | `hunt.py` (HuntState) | ✅ |
+| 3 | ProxyRunner: _connect_via_proxy (socks5/http/https + auth), route custom:<id> в _connect_by_route | `hunt.py` (ProxyRunner) | ✅ |
+| 4 | API endpoints /api/custom-proxies/* | `hunt.py` (HuntServer._route) | ✅ |
+| 5 | API-методы в api.js | `web/js/api.js` | ✅ |
+| 6 | UI вкладка Custom Proxies | `web/js/pages/custom-proxies.js` | ✅ |
+| 7 | Навигация: пункт Custom Proxies в сайдбаре + иконка | `web/index.html` | ✅ |
+| 8 | Интеграция с Routes: dropdown custom proxy при выборе маршрута | `routes.js`, `components.js` | ✅ |
+| 9 | Password mask/unmask в UI | `custom-proxies.js` | ✅ |
+
+### 8. Зависимости
+
+- **aiohttp-socks** или **python-socks** — для SOCKS5-подключений (проверить наличие в проекте)
+- HTTP/HTTPS-прокси: CONNECT-туннель через существующий `aiohttp` (уже есть в проекте)
+- Авторизация: Proxy-Authorization header для HTTP, username/password для SOCKS5
+
 ### 9. Расширения (Phase 2)
 
 - Поддержка IP-адресов в списках (не только домены)
@@ -248,3 +472,5 @@ def _domain_matches(self, host: str, patterns: list) -> bool:
 - Временные правила (TTL)
 - Статистика по маршрутам (сколько трафика пошло через каждый)
 - Интеграция с iptables: генерация правил исключений на основе списков
+- Периодическая авто-проверка прокси (health check) с интервалом
+- PAC/WPAD автоконфигурация корпоративных прокси

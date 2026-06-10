@@ -321,6 +321,22 @@ class HuntState:
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS custom_proxies (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                protocol TEXT NOT NULL DEFAULT 'socks5',
+                host TEXT NOT NULL,
+                port INTEGER NOT NULL,
+                username TEXT NOT NULL DEFAULT '',
+                password TEXT NOT NULL DEFAULT '',
+                test_url TEXT NOT NULL DEFAULT '',
+                last_check_at REAL NOT NULL DEFAULT 0,
+                last_check_status TEXT NOT NULL DEFAULT '',
+                last_check_latency INTEGER NOT NULL DEFAULT -1,
+                enabled INTEGER NOT NULL DEFAULT 1,
+                created_at REAL NOT NULL DEFAULT 0,
+                updated_at REAL NOT NULL DEFAULT 0
+            );
         """)
         conn.commit()
         for col, default in [
@@ -1464,6 +1480,7 @@ class HuntState:
             "enabled": enabled,
             "default_route": default_route,
             "lists": lists,
+            "custom_proxies": self.get_custom_proxies(),
         }
 
     def routing_enable(self):
@@ -1705,6 +1722,301 @@ class HuntState:
                     return True
         return False
 
+    # ============================================================
+    # Custom Proxies (SQLite)
+    # ============================================================
+
+    def _mask_proxy(self, p: dict) -> dict:
+        out = dict(p)
+        if out.get("password"):
+            out["password"] = "****"
+        return out
+
+    def get_custom_proxies(self) -> list:
+        try:
+            conn = self._db()
+            rows = conn.execute(
+                "SELECT id, name, protocol, host, port, username, password, test_url, "
+                "last_check_at, last_check_status, last_check_latency, enabled, created_at, updated_at "
+                "FROM custom_proxies ORDER BY name ASC"
+            ).fetchall()
+            conn.close()
+            return [self._mask_proxy(dict(r)) for r in rows]
+        except Exception as e:
+            logger.error("get_custom_proxies: %s", e)
+            return []
+
+    def get_custom_proxy(self, proxy_id: str) -> Optional[dict]:
+        try:
+            conn = self._db()
+            row = conn.execute(
+                "SELECT id, name, protocol, host, port, username, password, test_url, "
+                "last_check_at, last_check_status, last_check_latency, enabled, created_at, updated_at "
+                "FROM custom_proxies WHERE id=?", (proxy_id,)
+            ).fetchone()
+            conn.close()
+            if not row:
+                return None
+            return self._mask_proxy(dict(row))
+        except Exception as e:
+            logger.error("get_custom_proxy: %s", e)
+            return None
+
+    def get_custom_proxy_raw(self, proxy_id: str) -> Optional[dict]:
+        try:
+            conn = self._db()
+            row = conn.execute(
+                "SELECT id, name, protocol, host, port, username, password, test_url, "
+                "last_check_at, last_check_status, last_check_latency, enabled, created_at, updated_at "
+                "FROM custom_proxies WHERE id=?", (proxy_id,)
+            ).fetchone()
+            conn.close()
+            if not row:
+                return None
+            return dict(row)
+        except Exception as e:
+            logger.error("get_custom_proxy_raw: %s", e)
+            return None
+
+    def create_custom_proxy(self, data: dict) -> Optional[dict]:
+        proxy_id = data.get("id", "").strip()
+        name = data.get("name", "").strip()
+        host = data.get("host", "").strip()
+        port = data.get("port", 0)
+        if not proxy_id or not name or not host or not port:
+            return None
+        now = time.time()
+        try:
+            conn = self._db()
+            conn.execute(
+                "INSERT INTO custom_proxies (id, name, protocol, host, port, username, password, test_url, "
+                "last_check_at, last_check_status, last_check_latency, enabled, created_at, updated_at) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (proxy_id, name, data.get("protocol", "socks5"), host, int(port),
+                 data.get("username", ""), data.get("password", ""), data.get("test_url", ""),
+                 0, "", -1, 1, now, now)
+            )
+            conn.commit()
+            conn.close()
+            self._emit(f"Custom proxy created: {name} ({data.get('protocol', 'socks5')}://{host}:{port})", "info")
+            return self.get_custom_proxy(proxy_id)
+        except Exception as e:
+            logger.error("create_custom_proxy: %s", e)
+            return None
+
+    def update_custom_proxy(self, proxy_id: str, data: dict) -> Optional[dict]:
+        now = time.time()
+        try:
+            conn = self._db()
+            existing = conn.execute("SELECT id FROM custom_proxies WHERE id=?", (proxy_id,)).fetchone()
+            if not existing:
+                conn.close()
+                return None
+            name = data.get("name", "").strip()
+            host = data.get("host", "").strip()
+            port = int(data.get("port", 0))
+            protocol = data.get("protocol", "socks5")
+            username = data.get("username", "")
+            password = data.get("password", "")
+            test_url = data.get("test_url", "")
+            enabled = 1 if data.get("enabled", True) else 0
+            if password == "****":
+                old = conn.execute("SELECT password FROM custom_proxies WHERE id=?", (proxy_id,)).fetchone()
+                password = old["password"] if old else ""
+            conn.execute(
+                "UPDATE custom_proxies SET name=?, protocol=?, host=?, port=?, username=?, password=?, "
+                "test_url=?, enabled=?, updated_at=? WHERE id=?",
+                (name, protocol, host, port, username, password, test_url, enabled, now, proxy_id)
+            )
+            conn.commit()
+            conn.close()
+            self._emit(f"Custom proxy updated: {proxy_id}", "info")
+            return self.get_custom_proxy(proxy_id)
+        except Exception as e:
+            logger.error("update_custom_proxy: %s", e)
+            return None
+
+    def delete_custom_proxy(self, proxy_id: str) -> bool:
+        try:
+            conn = self._db()
+            conn.execute("DELETE FROM custom_proxies WHERE id=?", (proxy_id,))
+            conn.commit()
+            conn.close()
+            self._emit(f"Custom proxy deleted: {proxy_id}", "warn")
+            return True
+        except Exception as e:
+            logger.error("delete_custom_proxy: %s", e)
+            return False
+
+    def toggle_custom_proxy(self, proxy_id: str) -> Optional[dict]:
+        try:
+            conn = self._db()
+            row = conn.execute("SELECT enabled FROM custom_proxies WHERE id=?", (proxy_id,)).fetchone()
+            if not row:
+                conn.close()
+                return None
+            new_val = 0 if row["enabled"] else 1
+            conn.execute("UPDATE custom_proxies SET enabled=?, updated_at=? WHERE id=?", (new_val, time.time(), proxy_id))
+            conn.commit()
+            conn.close()
+            status = "enabled" if new_val else "disabled"
+            self._emit(f"Custom proxy {proxy_id} {status}", "info")
+            return self.get_custom_proxy(proxy_id)
+        except Exception as e:
+            logger.error("toggle_custom_proxy: %s", e)
+            return None
+
+    async def test_custom_proxy(self, proxy_id: str) -> dict:
+        proxy = self.get_custom_proxy_raw(proxy_id)
+        if not proxy:
+            return {"status": "fail", "http_code": 0, "latency_ms": -1, "error": "proxy not found"}
+        if not proxy["enabled"]:
+            return {"status": "fail", "http_code": 0, "latency_ms": -1, "error": "proxy is disabled"}
+        url = proxy["test_url"] or "http://httpbin.org/ip"
+        start = time.monotonic()
+        try:
+            p_host, p_port = proxy["host"], proxy["port"]
+            protocol = proxy["protocol"]
+            reader, writer = await asyncio.wait_for(
+                asyncio.open_connection(p_host, p_port), timeout=10)
+        except asyncio.TimeoutError:
+            self._update_proxy_check(proxy_id, "timeout", -1)
+            return {"status": "timeout", "http_code": 0, "latency_ms": -1, "error": "connection timeout"}
+        except OSError as e:
+            self._update_proxy_check(proxy_id, "fail", -1)
+            return {"status": "fail", "http_code": 0, "latency_ms": -1, "error": str(e)}
+        try:
+            if protocol == "socks5":
+                ok = await self._socks5_handshake(reader, writer, url, proxy)
+            else:
+                ok = await self._http_proxy_handshake(reader, writer, url, proxy)
+            if not ok:
+                try: writer.close()
+                except: pass
+                self._update_proxy_check(proxy_id, "fail", -1)
+                return {"status": "fail", "http_code": 0, "latency_ms": -1, "error": "handshake failed"}
+            req = f"GET {url} HTTP/1.1\r\nHost: {url.split('//',1)[-1].split('/',1)[0]}\r\nConnection: close\r\n\r\n"
+            writer.write(req.encode())
+            await writer.drain()
+            resp_data = b""
+            while True:
+                chunk = await asyncio.wait_for(reader.read(4096), timeout=10)
+                if not chunk:
+                    break
+                resp_data += chunk
+                if len(resp_data) > 65536:
+                    break
+            latency = int((time.monotonic() - start) * 1000)
+            try: writer.close()
+            except: pass
+            status_line = resp_data.split(b"\r\n")[0] if resp_data else b""
+            http_code = 0
+            parts = status_line.split(b" ", 2)
+            if len(parts) >= 2:
+                try: http_code = int(parts[1])
+                except: pass
+            check_status = "ok" if 200 <= http_code < 400 else "fail"
+            self._update_proxy_check(proxy_id, check_status, latency)
+            return {"status": check_status, "http_code": http_code, "latency_ms": latency, "error": ""}
+        except asyncio.TimeoutError:
+            try: writer.close()
+            except: pass
+            self._update_proxy_check(proxy_id, "timeout", -1)
+            return {"status": "timeout", "http_code": 0, "latency_ms": -1, "error": "read timeout"}
+        except Exception as e:
+            try: writer.close()
+            except: pass
+            self._update_proxy_check(proxy_id, "fail", -1)
+            return {"status": "fail", "http_code": 0, "latency_ms": -1, "error": str(e)}
+
+    async def _socks5_handshake(self, reader, writer, url, proxy) -> bool:
+        try:
+            uname = proxy.get("username", "")
+            passwd = proxy.get("password", "")
+            if uname:
+                w_bytes = bytes([5, 2, 0, 2])
+            else:
+                w_bytes = bytes([5, 1, 0])
+            writer.write(w_bytes)
+            await writer.drain()
+            resp = await asyncio.wait_for(reader.readexactly(2), timeout=8)
+            if resp[1] == 0xFF:
+                return False
+            if resp[1] == 2 and uname:
+                u_raw = uname.encode()
+                p_raw = passwd.encode()
+                auth = bytes([1, len(u_raw)]) + u_raw + bytes([len(p_raw)]) + p_raw
+                writer.write(auth)
+                await writer.drain()
+                auth_resp = await asyncio.wait_for(reader.readexactly(2), timeout=8)
+                if auth_resp[1] != 0:
+                    return False
+            target_host = url.split("//", 1)[-1].split("/", 1)[0].split(":")[0]
+            target_port = 80
+            is_ip = all(c.isdigit() or c == "." for c in target_host)
+            if is_ip:
+                req = bytes([5, 1, 0, 1]) + socket.inet_aton(target_host)
+            else:
+                raw = target_host.encode()
+                req = bytes([5, 1, 0, 3, len(raw)]) + raw
+            req += struct.pack(">H", target_port)
+            writer.write(req)
+            await writer.drain()
+            hdr = await asyncio.wait_for(reader.readexactly(4), timeout=8)
+            if hdr[1] != 0:
+                return False
+            atyp = hdr[3]
+            if atyp == 1:
+                await asyncio.wait_for(reader.readexactly(4 + 2), timeout=8)
+            elif atyp == 3:
+                dl = await asyncio.wait_for(reader.readexactly(1), timeout=8)
+                await asyncio.wait_for(reader.readexactly(dl[0] + 2), timeout=8)
+            elif atyp == 4:
+                await asyncio.wait_for(reader.readexactly(16 + 2), timeout=8)
+            else:
+                return False
+            return True
+        except Exception:
+            return False
+
+    async def _http_proxy_handshake(self, reader, writer, url, proxy) -> bool:
+        try:
+            target_host = url.split("//", 1)[-1].split("/", 1)[0]
+            if ":" in target_host:
+                parts = target_host.split(":")
+                host = parts[0]
+                port = int(parts[1]) if len(parts) > 1 else 80
+            else:
+                host = target_host
+                port = 80
+            req = f"CONNECT {host}:{port} HTTP/1.1\r\nHost: {host}:{port}\r\n"
+            uname = proxy.get("username", "")
+            passwd = proxy.get("password", "")
+            if uname:
+                import base64
+                cred = base64.b64encode(f"{uname}:{passwd}".encode()).decode()
+                req += f"Proxy-Authorization: Basic {cred}\r\n"
+            req += "\r\n"
+            writer.write(req.encode())
+            await writer.drain()
+            resp = await asyncio.wait_for(reader.readuntil(b"\r\n\r\n"), timeout=15)
+            status_line = resp.split(b"\r\n")[0]
+            return b"200" in status_line
+        except Exception:
+            return False
+
+    def _update_proxy_check(self, proxy_id: str, status: str, latency: int):
+        try:
+            conn = self._db()
+            conn.execute(
+                "UPDATE custom_proxies SET last_check_at=?, last_check_status=?, last_check_latency=?, updated_at=? WHERE id=?",
+                (time.time(), status, latency, time.time(), proxy_id)
+            )
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            logger.error("_update_proxy_check: %s", e)
+
 
 # ============================================================
 # Proxy Runner — local proxy server with upstream selection
@@ -1918,6 +2230,24 @@ class ProxyRunner:
             except Exception:
                 return None
 
+        if route.startswith("custom:"):
+            proxy_id = route[7:]
+            proxy = self.state.get_custom_proxy_raw(proxy_id)
+            if not proxy or not proxy["enabled"]:
+                default = self.state._routing_get("default_route", "direct")
+                return await self._connect_by_route(default, host, port)
+            try:
+                reader, writer = await asyncio.wait_for(
+                    asyncio.open_connection(proxy["host"], proxy["port"]), timeout=10)
+            except Exception:
+                return None
+            ok = await self._connect_via_proxy(reader, writer, proxy, host, port)
+            if not ok:
+                try: writer.close()
+                except: pass
+                return None
+            return reader, writer, f"custom:{proxy_id}"
+
         if route.startswith("proxy:"):
             addr = route[6:]
             r = self.state.ratings.get(addr)
@@ -2036,6 +2366,72 @@ class ProxyRunner:
 
     async def _http_connect_cmd(self, r, w, h, p):
         req = f"CONNECT {h}:{p} HTTP/1.1\r\nHost: {h}:{p}\r\n\r\n"
+        w.write(req.encode()); await w.drain()
+        try:
+            resp = await asyncio.wait_for(r.readuntil(b"\r\n\r\n"), timeout=15)
+            status_line = resp.split(b"\r\n")[0]
+            return b"200" in status_line
+        except asyncio.TimeoutError:
+            return False
+        except Exception:
+            return False
+
+    async def _connect_via_proxy(self, reader, writer, proxy: dict, host: str, port: int) -> bool:
+        protocol = proxy.get("protocol", "socks5")
+        uname = proxy.get("username", "")
+        passwd = proxy.get("password", "")
+        if protocol == "socks5":
+            return await self._socks5_cmd_auth(reader, writer, host, port, uname, passwd)
+        return await self._http_connect_cmd_auth(reader, writer, host, port, uname, passwd)
+
+    async def _socks5_cmd_auth(self, r, w, h, p, uname="", passwd="") -> bool:
+        try:
+            if uname:
+                w.write(bytes([5, 2, 0, 2])); await w.drain()
+            else:
+                w.write(bytes([5, 1, 0])); await w.drain()
+            resp = await asyncio.wait_for(r.readexactly(2), timeout=8)
+            if resp[1] == 0xFF:
+                return False
+            if resp[1] == 2 and uname:
+                u_raw = uname.encode()
+                p_raw = passwd.encode()
+                auth = bytes([1, len(u_raw)]) + u_raw + bytes([len(p_raw)]) + p_raw
+                w.write(auth); await w.drain()
+                auth_resp = await asyncio.wait_for(r.readexactly(2), timeout=8)
+                if auth_resp[1] != 0:
+                    return False
+            is_ip = all(c.isdigit() or c == "." for c in h)
+            if is_ip:
+                req = bytes([5, 1, 0, 1]) + socket.inet_aton(h)
+            else:
+                raw = h.encode()
+                req = bytes([5, 1, 0, 3, len(raw)]) + raw
+            req += struct.pack(">H", p)
+            w.write(req); await w.drain()
+            hdr = await asyncio.wait_for(r.readexactly(4), timeout=8)
+            if hdr[1] != 0: return False
+            atyp = hdr[3]
+            if atyp == 1:
+                await asyncio.wait_for(r.readexactly(4 + 2), timeout=8)
+            elif atyp == 3:
+                dl = await asyncio.wait_for(r.readexactly(1), timeout=8)
+                await asyncio.wait_for(r.readexactly(dl[0] + 2), timeout=8)
+            elif atyp == 4:
+                await asyncio.wait_for(r.readexactly(16 + 2), timeout=8)
+            else:
+                return False
+            return True
+        except Exception:
+            return False
+
+    async def _http_connect_cmd_auth(self, r, w, h, p, uname="", passwd="") -> bool:
+        req = f"CONNECT {h}:{p} HTTP/1.1\r\nHost: {h}:{p}\r\n"
+        if uname:
+            import base64
+            cred = base64.b64encode(f"{uname}:{passwd}".encode()).decode()
+            req += f"Proxy-Authorization: Basic {cred}\r\n"
+        req += "\r\n"
         w.write(req.encode()); await w.drain()
         try:
             resp = await asyncio.wait_for(r.readuntil(b"\r\n\r\n"), timeout=15)
@@ -3150,6 +3546,57 @@ class HuntServer:
                 if result:
                     return json.dumps({"ok": True, "list": result}), 200, "application/json"
                 return json.dumps({"ok": False, "error": "not found"}), 404, "application/json"
+
+        # === Custom Proxies API ===
+        if path == "/api/custom-proxies" and method == "GET":
+            proxies = self.state.get_custom_proxies()
+            return json.dumps({"proxies": proxies}), 200, "application/json"
+
+        if path == "/api/custom-proxies" and method == "POST":
+            try:
+                data = json.loads(body or b"{}")
+            except Exception:
+                data = {}
+            result = self.state.create_custom_proxy(data)
+            if result:
+                return json.dumps({"ok": True, "proxy": result}), 200, "application/json"
+            return json.dumps({"ok": False, "error": "id, name, host and port are required"}), 400, "application/json"
+
+        if path.startswith("/api/custom-proxies/") and not path.endswith("/toggle") and not path.endswith("/test"):
+            proxy_id = unquote(path[len("/api/custom-proxies/"):])
+            if method == "GET":
+                result = self.state.get_custom_proxy(proxy_id)
+                if result:
+                    return json.dumps(result), 200, "application/json"
+                return json.dumps({"error": "not found"}), 404, "application/json"
+            elif method == "POST":
+                try:
+                    data = json.loads(body or b"{}")
+                except Exception:
+                    data = {}
+                result = self.state.update_custom_proxy(proxy_id, data)
+                if result:
+                    return json.dumps({"ok": True, "proxy": result}), 200, "application/json"
+                return json.dumps({"ok": False, "error": "not found"}), 404, "application/json"
+            elif method == "DELETE":
+                ok = self.state.delete_custom_proxy(proxy_id)
+                if ok:
+                    return json.dumps({"ok": True}), 200, "application/json"
+                return json.dumps({"ok": False, "error": "not found"}), 404, "application/json"
+
+        if path.endswith("/toggle") and path.startswith("/api/custom-proxies/"):
+            proxy_id = unquote(path[len("/api/custom-proxies/"):-len("/toggle")])
+            if method == "POST":
+                result = self.state.toggle_custom_proxy(proxy_id)
+                if result:
+                    return json.dumps({"ok": True, "proxy": result}), 200, "application/json"
+                return json.dumps({"ok": False, "error": "not found"}), 404, "application/json"
+
+        if path.endswith("/test") and path.startswith("/api/custom-proxies/"):
+            proxy_id = unquote(path[len("/api/custom-proxies/"):-len("/test")])
+            if method == "POST":
+                result = await self.state.test_custom_proxy(proxy_id)
+                return json.dumps(result), 200, "application/json"
 
         return json.dumps({"error": "not found"}), 404, "application/json"
 

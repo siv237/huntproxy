@@ -233,6 +233,10 @@ const ui = {
     if (!route) return '<span style="color:var(--text-muted)">—</span>';
     if (route === 'direct') return '<span style="color:var(--success);font-weight:600">Direct</span>';
     if (route === 'pool') return '<span style="color:var(--accent);font-weight:600">Pool</span>';
+    if (route.startsWith('custom:')) {
+      const name = route.slice(7);
+      return '<span style="color:var(--info);font-weight:600">Custom: ' + ui.escHtml(name) + '</span>';
+    }
     if (route.startsWith('proxy:')) return '<span style="color:var(--info);font-weight:600">' + ui.escHtml(route) + '</span>';
     return '<span style="color:var(--text-muted)">' + ui.escHtml(route) + '</span>';
   },

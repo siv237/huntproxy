@@ -13,6 +13,7 @@ const router = {
     settings: ['Settings', 'Configure huntproxy settings'],
     routes: ['Routes', 'Configure domain-based traffic routing rules'],
     'domain-lists': ['Domain Lists', 'Manage domain lists for routing rules'],
+    'custom-proxies': ['Custom Proxies', 'Configure specialized proxies for routing (corporate, Tor, anti-ban)'],
     downloads: ['Downloads', 'Export data files'],
     api: ['API', 'API documentation and endpoints'],
   },
