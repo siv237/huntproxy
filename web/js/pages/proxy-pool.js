@@ -23,17 +23,15 @@ router.register('proxy-pool', (container) => {
     container.style.flex = '1';
 
     const row1 = ui.el('div', 'grid grid-2 row-stretch');
+    row1.style.flex = '1';
     row1.appendChild(buildProxyControlCard());
-    row1.appendChild(buildSocks5ControlCard());
+    row1.appendChild(buildSelectedProxyCard());
     container.appendChild(row1);
 
-    const row1b = ui.el('div', 'grid grid-2 row-stretch');
-    row1b.appendChild(buildSelectedProxyCard());
-    row1b.appendChild(buildClientLogCard());
-    container.appendChild(row1b);
-
-    const row2 = ui.el('div', '');
+    const row2 = ui.el('div', 'grid grid-2 row-stretch');
+    row2.style.flex = '2';
     row2.appendChild(buildSelectProxyCard());
+    row2.appendChild(buildClientLogCard());
     container.appendChild(row2);
   }
 
@@ -42,74 +40,49 @@ router.register('proxy-pool', (container) => {
     card.id = 'proxy-control-card';
     card.appendChild(ui.el('div', 'card-title', { text: 'Proxy Server', style: 'margin-bottom:8px' }));
 
-    // Status bar
     const status = ui.el('div', '', { id: 'proxy-status-bar', style: 'display:flex;align-items:center;gap:6px;padding:4px 8px;border-radius:var(--radius-xs);margin-bottom:8px;font-size:12px;font-weight:500;background:var(--surface-raised);border:1px solid var(--border);color:var(--text-secondary)' });
     status.innerHTML = '<span id="proxy-dot" style="width:8px;height:8px;border-radius:50%;background:var(--text-muted);flex-shrink:0"></span><span id="proxy-status-text">stopped</span>';
     card.appendChild(status);
 
-    // Port + Start/Stop
-    const row = ui.el('div', '', { style: 'display:flex;gap:4px;align-items:center;margin-bottom:6px' });
-    row.appendChild(ui.el('span', '', { style: 'font-size:11px;color:var(--text-secondary)', text: 'Port:' }));
-    const portInp = ui.el('input', '', { id: 'proxy-port', type: 'number', value: '17277', min: '1024', max: '65535', style: 'width:60px;padding:3px 6px;font-size:11px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--bg);color:var(--text-primary)' });
-    row.appendChild(portInp);
-
+    // HTTP row
+    const httpRow = ui.el('div', '', { style: 'display:flex;gap:4px;align-items:center;margin-bottom:6px' });
+    httpRow.appendChild(ui.el('span', '', { style: 'font-size:11px;color:var(--text-secondary);font-weight:600;width:52px;flex-shrink:0', text: 'HTTP' }));
+    httpRow.appendChild(ui.el('span', '', { style: 'font-size:11px;color:var(--text-secondary)', text: 'Port:' }));
+    const portInp = ui.el('input', '', { id: 'proxy-port', type: 'number', value: '17277', min: '1024', max: '65535', style: 'width:72px;padding:3px 6px;font-size:11px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--bg);color:var(--text-primary)' });
+    httpRow.appendChild(portInp);
     const startBtn = ui.el('button', 'btn btn-xs btn-primary', { text: 'Start', id: 'btn-proxy-start' });
     startBtn.addEventListener('click', () => api.proxyStart(portInp.value).then(() => app.toast('Proxy started')).catch(e => app.toast('Error: ' + e.message, 'error')));
-    row.appendChild(startBtn);
-
+    httpRow.appendChild(startBtn);
     const stopBtn = ui.el('button', 'btn btn-xs btn-danger', { text: 'Stop', id: 'btn-proxy-stop' });
     stopBtn.addEventListener('click', () => api.proxyStop().then(() => app.toast('Proxy stopped')).catch(e => app.toast('Error: ' + e.message, 'error')));
-    row.appendChild(stopBtn);
-    card.appendChild(row);
+    httpRow.appendChild(stopBtn);
+    card.appendChild(httpRow);
 
-    // Direct mode
-    const dm = ui.el('label', '', { style: 'display:flex;align-items:center;gap:4px;cursor:pointer;font-size:11px;margin-bottom:6px' });
-    const dmCb = ui.el('input', '', { id: 'direct-toggle', type: 'checkbox' });
-    dmCb.addEventListener('change', () => api.toggleDirect(dmCb.checked).then(() => app.toast(dmCb.checked ? 'Direct mode ON' : 'Direct mode OFF')));
-    dm.appendChild(dmCb);
-    dm.appendChild(ui.el('span', '', { style: 'font-weight:600', text: 'Direct mode' }));
-    dm.appendChild(ui.el('span', '', { style: 'color:var(--text-muted)', text: ' (no upstream)' }));
-    card.appendChild(dm);
+    // SOCKS5 row
+    const s5Row = ui.el('div', '', { style: 'display:flex;gap:4px;align-items:center;margin-bottom:6px;padding-top:6px;border-top:1px solid var(--border-subtle)' });
+    s5Row.appendChild(ui.el('span', '', { style: 'font-size:11px;color:var(--text-secondary);font-weight:600;width:52px;flex-shrink:0', text: 'SOCKS5' }));
+    s5Row.appendChild(ui.el('span', '', { style: 'font-size:11px;color:var(--text-secondary)', text: 'Port:' }));
+    const s5PortInp = ui.el('input', '', { id: 'socks5-port', type: 'number', value: '17278', min: '1024', max: '65535', style: 'width:72px;padding:3px 6px;font-size:11px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--bg);color:var(--text-primary)' });
+    s5Row.appendChild(s5PortInp);
+    const s5StartBtn = ui.el('button', 'btn btn-xs btn-primary', { text: 'Start', id: 'btn-socks5-start' });
+    s5StartBtn.addEventListener('click', () => api.socks5Start(s5PortInp.value).then(() => app.toast('SOCKS5 started')).catch(e => app.toast('Error: ' + e.message, 'error')));
+    s5Row.appendChild(s5StartBtn);
+    const s5StopBtn = ui.el('button', 'btn btn-xs btn-danger', { text: 'Stop', id: 'btn-socks5-stop' });
+    s5StopBtn.addEventListener('click', () => api.socks5Stop().then(() => app.toast('SOCKS5 stopped')).catch(e => app.toast('Error: ' + e.message, 'error')));
+    s5Row.appendChild(s5StopBtn);
+    card.appendChild(s5Row);
 
-    // Connections
-    const conn = ui.el('div', '', { style: 'display:flex;align-items:baseline;gap:6px' });
-    conn.appendChild(ui.el('span', '', { id: 'proxy-connections', style: 'font-size:18px;font-weight:700;color:var(--accent)', text: '0' }));
-    conn.appendChild(ui.el('span', '', { style: 'font-size:11px;color:var(--text-secondary)', text: 'connections' }));
-    card.appendChild(conn);
-    return card;
-  }
-
-  function buildSocks5ControlCard() {
-    const card = ui.el('div', 'card');
-    card.id = 'socks5-control-card';
-    card.appendChild(ui.el('div', 'card-title', { text: 'SOCKS5 Server', style: 'margin-bottom:8px' }));
-
-    const status = ui.el('div', '', { id: 'socks5-status-bar', style: 'display:flex;align-items:center;gap:6px;padding:4px 8px;border-radius:var(--radius-xs);margin-bottom:8px;font-size:12px;font-weight:500;background:var(--surface-raised);border:1px solid var(--border);color:var(--text-secondary)' });
-    status.innerHTML = '<span id="socks5-dot" style="width:8px;height:8px;border-radius:50%;background:var(--text-muted);flex-shrink:0"></span><span id="socks5-status-text">stopped</span>';
-    card.appendChild(status);
-
-    const row = ui.el('div', '', { style: 'display:flex;gap:4px;align-items:center;margin-bottom:6px' });
-    row.appendChild(ui.el('span', '', { style: 'font-size:11px;color:var(--text-secondary)', text: 'Port:' }));
-    const portInp = ui.el('input', '', { id: 'socks5-port', type: 'number', value: '17278', min: '1024', max: '65535', style: 'width:60px;padding:3px 6px;font-size:11px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--bg);color:var(--text-primary)' });
-    row.appendChild(portInp);
-
-    const startBtn = ui.el('button', 'btn btn-xs btn-primary', { text: 'Start', id: 'btn-socks5-start' });
-    startBtn.addEventListener('click', () => api.socks5Start(portInp.value).then(() => app.toast('SOCKS5 proxy started')).catch(e => app.toast('Error: ' + e.message, 'error')));
-    row.appendChild(startBtn);
-
-    const stopBtn = ui.el('button', 'btn btn-xs btn-danger', { text: 'Stop', id: 'btn-socks5-stop' });
-    stopBtn.addEventListener('click', () => api.socks5Stop().then(() => app.toast('SOCKS5 proxy stopped')).catch(e => app.toast('Error: ' + e.message, 'error')));
-    row.appendChild(stopBtn);
-    card.appendChild(row);
-
-    const note = ui.el('div', '', { style: 'font-size:10px;color:var(--text-muted);margin-bottom:6px' });
-    note.textContent = 'Uses same upstream pool as HTTP proxy';
-    card.appendChild(note);
-
-    const conn = ui.el('div', '', { style: 'display:flex;align-items:baseline;gap:6px' });
-    conn.appendChild(ui.el('span', '', { id: 'socks5-connections', style: 'font-size:18px;font-weight:700;color:var(--accent)', text: '0' }));
-    conn.appendChild(ui.el('span', '', { style: 'font-size:11px;color:var(--text-secondary)', text: 'connections' }));
-    card.appendChild(conn);
+    // Connections per protocol
+    const connRow = ui.el('div', '', { style: 'display:flex;gap:12px;align-items:baseline' });
+    const httpConn = ui.el('div', '', { style: 'display:flex;align-items:baseline;gap:4px' });
+    httpConn.appendChild(ui.el('span', '', { style: 'font-size:11px;color:var(--text-secondary)', text: 'HTTP' }));
+    httpConn.appendChild(ui.el('span', '', { id: 'proxy-connections', style: 'font-size:16px;font-weight:700;color:var(--accent)', text: '0' }));
+    connRow.appendChild(httpConn);
+    const s5Conn = ui.el('div', '', { style: 'display:flex;align-items:baseline;gap:4px' });
+    s5Conn.appendChild(ui.el('span', '', { style: 'font-size:11px;color:var(--text-secondary)', text: 'SOCKS5' }));
+    s5Conn.appendChild(ui.el('span', '', { id: 'socks5-connections', style: 'font-size:16px;font-weight:700;color:var(--accent)', text: '0' }));
+    connRow.appendChild(s5Conn);
+    card.appendChild(connRow);
     return card;
   }
 
@@ -117,6 +90,14 @@ router.register('proxy-pool', (container) => {
     const card = ui.el('div', 'card');
     card.id = 'selected-proxy-card';
     card.appendChild(ui.el('div', 'card-title', { text: 'Selected Upstream', style: 'margin-bottom:8px' }));
+
+    const dm = ui.el('label', '', { style: 'display:flex;align-items:center;gap:4px;cursor:pointer;font-size:11px;margin-bottom:6px' });
+    const dmCb = ui.el('input', '', { id: 'direct-toggle', type: 'checkbox' });
+    dmCb.addEventListener('change', () => api.toggleDirect(dmCb.checked).then(() => app.toast(dmCb.checked ? 'Direct mode ON' : 'Direct mode OFF')));
+    dm.appendChild(dmCb);
+    dm.appendChild(ui.el('span', '', { style: 'font-weight:600', text: 'Direct mode' }));
+    dm.appendChild(ui.el('span', '', { style: 'color:var(--text-muted)', text: ' (no upstream)' }));
+    card.appendChild(dm);
 
     const body = ui.el('div', '', { id: 'sel-proxy-body' });
     body.innerHTML = '<div class="empty" style="padding:8px;font-size:11px">No upstream selected</div>';
@@ -167,43 +148,37 @@ router.register('proxy-pool', (container) => {
   build();
 
   // --- Updaters ---
-  function updateSocks5Control(ss) {
-    const el = id => document.getElementById(id);
-    const bar = el('socks5-status-bar');
-    const dot = el('socks5-dot');
-    const txt = el('socks5-status-text');
-    if (ss && ss.running) {
-      if (bar) { bar.style.background = 'var(--success-bg)'; bar.style.borderColor = 'var(--success)'; bar.style.color = 'var(--success)'; }
-      if (dot) dot.style.background = 'var(--success)';
-      if (txt) txt.textContent = 'running on :' + (ss.port || 17278);
-    } else {
-      if (bar) { bar.style.background = 'var(--surface-raised)'; bar.style.borderColor = 'var(--border)'; bar.style.color = 'var(--text-secondary)'; }
-      if (dot) dot.style.background = 'var(--text-muted)';
-      if (txt) txt.textContent = 'stopped';
-    }
-    if (el('btn-socks5-start')) el('btn-socks5-start').disabled = ss && ss.running;
-    if (el('btn-socks5-stop')) el('btn-socks5-stop').disabled = !(ss && ss.running);
-    if (el('socks5-connections')) el('socks5-connections').textContent = ss ? (ss.connections || 0) : 0;
-    if (el('socks5-port') && ss && ss.port) el('socks5-port').value = ss.port;
-  }
-
-  function updateProxyControl(ps) {
+  function updateProxyControl(ps, ss) {
     const el = id => document.getElementById(id);
     const bar = el('proxy-status-bar');
     const dot = el('proxy-dot');
     const txt = el('proxy-status-text');
-    if (ps && ps.running) {
+    const httpRunning = ps && ps.running;
+    const s5Running = ss && ss.running;
+    const anyRunning = httpRunning || s5Running;
+
+    if (anyRunning) {
       if (bar) { bar.style.background = 'var(--success-bg)'; bar.style.borderColor = 'var(--success)'; bar.style.color = 'var(--success)'; }
       if (dot) dot.style.background = 'var(--success)';
-      if (txt) txt.textContent = 'running on :' + (ps.port || 17277);
+      const parts = [];
+      if (httpRunning) parts.push('HTTP:' + (ps.port || 17277));
+      if (s5Running) parts.push('SOCKS5:' + (ss.port || 17278));
+      if (txt) txt.textContent = 'running ' + parts.join(', ');
     } else {
       if (bar) { bar.style.background = 'var(--surface-raised)'; bar.style.borderColor = 'var(--border)'; bar.style.color = 'var(--text-secondary)'; }
       if (dot) dot.style.background = 'var(--text-muted)';
       if (txt) txt.textContent = 'stopped';
     }
-    if (el('btn-proxy-start')) el('btn-proxy-start').disabled = ps && ps.running;
-    if (el('btn-proxy-stop')) el('btn-proxy-stop').disabled = !(ps && ps.running);
-    if (el('proxy-connections')) el('proxy-connections').textContent = ps ? (ps.connections || 0) : 0;
+    if (el('btn-proxy-start')) el('btn-proxy-start').disabled = httpRunning;
+    if (el('btn-proxy-stop')) el('btn-proxy-stop').disabled = !httpRunning;
+    if (el('proxy-port') && ps && ps.port) el('proxy-port').value = ps.port;
+    if (el('btn-socks5-start')) el('btn-socks5-start').disabled = s5Running;
+    if (el('btn-socks5-stop')) el('btn-socks5-stop').disabled = !s5Running;
+    if (el('socks5-port') && ss && ss.port) el('socks5-port').value = ss.port;
+    const httpConn = ps ? (ps.connections || 0) : 0;
+    const s5Conn = ss ? (ss.connections || 0) : 0;
+    if (el('proxy-connections')) el('proxy-connections').textContent = httpConn;
+    if (el('socks5-connections')) el('socks5-connections').textContent = s5Conn;
     if (el('direct-toggle')) el('direct-toggle').checked = !!(ps && ps.direct_mode);
   }
 
@@ -282,14 +257,25 @@ router.register('proxy-pool', (container) => {
     body.appendChild(btnRow);
   }
 
-  function updateProxyLog(ps) {
+  function updateProxyLog(ps, ss) {
     const log = document.getElementById('proxy-log');
     if (!log) return;
-    if (!ps || !ps.log || !ps.log.length) {
+    const httpLog = (ps && ps.log) || [];
+    const s5Log = (ss && ss.log) || [];
+    const all = [...httpLog.map(e => ({...e, type: 'HTTP'})), ...s5Log.map(e => ({...e, type: 'SOCKS5'}))]
+      .sort((a, b) => (b.ts || 0) - (a.ts || 0))
+      .slice(0, 50);
+    if (!all.length) {
       log.innerHTML = '<div class="empty" style="padding:8px;font-size:11px">proxy not started</div>';
       return;
     }
-    log.innerHTML = ps.log.map(e => `<span style="color:var(--text-muted)">${ui.fmtTime(e.ts)}</span> ${e.client || '?'} → ${e.target || '?'} [${e.status || ''}]` + (e.upstream && e.upstream !== 'direct' && e.upstream !== '?' ? ` <span style="color:var(--accent)">via ${e.upstream}</span>` : '')).join('<br>');
+    const fmtTarget = t => {
+      if (!t || t === '?') return '?';
+      const m = t.match(/^(https?:\/\/)?([^\/:]+)(.*)/);
+      if (!m) return t;
+      return (m[1] || '') + '<b>' + m[2] + '</b>' + (m[3] || '');
+    };
+    log.innerHTML = all.map(e => `<span style="color:var(--text-muted)">${ui.fmtTime(e.ts)}</span> <span style="color:var(--accent);font-size:10px">${e.type}</span> ${e.client || '?'} → ${fmtTarget(e.target)} [${e.status || ''}]` + (e.upstream && e.upstream !== 'direct' && e.upstream !== '?' ? ` <span style="color:var(--accent)">via ${e.upstream}</span>` : '')).join('<br>');
   }
 
   function updateSelectProxy(proxies) {
@@ -366,10 +352,9 @@ router.register('proxy-pool', (container) => {
       try { proxies = await api.proxyAlive(); } catch (e) { console.error('proxyAlive', e); }
       state.selected = ps && ps.active_proxy ? ps.active_proxy.address : null;
       state.proxies = proxies;
-      updateProxyControl(ps);
-      updateSocks5Control(ss);
+      updateProxyControl(ps, ss);
       updateSelectedProxy(ps);
-      updateProxyLog(ps);
+      updateProxyLog(ps, ss);
       updateSelectProxy(proxies);
     } catch (e) {
       console.error('proxy-pool poll', e);
