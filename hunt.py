@@ -3966,7 +3966,8 @@ class HuntServer:
             if len(parts) < 2:
                 writer.close(); return
             method = parts[0].decode().upper()
-            path = parts[1].decode().split("?", 1)[0]
+            raw_path = parts[1].decode()
+            path = raw_path.split("?", 1)[0]
         except Exception:
             writer.close(); return
 
@@ -3990,7 +3991,7 @@ class HuntServer:
             except Exception:
                 pass
 
-        response, status, ct = await self._route(method, path, body)
+        response, status, ct = await self._route(method, path, raw_path, body)
         await self._write(writer, status, response, ct)
         try:
             writer.close()
@@ -4033,7 +4034,7 @@ class HuntServer:
         ct = STATIC_MIME.get(ext, "application/octet-stream")
         return data, 200, ct
 
-    async def _route(self, method, path, body):
+    async def _route(self, method, path, raw_path, body):
         if path.startswith("/css/") or path.startswith("/js/") or path.startswith("/img/") or path.startswith("/assets/") or path.startswith("/locales/"):
             static = self._serve_static(path)
             if static:
@@ -4054,7 +4055,7 @@ class HuntServer:
             return json.dumps(self.state.get_snapshot()), 200, "application/json"
 
         if path.startswith("/api/events"):
-            qs = _qs(path)
+            qs = _qs(raw_path)
             since = int(qs.get("since", 0))
             events = self.state.events
             new = [e for e in events if e["seq"] > since]
@@ -4111,7 +4112,7 @@ class HuntServer:
             return json.dumps([r.to_dict() for r in ratings]), 200, "application/json"
 
         if path.startswith("/api/proxy/start"):
-            qs = _qs(path)
+            qs = _qs(raw_path)
             port = int(qs.get("port", 17277))
             await self.proxy.start(port)
             return json.dumps(self.proxy.get_status()), 200, "application/json"
@@ -4124,7 +4125,7 @@ class HuntServer:
             return json.dumps(self.socks5.get_status()), 200, "application/json"
 
         if path.startswith("/api/socks5/start"):
-            qs = _qs(path)
+            qs = _qs(raw_path)
             port = int(qs.get("port", 17278))
             self.state._socks5_port = port
             self.state._save_state()
@@ -4136,7 +4137,7 @@ class HuntServer:
             return json.dumps({"ok": True}), 200, "application/json"
 
         if path.startswith("/api/proxy/select"):
-            qs = _qs(path)
+            qs = _qs(raw_path)
             address = qs.get("address") or None
             self.proxy.select(address)
             self.state._proxy_active_addr = self.proxy.active_proxy_addr
@@ -4162,7 +4163,7 @@ class HuntServer:
             return json.dumps({"ok": False, "error": "no other alive proxy"}), 200, "application/json"
 
         if path.startswith("/api/proxy/recheck"):
-            qs = _qs(path)
+            qs = _qs(raw_path)
             address = qs.get("address", "").strip()
             if address:
                 host, port_str = address.rsplit(":", 1)
@@ -4182,7 +4183,7 @@ class HuntServer:
             return json.dumps({"ok": False, "error": "no address"}), 400, "application/json"
 
         if path.startswith("/api/proxy/direct"):
-            qs = _qs(path)
+            qs = _qs(raw_path)
             en = qs.get("on", "true").lower() != "false"
             self.proxy.direct_mode = en
             if en:
@@ -4194,7 +4195,7 @@ class HuntServer:
             return json.dumps({"ok": True, "direct_mode": en}), 200, "application/json"
 
         if path.startswith("/api/settings/country_filter") and method == "POST":
-            qs = _qs(path)
+            qs = _qs(raw_path)
             code = qs.get("code", "").upper()
             self.state.country_filter = code
             self.state._emit(f"Country filter set to: {code or 'ALL'}", "info")
@@ -4208,18 +4209,18 @@ class HuntServer:
             return json.dumps(self.state._get_system()), 200, "application/json"
 
         if path.startswith("/api/activity"):
-            qs = _qs(path)
+            qs = _qs(raw_path)
             limit = int(qs.get("limit", 10))
             return json.dumps(self.state.get_activity(limit)), 200, "application/json"
 
         if path.startswith("/api/history"):
-            qs = _qs(path)
+            qs = _qs(raw_path)
             last = qs.get("last", "1h")
             return json.dumps(self.state.get_history(last)), 200, "application/json"
 
         # === Proxies ===
         if path.startswith("/api/proxies"):
-            qs = _qs(path)
+            qs = _qs(raw_path)
             status = qs.get("status", "")
             page = int(qs.get("page", 1))
             limit = int(qs.get("limit", 20))
@@ -4347,7 +4348,7 @@ class HuntServer:
 
         # === Blacklist ===
         if path.startswith("/api/blacklist"):
-            qs = _qs(path)
+            qs = _qs(raw_path)
             page = int(qs.get("page", 1))
             limit = int(qs.get("limit", 20))
             bl = self.state._blacklist_view()
@@ -4421,7 +4422,7 @@ class HuntServer:
 
         # === Logs ===
         if path.startswith("/api/logs"):
-            qs = _qs(path)
+            qs = _qs(raw_path)
             limit = int(qs.get("limit", 50))
             log_file = DATA_DIR / "huntproxy.log"
             lines = []
@@ -4804,7 +4805,7 @@ class HuntServer:
             return json.dumps(result), 200, "application/json"
 
         if path.startswith("/api/canary/history") and method == "GET":
-            qs = _qs(path)
+            qs = _qs(raw_path)
             hours = int(qs.get("hours", "24"))
             result = self.state.get_canary_history(hours)
             return json.dumps(result), 200, "application/json"
