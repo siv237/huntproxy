@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="light">
+<html lang="en" data-theme="light" data-i18n-lang>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -57,88 +57,88 @@
       <div class="nav-group">
         <button class="nav-item active" data-page="overview" onclick="router.navigate('overview')">
           <svg><use href="#icon-overview"/></svg>
-          <span>Overview</span>
+          <span data-i18n="nav.overview">Overview</span>
         </button>
       </div>
       <div class="nav-group">
         <button class="nav-item" data-page="hunt" onclick="router.navigate('hunt')">
           <svg><use href="#icon-pool"/></svg>
-          <span>Hunt</span>
+          <span data-i18n="nav.hunt">Hunt</span>
         </button>
         <button class="nav-item" data-page="proxy-sources" onclick="router.navigate('proxy-sources')">
           <svg><use href="#icon-proxy-sources"/></svg>
-          <span>Sources</span>
+          <span data-i18n="nav.sources">Sources</span>
         </button>
         <button class="nav-item" data-page="proxies" onclick="router.navigate('proxies')">
           <svg><use href="#icon-proxies"/></svg>
-          <span>Proxies</span>
+          <span data-i18n="nav.proxies">Proxies</span>
         </button>
         <button class="nav-item" data-page="proxy-control" onclick="router.navigate('proxy-control')">
           <svg><use href="#icon-control"/></svg>
-          <span>Proxy Control</span>
+          <span data-i18n="nav.proxyControl">Proxy Control</span>
         </button>
         <button class="nav-item" data-page="proxy-pool" onclick="router.navigate('proxy-pool')">
           <svg><use href="#icon-pool"/></svg>
-          <span>Proxy Pool</span>
+          <span data-i18n="nav.proxyPool">Proxy Pool</span>
         </button>
       </div>
       <div class="nav-group">
         <button class="nav-item" data-page="blacklist" onclick="router.navigate('blacklist')">
           <svg><use href="#icon-blacklist"/></svg>
-          <span>Blacklist</span>
+          <span data-i18n="nav.blacklist">Blacklist</span>
         </button>
         <button class="nav-item" data-page="analytics" onclick="router.navigate('analytics')">
           <svg><use href="#icon-analytics"/></svg>
-          <span>Analytics</span>
+          <span data-i18n="nav.analytics">Analytics</span>
         </button>
         <button class="nav-item" data-page="logs" onclick="router.navigate('logs')">
           <svg><use href="#icon-logs"/></svg>
-          <span>Logs</span>
+          <span data-i18n="nav.logs">Logs</span>
         </button>
       </div>
       <div class="nav-group">
         <button class="nav-item" data-page="settings" onclick="router.navigate('settings')">
           <svg><use href="#icon-settings"/></svg>
-          <span>Settings</span>
+          <span data-i18n="nav.settings">Settings</span>
         </button>
         <button class="nav-item" data-page="routes" onclick="router.navigate('routes')">
           <svg><use href="#icon-routes"/></svg>
-          <span>Routes</span>
+          <span data-i18n="nav.routes">Routes</span>
         </button>
         <button class="nav-item" data-page="domain-lists" onclick="router.navigate('domain-lists')">
           <svg><use href="#icon-domain-lists"/></svg>
-          <span>Domain Lists</span>
+          <span data-i18n="nav.domainLists">Domain Lists</span>
         </button>
         <button class="nav-item" data-page="custom-proxies" onclick="router.navigate('custom-proxies')">
           <svg><use href="#icon-custom-proxies"/></svg>
-          <span>Custom Proxies</span>
+          <span data-i18n="nav.customProxies">Custom Proxies</span>
         </button>
         <button class="nav-item" data-page="connectivity" onclick="router.navigate('connectivity')">
           <svg><use href="#icon-connectivity"/></svg>
-          <span>Connectivity</span>
+          <span data-i18n="nav.connectivity">Connectivity</span>
         </button>
         <button class="nav-item" data-page="downloads" onclick="router.navigate('downloads')">
           <svg><use href="#icon-downloads"/></svg>
-          <span>Downloads</span>
+          <span data-i18n="nav.downloads">Downloads</span>
         </button>
         <button class="nav-item" data-page="api" onclick="router.navigate('api')">
           <svg><use href="#icon-api"/></svg>
-          <span>API</span>
+          <span data-i18n="nav.api">API</span>
         </button>
         <button class="nav-item" data-page="about" onclick="router.navigate('about')">
           <svg><use href="#icon-about"/></svg>
-          <span>About</span>
+          <span data-i18n="nav.about">About</span>
         </button>
       </div>
     </nav>
     <div class="sidebar-footer">
       <div class="status-row">
         <span class="status-dot" id="sys-dot"></span>
-        <span class="status-text">All Systems Operational</span>
+        <span class="status-text" data-i18n="sidebar.allSystemsOperational">All Systems Operational</span>
       </div>
       <div class="status-row" id="canary-row" style="font-size:11px">
         <span class="status-dot" id="canary-dot"></span>
-        <span id="canary-text">Internet: checking...</span>
+        <span id="canary-text" data-i18n="sidebar.internetChecking">Internet: checking...</span>
       </div>
       <div class="status-row" style="font-size:11px">
         <span>v1.0.0</span>
@@ -147,7 +147,10 @@
       <button class="theme-toggle" id="theme-toggle" onclick="app.toggleTheme()">
         <svg id="theme-icon-sun" width="14" height="14"><use href="#icon-sun"/></svg>
         <svg id="theme-icon-moon" width="14" height="14" style="display:none"><use href="#icon-moon"/></svg>
-        <span id="theme-label">Light</span>
+        <span id="theme-label" data-i18n="sidebar.light">Light</span>
+      </button>
+      <button class="lang-toggle" id="lang-toggle" onclick="app.toggleLang()" title="Language" style="font-size:11px;padding:2px 8px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--surface-raised);cursor:pointer;color:var(--text-secondary);display:flex;align-items:center;gap:4px">
+        <span id="lang-label">EN</span>
       </button>
     </div>
   </aside>
@@ -167,17 +170,17 @@
       </div>
       <div class="search-bar">
         <svg><use href="#icon-search"/></svg>
-        <input type="text" placeholder="Search proxies, IPs, countries..." id="global-search">
+        <input type="text" data-i18n-placeholder="topbar.searchPlaceholder" placeholder="Search proxies, IPs, countries..." id="global-search">
       </div>
       <div class="topbar-right">
         <button class="topbar-btn" id="quick-actions-btn">
-          <span>Quick Actions</span>
+           <span data-i18n="topbar.quickActions">Quick Actions</span>
           <svg width="14" height="14"><use href="#icon-chevron-down"/></svg>
         </button>
         <button class="topbar-btn">
           <svg width="16" height="16"><use href="#icon-bell"/></svg>
         </button>
-        <div class="user-avatar" title="Admin">A</div>
+        <div class="user-avatar" data-i18n-title="topbar.admin" title="Admin">A</div>
       </div>
     </header>
 
@@ -187,6 +190,7 @@
 
 <div class="toast-container" id="toast-container"></div>
 
+<script src="/js/i18n.js"></script>
 <script src="/js/api.js"></script>
 <script src="/js/router.js"></script>
 <script src="/js/charts.js"></script>

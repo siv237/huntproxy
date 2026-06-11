@@ -7,15 +7,15 @@ router.register('downloads', (container) => {
     container.style.minHeight = '0';
     container.style.flex = '1';
 
-    const card = ui.card('Downloads');
+    const card = ui.card(t('page.downloads.downloads'));
     card.id = 'downloads-card';
     container.appendChild(card);
 
     const files = [
-      { name: 'working.txt', desc: 'Alive US proxies list', icon: '📄' },
-      { name: 'blacklist.txt', desc: 'Blacklisted proxies', icon: '🚫' },
-      { name: 'ratings.json', desc: 'Proxy ratings and statistics', icon: '📊' },
-      { name: 'config.yaml', desc: 'Application configuration', icon: '⚙️' },
+      { name: 'working.txt', desc: t('page.downloads.workingTxt'), icon: '📄' },
+      { name: 'blacklist.txt', desc: t('page.downloads.blacklistTxt'), icon: '🚫' },
+      { name: 'ratings.json', desc: t('page.downloads.ratingsJson'), icon: '📊' },
+      { name: 'config.yaml', desc: t('page.downloads.configYaml'), icon: '⚙️' },
     ];
 
     const grid = ui.el('div', 'grid grid-2');
@@ -26,7 +26,7 @@ router.register('downloads', (container) => {
       info.appendChild(ui.el('div', '', { style: 'font-weight:600;font-size:13px;margin-bottom:2px', text: f.name }));
       info.appendChild(ui.el('div', '', { style: 'font-size:12px;color:var(--text-secondary)', text: f.desc }));
       item.appendChild(info);
-      const dl = ui.el('a', 'btn btn-sm btn-primary', { text: 'Download', href: `/api/download/${f.name}`, download: f.name });
+      const dl = ui.el('a', 'btn btn-sm btn-primary', { text: t('page.downloads.download'), href: `/api/download/${f.name}`, download: f.name });
       item.appendChild(dl);
       grid.appendChild(item);
     });

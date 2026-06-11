@@ -5,9 +5,13 @@ const app = {
 
   init() {
     this.loadTheme();
-    router.resolve();
-    this.startPollers();
-    window.addEventListener('beforeunload', () => this.stopPollers());
+    i18n.init().then(() => {
+      this.updateLangLabel();
+      this.applyI18n();
+      router.resolve();
+      this.startPollers();
+      window.addEventListener('beforeunload', () => this.stopPollers());
+    });
   },
 
   loadTheme() {
@@ -33,7 +37,39 @@ const app = {
       sun.style.display = theme === 'dark' ? 'none' : 'inline';
       moon.style.display = theme === 'dark' ? 'inline' : 'none';
     }
-    if (label) label.textContent = theme === 'dark' ? 'Dark' : 'Light';
+    if (label) label.textContent = theme === 'dark' ? t('sidebar.dark') : t('sidebar.light');
+  },
+
+  toggleLang() {
+    const langs = i18n.getSupportedLangs();
+    const codes = langs.map(l => l.code);
+    const idx = codes.indexOf(i18n.lang);
+    const next = codes[(idx + 1) % codes.length];
+    i18n.setLang(next).then(() => {
+      this.updateLangLabel();
+      this.applyI18n();
+      router.resolve();
+    });
+  },
+
+  updateLangLabel() {
+    const label = document.getElementById('lang-label');
+    if (label) label.textContent = i18n.lang.toUpperCase();
+  },
+
+  applyI18n() {
+    document.querySelectorAll('[data-i18n]').forEach(el => {
+      const key = el.getAttribute('data-i18n');
+      el.textContent = t(key);
+    });
+    document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+      const key = el.getAttribute('data-i18n-placeholder');
+      el.placeholder = t(key);
+    });
+    document.querySelectorAll('[data-i18n-title]').forEach(el => {
+      const key = el.getAttribute('data-i18n-title');
+      el.title = t(key);
+    });
   },
 
   toggleSidebar() {
@@ -69,17 +105,17 @@ const app = {
       if (dot && text) {
         if (result.alive) {
           dot.className = 'status-dot online';
-          text.textContent = 'Internet: OK';
+          text.textContent = t('sidebar.internetOK');
         } else {
           dot.className = 'status-dot offline';
-          text.textContent = 'Internet: DOWN';
+          text.textContent = t('sidebar.internetDown');
         }
       }
     } catch (e) {
       const dot = document.getElementById('canary-dot');
       const text = document.getElementById('canary-text');
       if (dot) dot.className = 'status-dot offline';
-      if (text) text.textContent = 'Internet: unknown';
+      if (text) text.textContent = t('sidebar.internetUnknown');
     }
   },
 

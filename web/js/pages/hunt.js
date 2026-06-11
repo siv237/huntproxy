@@ -28,27 +28,27 @@ router.register('hunt', (container) => {
   function buildControlCard() {
     const card = ui.el('div', 'card');
     card.id = 'control-card';
-    card.appendChild(ui.el('div', 'card-title', { text: 'Hunt Control', style: 'margin-bottom:8px' }));
+    card.appendChild(ui.el('div', 'card-title', { text: t('page.hunt.huntControl'), style: 'margin-bottom:8px' }));
 
     const btnRow = ui.el('div', '', { style: 'display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap' });
-    const startBtn = ui.el('button', 'btn btn-primary', { text: 'Start Hunt' });
+    const startBtn = ui.el('button', 'btn btn-primary', { text: t('page.hunt.startHunt') });
     startBtn.id = 'btn-hunt-start';
-    startBtn.addEventListener('click', () => api.huntStart().then(r => app.toast(r.ok ? 'Hunt started' : r.error)));
+    startBtn.addEventListener('click', () => api.huntStart().then(r => app.toast(r.ok ? t('page.hunt.huntStarted') : r.error)));
     btnRow.appendChild(startBtn);
 
-    const pauseBtn = ui.el('button', 'btn btn-secondary', { text: 'Pause' });
+    const pauseBtn = ui.el('button', 'btn btn-secondary', { text: t('page.hunt.pause') });
     pauseBtn.id = 'btn-hunt-pause';
-    pauseBtn.addEventListener('click', () => api.huntPause().then(r => app.toast(r.ok ? 'Paused' : r.error)));
+    pauseBtn.addEventListener('click', () => api.huntPause().then(r => app.toast(r.ok ? t('page.hunt.pausedMsg') : r.error)));
     btnRow.appendChild(pauseBtn);
 
-    const resumeBtn = ui.el('button', 'btn btn-secondary', { text: 'Resume' });
+    const resumeBtn = ui.el('button', 'btn btn-secondary', { text: t('page.hunt.resume') });
     resumeBtn.id = 'btn-hunt-resume';
-    resumeBtn.addEventListener('click', () => api.huntResume().then(r => app.toast(r.ok ? 'Resumed' : r.error)));
+    resumeBtn.addEventListener('click', () => api.huntResume().then(r => app.toast(r.ok ? t('page.hunt.resumed') : r.error)));
     btnRow.appendChild(resumeBtn);
 
-    const stopBtn = ui.el('button', 'btn btn-danger', { text: 'Stop' });
+    const stopBtn = ui.el('button', 'btn btn-danger', { text: t('page.hunt.stop') });
     stopBtn.id = 'btn-hunt-stop';
-    stopBtn.addEventListener('click', () => api.huntStop().then(() => app.toast('Hunt stopped')));
+    stopBtn.addEventListener('click', () => api.huntStop().then(() => app.toast(t('page.hunt.huntStopped'))));
     btnRow.appendChild(stopBtn);
     card.appendChild(btnRow);
 
@@ -65,11 +65,11 @@ router.register('hunt', (container) => {
   function buildProgressCard() {
     const card = ui.el('div', 'card');
     card.id = 'progress-card';
-    card.appendChild(ui.el('div', 'card-title', { text: 'Pool Progress', style: 'margin-bottom:8px' }));
+    card.appendChild(ui.el('div', 'card-title', { text: t('page.hunt.poolProgress'), style: 'margin-bottom:8px' }));
 
     const top = ui.el('div', '', { style: 'display:flex;align-items:center;gap:8px;margin-bottom:6px' });
-    top.appendChild(ui.el('div', '', { id: 'phase-badge', style: 'display:inline-flex;align-items:center;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;text-transform:uppercase;background:var(--surface-raised);color:var(--text-secondary)', text: 'idle' }));
-    top.appendChild(ui.el('div', '', { id: 'last-event', style: 'font-size:11px;color:var(--text-secondary);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap', text: 'ready' }));
+    top.appendChild(ui.el('div', '', { id: 'phase-badge', style: 'display:inline-flex;align-items:center;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;text-transform:uppercase;background:var(--surface-raised);color:var(--text-secondary)', text: t('page.hunt.idle') }));
+    top.appendChild(ui.el('div', '', { id: 'last-event', style: 'font-size:11px;color:var(--text-secondary);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap', text: t('common.ready') }));
     top.appendChild(ui.el('span', '', { id: 'live-dot', style: 'width:8px;height:8px;border-radius:50%;background:var(--text-muted);flex-shrink:0' }));
     card.appendChild(top);
 
@@ -78,7 +78,7 @@ router.register('hunt', (container) => {
     card.appendChild(ui.el('div', '', {
       id: 'progress-text',
       style: 'display:flex;justify-content:space-between;font-size:11px;color:var(--text-secondary)',
-      html: '<span>Checked <b id="p-checked">0</b> / <b id="p-total">0</b></span><span>Working <b id="p-working" style="color:var(--success)">0</b></span>'
+      html: `<span>${t('page.hunt.checked')} <b id="p-checked">0</b> / <b id="p-total">0</b></span><span>${t('page.hunt.working')} <b id="p-working" style="color:var(--success)">0</b></span>`
     }));
 
     const lp = ui.el('div', '', { id: 'last-proxy-row', style: 'margin-top:4px;font-size:11px;color:var(--text-secondary);display:flex;align-items:center;gap:4px;visibility:hidden' });
@@ -90,16 +90,16 @@ router.register('hunt', (container) => {
   function buildBlacklistCard() {
     const card = ui.el('div', 'card');
     card.id = 'blacklist-card';
-    card.appendChild(ui.el('div', 'card-title', { text: 'Blacklist', style: 'margin-bottom:8px' }));
+    card.appendChild(ui.el('div', 'card-title', { text: t('page.hunt.blacklist'), style: 'margin-bottom:8px' }));
 
     const form = ui.el('div', '', { style: 'display:flex;gap:4px;margin-bottom:6px' });
-    const addrInp = ui.el('input', '', { id: 'bl-input', type: 'text', placeholder: 'ip:port', style: 'flex:1;padding:3px 6px;font-size:11px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--bg);color:var(--text-primary)' });
-    const reasonInp = ui.el('input', '', { id: 'bl-reason', type: 'text', placeholder: 'reason', style: 'flex:1;padding:3px 6px;font-size:11px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--bg);color:var(--text-primary)' });
+    const addrInp = ui.el('input', '', { id: 'bl-input', type: 'text', placeholder: t('page.blacklist.proxyAddress'), style: 'flex:1;padding:3px 6px;font-size:11px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--bg);color:var(--text-primary)' });
+    const reasonInp = ui.el('input', '', { id: 'bl-reason', type: 'text', placeholder: t('common.reason'), style: 'flex:1;padding:3px 6px;font-size:11px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--bg);color:var(--text-primary)' });
     const addBtn = ui.el('button', 'btn btn-xs btn-primary', { text: '+' });
     addBtn.addEventListener('click', () => {
       const a = addrInp.value.trim(), r = reasonInp.value.trim();
       if (!a) return;
-      api.blAdd(a, r).then(() => { addrInp.value = ''; reasonInp.value = ''; app.toast('Added to blacklist'); poll(); });
+      api.blAdd(a, r).then(() => { addrInp.value = ''; reasonInp.value = ''; app.toast(t('page.hunt.addedToBlacklist')); poll(); });
     });
     form.appendChild(addrInp);
     form.appendChild(reasonInp);
@@ -116,7 +116,7 @@ router.register('hunt', (container) => {
     const card = ui.el('div', 'card');
     card.id = 'top-proxies-card';
     const header = ui.el('div', 'card-header');
-    header.appendChild(ui.el('div', 'card-title', { text: 'Top Rated Alive' }));
+    header.appendChild(ui.el('div', 'card-title', { text: t('page.hunt.topRatedAlive') }));
     const count = ui.el('div', '', { id: 'top-count', style: 'font-size:11px;color:var(--text-secondary)', text: '0' });
     header.appendChild(count);
     card.appendChild(header);
@@ -130,7 +130,7 @@ router.register('hunt', (container) => {
   function buildLogCard() {
     const card = ui.el('div', 'card');
     card.id = 'log-card';
-    card.appendChild(ui.el('div', 'card-title', { text: 'Hunt Log', style: 'margin-bottom:8px' }));
+    card.appendChild(ui.el('div', 'card-title', { text: t('page.hunt.huntLog'), style: 'margin-bottom:8px' }));
     const log = ui.el('div', '', { id: 'hunt-log', style: 'font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11px;line-height:1.5;overflow-y:auto;flex:1;min-height:0;color:var(--text-primary)' });
     card.appendChild(log);
     return card;
@@ -152,28 +152,28 @@ router.register('hunt', (container) => {
     if (el('phase-badge')) {
       const badge = el('phase-badge');
       if (paused) {
-        badge.textContent = manual ? 'PAUSED' : 'PAUSED (no inet)';
+        badge.textContent = manual ? t('page.hunt.paused') : t('page.hunt.pausedNoInet');
         badge.style.color = 'var(--warning,#9a6700)';
         badge.style.background = 'rgba(154,103,0,0.12)';
       } else {
-        badge.textContent = s.phase || 'idle';
+        badge.textContent = s.phase || t('page.hunt.idle');
         badge.style.color = s.running ? 'var(--accent)' : 'var(--text-secondary)';
         badge.style.background = s.running ? 'var(--accent-light)' : 'var(--surface-raised)';
       }
     }
-    if (el('last-event')) el('last-event').textContent = s.last_event || 'ready';
+    if (el('last-event')) el('last-event').textContent = s.last_event || t('common.ready');
     if (el('live-dot')) el('live-dot').style.background = paused ? 'var(--warning,#9a6700)' : s.running ? 'var(--accent)' : 'var(--text-muted)';
   }
 
   function updateProgress(s) {
     const p = s.progress || {};
-    const t = p.checking_total || p.downloaded || 0;
+    const total = p.checking_total || p.downloaded || 0;
     const c = p.checked || 0;
-    const pct = t > 0 ? Math.round((c / t) * 100) : 0;
+    const pct = total > 0 ? Math.round((c / total) * 100) : 0;
     const el = id => document.getElementById(id);
     if (el('progress-fill')) el('progress-fill').style.width = pct + '%';
     if (el('p-checked')) el('p-checked').textContent = c;
-    if (el('p-total')) el('p-total').textContent = t;
+    if (el('p-total')) el('p-total').textContent = total;
     if (el('p-working')) el('p-working').textContent = p.working || 0;
 
     if (el('last-proxy-row')) {
@@ -199,7 +199,7 @@ router.register('hunt', (container) => {
     const wrap = document.getElementById('top-tbl-wrap');
     if (!wrap) return;
     const el = id => document.getElementById(id);
-    if (el('top-count')) el('top-count').textContent = (proxies || []).length + ' alive';
+    if (el('top-count')) el('top-count').textContent = t('page.hunt.alive', { count: (proxies || []).length });
 
     const sorted = (proxies || []).slice().sort((a, b) => ui.sortValue(a, b, topSortKey, topSortDir));
 

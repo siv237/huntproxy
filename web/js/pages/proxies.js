@@ -27,9 +27,9 @@ router.register('proxies', (container) => {
       b.addEventListener('click', () => { groupBy = mode; expandedKeys = {}; loadedKeys = {}; _built = false; updateTabs(); load(); });
       return b;
     };
-    groupTabs.appendChild(gBtn('By Country', 'country'));
-    groupTabs.appendChild(gBtn('By Source', 'source'));
-    groupTabs.appendChild(gBtn('By Protocol', 'protocol'));
+    groupTabs.appendChild(gBtn(t('page.proxies.byCountry'), 'country'));
+    groupTabs.appendChild(gBtn(t('page.proxies.bySource'), 'source'));
+    groupTabs.appendChild(gBtn(t('page.proxies.byProtocol'), 'protocol'));
     toolbar.appendChild(groupTabs);
 
     const statusTabs = ui.el('div', '', { id: 'status-tabs', style: 'display:flex;gap:0;border:1px solid var(--border);border-radius:var(--radius-xs);overflow:hidden' });
@@ -38,12 +38,12 @@ router.register('proxies', (container) => {
       b.addEventListener('click', () => { statusFilter = val; expandedKeys = {}; loadedKeys = {}; _built = false; updateTabs(); load(); });
       return b;
     };
-    statusTabs.appendChild(sBtn('All', ''));
-    statusTabs.appendChild(sBtn('Alive', 'alive'));
-    statusTabs.appendChild(sBtn('Dead', 'dead'));
+    statusTabs.appendChild(sBtn(t('page.proxies.all'), ''));
+    statusTabs.appendChild(sBtn(t('page.proxies.alive'), 'alive'));
+    statusTabs.appendChild(sBtn(t('page.proxies.dead'), 'dead'));
     toolbar.appendChild(statusTabs);
 
-    const searchInput = ui.el('input', '', { type: 'text', placeholder: 'Search proxy, country, source...', value: search, style: 'padding:5px 10px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--bg);color:var(--text-primary);font-size:13px;min-width:200px;flex:1' });
+    const searchInput = ui.el('input', '', { type: 'text', placeholder: t('page.proxies.searchPlaceholder'), value: search, style: 'padding:5px 10px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--bg);color:var(--text-primary);font-size:13px;min-width:200px;flex:1' });
     searchInput.addEventListener('input', (e) => { search = e.target.value.toLowerCase(); renderGroups(); });
     toolbar.appendChild(searchInput);
 
@@ -93,14 +93,14 @@ router.register('proxies', (container) => {
   async function loadGroupProxies(key) {
     const body = document.getElementById('spoiler-body-' + key);
     if (!body) return;
-    body.innerHTML = '<div style="padding:12px;color:var(--text-muted);font-size:12px">Loading...</div>';
+    body.innerHTML = `<div style="padding:12px;color:var(--text-muted);font-size:12px">${t('common.loading')}</div>`;
     try {
       const data = await api.proxies({ mode: 'group-proxies', group_by: groupBy, group_key: key, status: statusFilter });
       const proxies = data.proxies || [];
       loadedKeys[key] = proxies;
       renderGroupBody(key, proxies);
     } catch (e) {
-      body.innerHTML = `<div style="padding:12px;color:var(--danger);font-size:12px">Error: ${ui.escHtml(e.message)}</div>`;
+      body.innerHTML = `<div style="padding:12px;color:var(--danger);font-size:12px">${t('common.error', {message: ui.escHtml(e.message)})}</div>`;
     }
   }
 
@@ -170,7 +170,7 @@ router.register('proxies', (container) => {
     }
 
     if (!filtered.length) {
-      body.innerHTML = '<div style="padding:8px;color:var(--text-muted);font-size:12px">No matching proxies</div>';
+      body.innerHTML = `<div style="padding:8px;color:var(--text-muted);font-size:12px">${t('page.proxies.noMatching')}</div>`;
       return;
     }
 
@@ -208,7 +208,7 @@ router.register('proxies', (container) => {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
         const addr = btn.dataset.selectAddr;
-        if (addr) api.proxySelect(addr).then(() => app.toast('Selected ' + addr)).catch(er => app.toast('Error: ' + er.message, 'error'));
+        if (addr) api.proxySelect(addr).then(() => app.toast(t('page.proxyPool.selected', {addr: addr}))).catch(er => app.toast(t('common.error', {message: er.message}), 'error'));
       });
     });
 
@@ -222,12 +222,12 @@ router.register('proxies', (container) => {
         api.proxyRecheck(addr).then(() => {
           btn.disabled = false;
           btn.textContent = '↻';
-          app.toast('Recheck complete');
+          app.toast(t('page.proxies.recheckComplete'));
           loadGroupProxies(key);
         }).catch(er => {
           btn.disabled = false;
           btn.textContent = '↻';
-          app.toast('Error: ' + er.message, 'error');
+          app.toast(t('common.error', {message: er.message}), 'error');
         });
       });
     });
@@ -235,7 +235,7 @@ router.register('proxies', (container) => {
 
   function renderGroups() {
     const totalLabel = document.getElementById('proxies-total-label');
-    if (totalLabel) totalLabel.textContent = `${totalCount} proxies`;
+    if (totalLabel) totalLabel.textContent = t('page.proxies.totalProxies', {count: totalCount});
 
     const listWrap = document.getElementById('proxies-group-list');
     if (!listWrap) return;
@@ -247,7 +247,7 @@ router.register('proxies', (container) => {
 
     if (!filtered.length) {
       listWrap.innerHTML = '';
-      listWrap.appendChild(ui.el('div', 'empty', { text: 'No proxies found' }));
+      listWrap.appendChild(ui.el('div', 'empty', { text: t('page.proxies.noProxiesFound') }));
       _built = false;
       return;
     }
@@ -304,7 +304,7 @@ router.register('proxies', (container) => {
       if (isExpanded && loadedKeys[g.key]) {
         renderGroupBody(g.key, loadedKeys[g.key]);
       } else if (isExpanded) {
-        body.innerHTML = '<div style="padding:12px;color:var(--text-muted);font-size:12px">Loading...</div>';
+        body.innerHTML = `<div style="padding:12px;color:var(--text-muted);font-size:12px">${t('common.loading')}</div>`;
       }
 
       spoiler.appendChild(body);
@@ -322,7 +322,7 @@ router.register('proxies', (container) => {
   }
 
   function deadHtml(g) {
-    return `<span style="color:var(--danger);font-size:11px">${g.dead} dead</span>`;
+    return `<span style="color:var(--danger);font-size:11px">${t('page.proxies.deadCount', {count: g.dead})}</span>`;
   }
 
   function updateGroupHeader(g) {
@@ -337,9 +337,9 @@ router.register('proxies', (container) => {
   async function blAdd(addr) {
     try {
       await api.blAdd(addr, 'manual');
-      app.toast('Added to blacklist');
+      app.toast(t('page.proxies.addedToBlacklist'));
     } catch (e) {
-      app.toast('Error: ' + e.message, 'error');
+      app.toast(t('common.error', {message: e.message}), 'error');
     }
   }
 

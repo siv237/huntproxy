@@ -7,33 +7,33 @@ router.register('analytics', (container) => {
   container.style.flex = '1';
 
   const row1 = ui.el('div', 'grid grid-2 row-stretch');
-  const poolCard = ui.card('Pool Size Over Time');
+  const poolCard = ui.card(t('page.analytics.poolSizeOverTime'));
   poolCard.id = 'analytics-pool';
   row1.appendChild(poolCard);
 
-  const trafficCard = ui.card('Traffic Volume');
+  const trafficCard = ui.card(t('page.analytics.trafficVolume'));
   trafficCard.id = 'analytics-traffic';
   row1.appendChild(trafficCard);
 
   container.appendChild(row1);
 
   const row2 = ui.el('div', 'grid grid-2 row-stretch');
-  const bwCard = ui.card('Bandwidth (24h)');
+  const bwCard = ui.card(t('page.analytics.bandwidth24h'));
   bwCard.id = 'analytics-bandwidth';
   row2.appendChild(bwCard);
 
-  const latCard = ui.card('Avg Response Time');
+  const latCard = ui.card(t('page.analytics.avgResponseTime'));
   latCard.id = 'analytics-latency';
   row2.appendChild(latCard);
 
   container.appendChild(row2);
 
   const row3 = ui.el('div', 'grid grid-2 row-stretch');
-  const errTrendCard = ui.card('Error Trend');
+  const errTrendCard = ui.card(t('page.analytics.errorTrend'));
   errTrendCard.id = 'analytics-errors';
   row3.appendChild(errTrendCard);
 
-  const eventsCard = ui.card('Event History');
+  const eventsCard = ui.card(t('page.analytics.eventHistory'));
   eventsCard.id = 'analytics-events';
   row3.appendChild(eventsCard);
 
@@ -61,7 +61,7 @@ router.register('analytics', (container) => {
         const alive = pts.map(p => p.alive || 0);
         const dead = pts.map(p => p.dead || 0);
         poolEl.innerHTML = '';
-        poolEl.appendChild(ui.el('div', 'card-header', { html: '<div class="card-title">Pool Size Over Time</div>' }));
+        poolEl.appendChild(ui.el('div', 'card-header', { html: `<div class="card-title">${t('page.analytics.poolSizeOverTime')}</div>` }));
         const VB_W = 500, VB_H = 200;
         const pad = { top: 10, right: 10, bottom: 30, left: 40 };
         const cw = VB_W - pad.left - pad.right;
@@ -87,8 +87,8 @@ router.register('analytics', (container) => {
           <path d="${mkArea(alive, alivePath)}" fill="var(--success)" opacity="0.15"/>
           <path d="${deadPath}" fill="none" stroke="var(--danger)" stroke-width="2"/>
           <path d="${mkArea(dead, deadPath)}" fill="var(--danger)" opacity="0.1"/>
-          <text x="${pad.left + 10}" y="${pad.top + 2}" fill="var(--success)" font-size="10">Alive</text>
-          <text x="${pad.left + 60}" y="${pad.top + 2}" fill="var(--danger)" font-size="10">Dead</text>
+          <text x="${pad.left + 10}" y="${pad.top + 2}" fill="var(--success)" font-size="10">${t('page.analytics.alive')}</text>
+          <text x="${pad.left + 60}" y="${pad.top + 2}" fill="var(--danger)" font-size="10">${t('page.analytics.dead')}</text>
           ${[min, (min + max) / 2, max].map((v, i) => {
             const y = pad.top + ch - (i / 2) * ch;
             return `<text x="${pad.left - 6}" y="${y + 4}" text-anchor="end" fill="var(--text-muted)" font-size="10">${v.toFixed(0)}</text>`;
@@ -101,7 +101,7 @@ router.register('analytics', (container) => {
       const trafficEl = document.getElementById('analytics-traffic');
       if (trafficEl) {
         trafficEl.innerHTML = '';
-        trafficEl.appendChild(ui.el('div', 'card-header', { html: '<div class="card-title">Traffic Volume</div>' }));
+        trafficEl.appendChild(ui.el('div', 'card-header', { html: `<div class="card-title">${t('page.analytics.trafficVolume')}</div>` }));
         const reqData = pts.map(p => p.requests || 0);
         const chartWrap = ui.el('div', '', { style: 'flex:1;min-height:0;display:flex' });
         chartWrap.innerHTML = charts.lineChart(reqData, { width: 500, height: 200, labels, color: 'var(--accent)', fillArea: true, responsive: true });
@@ -112,7 +112,7 @@ router.register('analytics', (container) => {
       const bwEl = document.getElementById('analytics-bandwidth');
       if (bwEl) {
         bwEl.innerHTML = '';
-        bwEl.appendChild(ui.el('div', 'card-header', { html: '<div class="card-title">Bandwidth (24h)</div>' }));
+        bwEl.appendChild(ui.el('div', 'card-header', { html: `<div class="card-title">${t('page.analytics.bandwidth24h')}</div>` }));
         const VB_W = 500, VB_H = 200;
         const pad = { top: 10, right: 10, bottom: 30, left: 40 };
         const cw = VB_W - pad.left - pad.right;
@@ -138,8 +138,8 @@ router.register('analytics', (container) => {
           <path d="${inPath}" fill="none" stroke="var(--info)" stroke-width="2"/>
           <path d="${inPath} L${(pad.left + cw).toFixed(1)},${pad.top + ch} L${pad.left},${pad.top + ch} Z" fill="var(--info)" opacity="0.1"/>
           <path d="${outPath}" fill="none" stroke="var(--warning)" stroke-width="2"/>
-          <text x="${pad.left + 10}" y="${pad.top + 2}" fill="var(--info)" font-size="10">In (KB)</text>
-          <text x="${pad.left + 80}" y="${pad.top + 2}" fill="var(--warning)" font-size="10">Out (KB)</text>
+          <text x="${pad.left + 10}" y="${pad.top + 2}" fill="var(--info)" font-size="10">${t('page.analytics.inKB')}</text>
+          <text x="${pad.left + 80}" y="${pad.top + 2}" fill="var(--warning)" font-size="10">${t('page.analytics.outKB')}</text>
           ${[min, (min + max) / 2, max].map((v, i) => {
             const y = pad.top + ch - (i / 2) * ch;
             return `<text x="${pad.left - 6}" y="${y + 4}" text-anchor="end" fill="var(--text-muted)" font-size="10">${v.toFixed(1)}</text>`;
@@ -152,7 +152,7 @@ router.register('analytics', (container) => {
       const latEl = document.getElementById('analytics-latency');
       if (latEl) {
         latEl.innerHTML = '';
-        latEl.appendChild(ui.el('div', 'card-header', { html: '<div class="card-title">Avg Response Time</div>' }));
+        latEl.appendChild(ui.el('div', 'card-header', { html: `<div class="card-title">${t('page.analytics.avgResponseTime')}</div>` }));
         const latData = pts.map(p => (p.avg_latency || 0) * 1000);
         const chartWrap = ui.el('div', '', { style: 'flex:1;min-height:0;display:flex' });
         chartWrap.innerHTML = charts.lineChart(latData, { width: 500, height: 200, labels, color: 'var(--warning)', fillArea: true, responsive: true });
@@ -163,7 +163,7 @@ router.register('analytics', (container) => {
       const errEl = document.getElementById('analytics-errors');
       if (errEl) {
         errEl.innerHTML = '';
-        errEl.appendChild(ui.el('div', 'card-header', { html: '<div class="card-title">Error Trend</div>' }));
+        errEl.appendChild(ui.el('div', 'card-header', { html: `<div class="card-title">${t('page.analytics.errorTrend')}</div>` }));
         const failData = pts.map(p => p.connections_failed || 0);
         const chartWrap = ui.el('div', '', { style: 'flex:1;min-height:0;display:flex' });
         chartWrap.innerHTML = charts.lineChart(failData, { width: 500, height: 200, labels, color: 'var(--danger)', fillArea: true, responsive: true });
@@ -172,7 +172,7 @@ router.register('analytics', (container) => {
     } else {
       ['analytics-pool', 'analytics-traffic', 'analytics-bandwidth', 'analytics-latency', 'analytics-errors'].forEach(id => {
         const el = document.getElementById(id);
-        if (el) el.appendChild(ui.el('div', 'empty', { text: 'Not enough data yet — keep the proxy running', style: 'padding:16px' }));
+        if (el) el.appendChild(ui.el('div', 'empty', { text: t('page.analytics.notEnoughData'), style: 'padding:16px' }));
       });
     }
 
@@ -180,7 +180,7 @@ router.register('analytics', (container) => {
     const eventsEl = document.getElementById('analytics-events');
     if (eventsEl) {
       eventsEl.innerHTML = '';
-      eventsEl.appendChild(ui.el('div', 'card-header', { html: '<div class="card-title">Event History</div>' }));
+      eventsEl.appendChild(ui.el('div', 'card-header', { html: `<div class="card-title">${t('page.analytics.eventHistory')}</div>` }));
       try {
         const activity = await api.activity(20);
         if (activity && activity.length) {
@@ -198,10 +198,10 @@ router.register('analytics', (container) => {
           tblWrap.appendChild(ui.table(headers, rows));
           eventsEl.appendChild(tblWrap);
         } else {
-          eventsEl.appendChild(ui.el('div', 'empty', { text: 'No events yet' }));
+          eventsEl.appendChild(ui.el('div', 'empty', { text: t('page.analytics.noEventsYet') }));
         }
       } catch (e) {
-        eventsEl.appendChild(ui.el('div', 'empty', { text: 'Could not load events' }));
+        eventsEl.appendChild(ui.el('div', 'empty', { text: t('page.analytics.couldNotLoadEvents') }));
       }
     }
   }

@@ -4028,7 +4028,7 @@ class HuntServer:
         return data, 200, ct
 
     async def _route(self, method, path, body):
-        if path.startswith("/css/") or path.startswith("/js/") or path.startswith("/img/") or path.startswith("/assets/"):
+        if path.startswith("/css/") or path.startswith("/js/") or path.startswith("/img/") or path.startswith("/assets/") or path.startswith("/locales/"):
             static = self._serve_static(path)
             if static:
                 return static

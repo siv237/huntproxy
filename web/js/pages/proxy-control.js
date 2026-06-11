@@ -12,12 +12,12 @@ router.register('proxy-control', (container) => {
     // Row 1: KPI Cards (6)
     const row1 = ui.el('div', 'grid grid-6');
     const kpiDefs = [
-      { id: 'kpi-active', label: 'Active Proxy', sub: 'Status', color: 'var(--success)' },
-      { id: 'kpi-type', label: 'Proxy Type', sub: 'CONNECT', color: 'var(--accent)' },
-      { id: 'kpi-uptime', label: 'Uptime', sub: 'Since', color: 'var(--text-secondary)' },
-      { id: 'kpi-req', label: 'Requests (24h)', sub: 'vs yesterday', color: 'var(--info)' },
-      { id: 'kpi-sr', label: 'Success Rate', sub: 'vs yesterday', color: 'var(--success)' },
-      { id: 'kpi-rt', label: 'Avg Response Time', sub: 'vs yesterday', color: 'var(--warning)' },
+      { id: 'kpi-active', label: t('page.proxyControl.activeProxy'), sub: t('page.proxyControl.status'), color: 'var(--success)' },
+      { id: 'kpi-type', label: t('page.proxyControl.proxyType'), sub: 'CONNECT', color: 'var(--accent)' },
+      { id: 'kpi-uptime', label: t('page.proxyControl.uptime'), sub: t('page.proxyControl.sinceStart'), color: 'var(--text-secondary)' },
+      { id: 'kpi-req', label: t('page.proxyControl.requests24h'), sub: t('common.vsYesterday'), color: 'var(--info)' },
+      { id: 'kpi-sr', label: t('page.proxyControl.successRate'), sub: t('common.vsYesterday'), color: 'var(--success)' },
+      { id: 'kpi-rt', label: t('page.proxyControl.avgResponseTime'), sub: t('common.vsYesterday'), color: 'var(--warning)' },
     ];
     kpiDefs.forEach(k => {
       const card = ui.statCard(k.label, '—', null, [10,15,12,18,20,16,22]);
@@ -29,7 +29,7 @@ router.register('proxy-control', (container) => {
 
     // Row 2: Traffic Overview + Current Proxy + Connected Clients
     const row2 = ui.el('div', 'grid grid-3 row-stretch');
-    const trafficCard = ui.card('Traffic Overview');
+    const trafficCard = ui.card(t('page.proxyControl.trafficOverview'));
     trafficCard.id = 'card-traffic';
     trafficCard.style.gridColumn = 'span 2';
     trafficCard.style.overflow = 'hidden';
@@ -37,7 +37,7 @@ router.register('proxy-control', (container) => {
     row2.appendChild(trafficCard);
 
     const rightCol = ui.el('div', '', { style: 'display:flex;flex-direction:column;gap:10px;min-height:0;overflow:hidden' });
-    const curCard = ui.card('Current Proxy');
+    const curCard = ui.card(t('page.proxyControl.currentProxy'));
     curCard.id = 'card-cur-proxy';
     curCard.style.flex = '1';
     curCard.style.minHeight = '0';
@@ -45,7 +45,7 @@ router.register('proxy-control', (container) => {
     els.curProxy = curCard;
     rightCol.appendChild(curCard);
 
-    const clientsCard = ui.card('Connected Clients', 'View all');
+    const clientsCard = ui.card(t('page.proxyControl.connectedClients'), t('common.viewAll'));
     clientsCard.id = 'card-clients';
     clientsCard.style.flex = '1';
     clientsCard.style.minHeight = '0';
@@ -57,19 +57,19 @@ router.register('proxy-control', (container) => {
 
     // Row 3: Top Domains + Error Breakdown + Bandwidth
     const row3 = ui.el('div', 'grid grid-3 row-stretch');
-    const domainsCard = ui.card('Top Requested Domains');
+    const domainsCard = ui.card(t('page.proxyControl.topDomains'));
     domainsCard.id = 'card-domains';
     domainsCard.style.overflow = 'hidden';
     els.domains = domainsCard;
     row3.appendChild(domainsCard);
 
-    const errCard = ui.card('Error Breakdown', 'View all');
+    const errCard = ui.card(t('page.proxyControl.errorBreakdown'), t('common.viewAll'));
     errCard.id = 'card-errors';
     errCard.style.overflow = 'hidden';
     els.errors = errCard;
     row3.appendChild(errCard);
 
-    const bwCard = ui.card('Bandwidth Usage');
+    const bwCard = ui.card(t('page.proxyControl.bandwidthUsage'));
     bwCard.id = 'card-bandwidth';
     bwCard.style.overflow = 'hidden';
     els.bandwidth = bwCard;
@@ -78,13 +78,13 @@ router.register('proxy-control', (container) => {
 
     // Row 4: Recent Requests + Proxy Health
     const row4 = ui.el('div', 'grid grid-2 row-stretch');
-    const reqCard = ui.card('Recent Requests');
+    const reqCard = ui.card(t('page.proxyControl.recentRequests'));
     reqCard.id = 'card-recent-req';
     reqCard.style.overflow = 'hidden';
     els.recentReq = reqCard;
     row4.appendChild(reqCard);
 
-    const healthCard = ui.card('Proxy Health (24h)');
+    const healthCard = ui.card(t('page.proxyControl.proxyHealth'));
     healthCard.id = 'card-proxy-health';
     healthCard.style.overflow = 'hidden';
     els.proxyHealth = healthCard;
@@ -105,9 +105,9 @@ router.register('proxy-control', (container) => {
     const sr = totalReq ? (successCount / totalReq * 100) : 0;
 
     const kpiMap = {
-      'kpi-active': { value: ap ? ap.address.split(':')[0] : 'None', sub: ap ? (ap.last_status === 'ok' ? 'Healthy' : 'Unhealthy') : '—' },
+      'kpi-active': { value: ap ? ap.address.split(':')[0] : t('page.proxyControl.none'), sub: ap ? (ap.last_status === 'ok' ? t('page.proxyControl.healthy') : t('page.proxyControl.unhealthy')) : '—' },
       'kpi-type': { value: ap ? (ap.protocol || 'HTTP').toUpperCase() : '—', sub: 'CONNECT' },
-      'kpi-uptime': { value: '—', sub: 'Since start' },
+      'kpi-uptime': { value: '—', sub: t('page.proxyControl.sinceStart') },
       'kpi-req': { value: totalReq.toLocaleString(), sub: '—' },
       'kpi-sr': { value: sr.toFixed(1) + '%', sub: '—' },
       'kpi-rt': { value: '—', sub: '—' },
@@ -128,7 +128,7 @@ router.register('proxy-control', (container) => {
   function updateTraffic(card, traffic) {
     card.innerHTML = '';
     const header = ui.el('div', 'card-header');
-    header.appendChild(ui.el('div', 'card-title', { text: 'Traffic Overview' }));
+    header.appendChild(ui.el('div', 'card-title', { text: t('page.proxyControl.trafficOverview') }));
     const tabs = ui.tabs(['Requests', 'Bandwidth', 'Response Time', 'Errors'], (name) => {
       // For MVP, all tabs show same Requests graph
       renderTrafficGraph(card, traffic);
@@ -153,7 +153,7 @@ router.register('proxy-control', (container) => {
       });
       left.innerHTML = charts.lineChart(data, { width: 500, height: 200, labels, color: 'var(--accent)', fillArea: true, responsive: true });
     } else {
-      left.appendChild(ui.el('div', 'empty', { text: 'No traffic data yet' }));
+      left.appendChild(ui.el('div', 'empty', { text: t('page.proxyControl.noTrafficData') }));
     }
     body.appendChild(left);
 
@@ -171,11 +171,11 @@ router.register('proxy-control', (container) => {
       return b + ' B';
     };
     const items = [
-      { label: 'Total Requests', value: totalReq.toLocaleString(), color: 'var(--text-primary)' },
-      { label: 'Successful', value: totalOk.toLocaleString(), color: 'var(--success)' },
-      { label: 'Failed', value: totalFailed.toLocaleString(), color: 'var(--danger)' },
-      { label: 'Bandwidth In', value: fmtBytes(totalBwIn), color: 'var(--text-secondary)' },
-      { label: 'Bandwidth Out', value: fmtBytes(totalBwOut), color: 'var(--text-secondary)' },
+      { label: t('page.proxyControl.totalRequests'), value: totalReq.toLocaleString(), color: 'var(--text-primary)' },
+      { label: t('page.proxyControl.successful'), value: totalOk.toLocaleString(), color: 'var(--success)' },
+      { label: t('page.proxyControl.failed'), value: totalFailed.toLocaleString(), color: 'var(--danger)' },
+      { label: t('page.proxyControl.bandwidthIn'), value: fmtBytes(totalBwIn), color: 'var(--text-secondary)' },
+      { label: t('page.proxyControl.bandwidthOut'), value: fmtBytes(totalBwOut), color: 'var(--text-secondary)' },
     ];
     items.forEach(item => {
       const row = ui.el('div', '', { style: 'display:flex;justify-content:space-between;align-items:center;font-size:12px;padding:4px 0;border-bottom:1px solid var(--border-subtle)' });
@@ -190,34 +190,34 @@ router.register('proxy-control', (container) => {
   function updateCurProxy(card, ps) {
     card.innerHTML = '';
     const header = ui.el('div', 'card-header');
-    header.appendChild(ui.el('div', 'card-title', { text: 'Current Proxy' }));
-    const btn = ui.el('button', 'btn btn-sm btn-secondary', { text: 'Change Proxy' });
+    header.appendChild(ui.el('div', 'card-title', { text: t('page.proxyControl.currentProxy') }));
+    const btn = ui.el('button', 'btn btn-sm btn-secondary', { text: t('page.proxyControl.changeProxy') });
     btn.addEventListener('click', () => router.navigate('proxy-pool'));
     header.appendChild(btn);
     card.appendChild(header);
 
     const ap = ps && ps.active_proxy;
     if (!ap) {
-      card.appendChild(ui.el('div', 'empty', { text: 'No active proxy selected' }));
+      card.appendChild(ui.el('div', 'empty', { text: t('page.proxyControl.noActiveProxy') }));
       return;
     }
 
     const top = ui.el('div', '', { style: 'display:flex;align-items:center;gap:10px;margin-bottom:12px' });
     top.appendChild(ui.el('div', '', { style: 'font-size:16px;font-weight:700;font-family:monospace;color:var(--accent)', text: ap.address }));
-    top.appendChild(ui.badge(ap.last_status === 'ok' ? 'Healthy' : 'Unhealthy', ap.last_status === 'ok' ? 'green' : 'red'));
+    top.appendChild(ui.badge(ap.last_status === 'ok' ? t('page.proxyControl.healthy') : t('page.proxyControl.unhealthy'), ap.last_status === 'ok' ? 'green' : 'red'));
     top.appendChild(ui.el('span', 'flag', { text: ui.flag(ap.country_code) }));
     card.appendChild(top);
 
     const grid = ui.el('div', 'grid grid-2');
     const items = [
-      { label: 'Status', value: ap.last_status === 'ok' ? 'Healthy' : 'Unhealthy' },
-      { label: 'Latency', value: ui.fmtLatency(ap.last_latency) },
-      { label: 'Response Time (avg)', value: '—' },
-      { label: 'Success Rate', value: ui.fmtPct(ap.success_rate) },
-      { label: 'Last Check', value: ui.ago(ap.last_check) },
-      { label: 'Fails', value: (ap.checks_total - ap.checks_ok) + ' / ' + ap.checks_total },
-      { label: 'Speed', value: ap.speed_avg ? ap.speed_avg.toFixed(0) + ' KB/s' : '—' },
-      { label: 'Protocol', value: (ap.protocol || 'HTTP').toUpperCase() },
+      { label: t('page.proxyControl.status'), value: ap.last_status === 'ok' ? t('page.proxyControl.healthy') : t('page.proxyControl.unhealthy') },
+      { label: t('page.proxyControl.latency'), value: ui.fmtLatency(ap.last_latency) },
+      { label: t('page.proxyControl.responseTimeAvg'), value: '—' },
+      { label: t('page.proxyControl.successRate'), value: ui.fmtPct(ap.success_rate) },
+      { label: t('page.proxyControl.lastCheck'), value: ui.ago(ap.last_check) },
+      { label: t('page.proxyControl.fails'), value: (ap.checks_total - ap.checks_ok) + ' / ' + ap.checks_total },
+      { label: t('page.proxyControl.speed'), value: ap.speed_avg ? ap.speed_avg.toFixed(0) + ' KB/s' : '—' },
+      { label: t('page.proxyControl.protocol'), value: (ap.protocol || 'HTTP').toUpperCase() },
     ];
     items.forEach(item => {
       const cell = ui.el('div', '', { style: 'text-align:center;padding:8px;background:var(--surface-raised);border-radius:var(--radius-xs)' });
@@ -231,11 +231,11 @@ router.register('proxy-control', (container) => {
   function updateClients(card, clients) {
     card.innerHTML = '';
     const header = ui.el('div', 'card-header');
-    header.appendChild(ui.el('div', 'card-title', { text: 'Connected Clients' }));
+    header.appendChild(ui.el('div', 'card-title', { text: t('page.proxyControl.connectedClients') }));
     const live = ui.el('div', '', { style: 'display:flex;align-items:center;gap:6px;font-size:12px;color:var(--success)' });
-    live.innerHTML = '<span class="pulse" style="width:8px;height:8px"></span> Live';
+    live.innerHTML = '<span class="pulse" style="width:8px;height:8px"></span> ' + t('page.proxyControl.live');
     header.appendChild(live);
-    const va = ui.el('button', 'card-action', { text: 'View all' });
+    const va = ui.el('button', 'card-action', { text: t('common.viewAll') });
     va.addEventListener('click', () => router.navigate('logs'));
     header.appendChild(va);
     card.appendChild(header);
@@ -244,11 +244,11 @@ router.register('proxy-control', (container) => {
     const total = list.reduce((s, c) => s + (c.requests || 0), 0);
     const totalEl = ui.el('div', '', { style: 'font-size:24px;font-weight:700;margin-bottom:8px', text: total.toLocaleString() });
     card.appendChild(totalEl);
-    const subEl = ui.el('div', '', { style: 'font-size:11px;color:var(--text-secondary);margin-bottom:12px', text: 'Total Connections' });
+    const subEl = ui.el('div', '', { style: 'font-size:11px;color:var(--text-secondary);margin-bottom:12px', text: t('page.proxyControl.totalConnections') });
     card.appendChild(subEl);
 
     if (!list.length) {
-      card.appendChild(ui.el('div', 'empty', { text: 'No connected clients' }));
+      card.appendChild(ui.el('div', 'empty', { text: t('page.proxyControl.noClients') }));
       return;
     }
 
@@ -272,12 +272,12 @@ router.register('proxy-control', (container) => {
   function updateDomains(card, domains) {
     card.innerHTML = '';
     const header = ui.el('div', 'card-header');
-    header.appendChild(ui.el('div', 'card-title', { text: 'Top Requested Domains' }));
+    header.appendChild(ui.el('div', 'card-title', { text: t('page.proxyControl.topDomains') }));
     card.appendChild(header);
 
     const list = domains && domains.domains ? domains.domains : [];
     if (!list.length) {
-      card.appendChild(ui.el('div', 'empty', { text: 'No domain data' }));
+      card.appendChild(ui.el('div', 'empty', { text: t('page.proxyControl.noDomainData') }));
       return;
     }
 
@@ -304,8 +304,8 @@ router.register('proxy-control', (container) => {
   function updateErrors(card, errors) {
     card.innerHTML = '';
     const header = ui.el('div', 'card-header');
-    header.appendChild(ui.el('div', 'card-title', { text: 'Error Breakdown' }));
-    const va = ui.el('button', 'card-action', { text: 'View all' });
+    header.appendChild(ui.el('div', 'card-title', { text: t('page.proxyControl.errorBreakdown') }));
+    const va = ui.el('button', 'card-action', { text: t('common.viewAll') });
     va.addEventListener('click', () => router.navigate('logs'));
     header.appendChild(va);
     card.appendChild(header);
@@ -319,12 +319,12 @@ router.register('proxy-control', (container) => {
       label: e.type,
       value: e.count,
       color: ['var(--danger)', 'var(--warning)', 'var(--info)', 'var(--accent)'][i % 4],
-    })), { size: 120, centerText: total.toString(), centerLabel: 'Total Errors' });
+    })), { size: 120, centerText: total.toString(),       centerLabel: t('page.proxyControl.totalErrors') });
     wrap.appendChild(donutWrap);
 
     const legend = ui.el('div', '', { style: 'flex:1;min-width:120px;display:flex;flex-direction:column;gap:8px' });
     if (!list.length) {
-      legend.appendChild(ui.el('div', 'empty', { text: 'No errors' }));
+      legend.appendChild(ui.el('div', 'empty', { text: t('page.proxyControl.noErrors') }));
     } else {
       list.forEach((e, i) => {
         const col = ['var(--danger)', 'var(--warning)', 'var(--info)', 'var(--accent)'][i % 4];
@@ -340,7 +340,7 @@ router.register('proxy-control', (container) => {
   function updateBandwidth(card, bw) {
     card.innerHTML = '';
     const header = ui.el('div', 'card-header');
-    header.appendChild(ui.el('div', 'card-title', { text: 'Bandwidth Usage (24h)' }));
+    header.appendChild(ui.el('div', 'card-title', { text: t('page.proxyControl.bandwidth24h') }));
     card.appendChild(header);
 
     const fmtBytes = b => {
@@ -354,13 +354,13 @@ router.register('proxy-control', (container) => {
 
     const wrap = ui.el('div', 'grid grid-2');
     const incomingEl = ui.el('div', '', { style: 'text-align:center;padding:12px;background:var(--surface-raised);border-radius:var(--radius-xs)' });
-    incomingEl.appendChild(ui.el('div', '', { style: 'font-size:11px;color:var(--text-secondary);margin-bottom:4px', text: 'Incoming' }));
+    incomingEl.appendChild(ui.el('div', '', { style: 'font-size:11px;color:var(--text-secondary);margin-bottom:4px', text: t('page.proxyControl.incoming') }));
     incomingEl.appendChild(ui.el('div', '', { style: 'font-size:20px;font-weight:700', text: incoming ? fmtBytes(incoming) : '—' }));
     incomingEl.appendChild(ui.el('div', '', { style: 'font-size:11px;color:var(--success)', text: incoming ? (bw.incoming_gb || 0).toFixed(3) + ' GB' : '↑ —%' }));
     wrap.appendChild(incomingEl);
 
     const outgoingEl = ui.el('div', '', { style: 'text-align:center;padding:12px;background:var(--surface-raised);border-radius:var(--radius-xs)' });
-    outgoingEl.appendChild(ui.el('div', '', { style: 'font-size:11px;color:var(--text-secondary);margin-bottom:4px', text: 'Outgoing' }));
+    outgoingEl.appendChild(ui.el('div', '', { style: 'font-size:11px;color:var(--text-secondary);margin-bottom:4px', text: t('page.proxyControl.outgoing') }));
     outgoingEl.appendChild(ui.el('div', '', { style: 'font-size:20px;font-weight:700', text: outgoing ? fmtBytes(outgoing) : '—' }));
     outgoingEl.appendChild(ui.el('div', '', { style: 'font-size:11px;color:var(--success)', text: outgoing ? (bw.outgoing_gb || 0).toFixed(3) + ' GB' : '↑ —%' }));
     wrap.appendChild(outgoingEl);
@@ -370,12 +370,12 @@ router.register('proxy-control', (container) => {
   function updateRecentRequests(card, requests) {
     card.innerHTML = '';
     const header = ui.el('div', 'card-header');
-    header.appendChild(ui.el('div', 'card-title', { text: 'Recent Requests' }));
+    header.appendChild(ui.el('div', 'card-title', { text: t('page.proxyControl.recentRequests') }));
     card.appendChild(header);
 
     const list = requests && requests.requests ? requests.requests : [];
     if (!list.length) {
-      card.appendChild(ui.el('div', 'empty', { text: 'No recent requests' }));
+      card.appendChild(ui.el('div', 'empty', { text: t('page.proxyControl.noRecentRequests') }));
       return;
     }
 
@@ -419,7 +419,7 @@ router.register('proxy-control', (container) => {
   function updateProxyHealth(card, ps, history) {
     card.innerHTML = '';
     const header = ui.el('div', 'card-header');
-    header.appendChild(ui.el('div', 'card-title', { text: 'Proxy Health (24h)' }));
+    header.appendChild(ui.el('div', 'card-title', { text: t('page.proxyControl.proxyHealth') }));
     card.appendChild(header);
 
     const pts = history && history.length ? history.slice(-48) : [];
@@ -433,7 +433,7 @@ router.register('proxy-control', (container) => {
         html: charts.lineChart(data, { width: 400, height: 120, labels, color: 'var(--success)', fillArea: true, responsive: true })
       }));
     } else {
-      card.appendChild(ui.el('div', 'empty', { text: 'No health data yet' }));
+      card.appendChild(ui.el('div', 'empty', { text: t('page.proxyControl.noHealthData') }));
     }
 
     const ap = ps && ps.active_proxy;
@@ -444,10 +444,10 @@ router.register('proxy-control', (container) => {
     const checks = ap ? ap.checks_total : 0;
     const avgResp = pts.length ? (pts.reduce((s,p) => s + (p.avg_latency || 0), 0) / pts.length).toFixed(3) + 's' : '—';
     const items = [
-      { label: 'Health Score', value: healthScore + '%', color: 'var(--success)' },
-      { label: 'Failures', value: failures.toString(), color: 'var(--danger)' },
-      { label: 'Avg Response', value: avgResp, color: 'var(--text-primary)' },
-      { label: 'Checks', value: checks.toLocaleString(), color: 'var(--text-primary)' },
+      { label: t('page.proxyControl.healthScore'), value: healthScore + '%', color: 'var(--success)' },
+      { label: t('page.proxyControl.failures'), value: failures.toString(), color: 'var(--danger)' },
+      { label: t('page.proxyControl.avgResponse'), value: avgResp, color: 'var(--text-primary)' },
+      { label: t('page.proxyControl.checks'), value: checks.toLocaleString(), color: 'var(--text-primary)' },
     ];
     items.forEach(item => {
       const cell = ui.el('div', '', { style: 'text-align:center;padding:8px;background:var(--surface-raised);border-radius:var(--radius-xs)' });

@@ -22,7 +22,7 @@ router.register('domain-lists', (container) => {
   }
 
   function buildListsCard() {
-    const card = ui.card('Domain Lists');
+    const card = ui.card(t('page.domainLists.domainLists'));
     card.id = 'card-domain-lists';
     card.style.overflow = 'hidden';
 
@@ -41,7 +41,7 @@ router.register('domain-lists', (container) => {
   }
 
   function buildEditorCard() {
-    const card = ui.card('List Editor');
+    const card = ui.card(t('page.domainLists.listEditor'));
     card.id = 'card-domain-editor';
     card.style.overflow = 'hidden';
 
@@ -136,7 +136,7 @@ router.register('domain-lists', (container) => {
     btnRow.appendChild(saveBtn);
 
     if (dl) {
-      const cancelBtn = ui.el('button', 'btn btn-sm btn-ghost', { text: 'Cancel' });
+      const cancelBtn = ui.el('button', 'btn btn-sm btn-ghost', { text: t('common.cancel') });
       cancelBtn.addEventListener('click', () => {
         editingId = null;
         resetEditor();
@@ -226,7 +226,7 @@ router.register('domain-lists', (container) => {
   }
 
   function deleteList(id) {
-    if (!confirm('Delete this domain list?')) return;
+    if (!confirm(t('common.confirmDelete', { item: 'list' }))) return;
     api.domainListDelete(id).then(() => {
       app.toast('List deleted');
       if (editingId === id) {

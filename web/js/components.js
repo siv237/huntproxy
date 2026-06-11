@@ -75,7 +75,7 @@ const ui = {
     if (delta !== null && delta !== undefined) {
       const isUp = delta > 0;
       const d = ui.el('div', `stat-delta ${isUp ? 'up' : 'down'}`, {
-        html: `${isUp ? '↑' : '↓'} ${Math.abs(delta)} vs yesterday`
+        html: `${isUp ? '↑' : '↓'} ${Math.abs(delta)} ${t('common.vsYesterday')}`
       });
       card.appendChild(d);
     }
@@ -109,7 +109,7 @@ const ui = {
     const tbody = ui.el('tbody');
     if (rows.length === 0) {
       const tr = ui.el('tr');
-      const td = ui.el('td', 'muted', { colSpan: headers.length, text: 'No data' });
+      const td = ui.el('td', 'muted', { colSpan: headers.length, text: t('common.noData') });
       td.style.textAlign = 'center';
       tr.appendChild(td);
       tbody.appendChild(tr);
@@ -171,8 +171,8 @@ const ui = {
     return wrap;
   },
 
-  emptyState(text = 'No data') {
-    return ui.el('div', 'empty', { text });
+  emptyState(text) {
+    return ui.el('div', 'empty', { text: text || t('common.noData') });
   },
 
   flag(code) {
@@ -184,11 +184,11 @@ const ui = {
   ago(ts) {
     if (!ts) return '—';
     const d = Math.floor(Date.now() / 1000 - ts);
-    if (d < 0) return 'now';
-    if (d < 60) return d + 's ago';
-    if (d < 3600) return Math.floor(d / 60) + 'm ago';
-    if (d < 86400) return Math.floor(d / 3600) + 'h ago';
-    return Math.floor(d / 86400) + 'd ago';
+    if (d < 0) return t('ago.now');
+    if (d < 60) return t('ago.seconds', { count: d });
+    if (d < 3600) return t('ago.minutes', { count: Math.floor(d / 60) });
+    if (d < 86400) return t('ago.hours', { count: Math.floor(d / 3600) });
+    return t('ago.days', { count: Math.floor(d / 86400) });
   },
 
   fmtTime(ts) {
@@ -217,7 +217,7 @@ const ui = {
 
   fmtBytes(bytes) {
     if (!bytes) return '0 B';
-    const units = ['B','KB','MB','GB','TB'];
+    const units = [t('units.b'),t('units.kb'),t('units.mb'),t('units.gb'),t('units.tb')];
     let i = 0;
     let b = bytes;
     while (b >= 1024 && i < units.length - 1) { b /= 1024; i++; }
@@ -231,11 +231,11 @@ const ui = {
 
   formatRouteLabel(route) {
     if (!route) return '<span style="color:var(--text-muted)">—</span>';
-    if (route === 'direct') return '<span style="color:var(--success);font-weight:600">Direct</span>';
-    if (route === 'pool') return '<span style="color:var(--accent);font-weight:600">Pool</span>';
+    if (route === 'direct') return '<span style="color:var(--success);font-weight:600">' + t('route.direct') + '</span>';
+    if (route === 'pool') return '<span style="color:var(--accent);font-weight:600">' + t('route.pool') + '</span>';
     if (route.startsWith('custom:')) {
       const name = route.slice(7);
-      return '<span style="color:var(--info);font-weight:600">Custom: ' + ui.escHtml(name) + '</span>';
+      return '<span style="color:var(--info);font-weight:600">' + t('route.custom', { name: ui.escHtml(name) }) + '</span>';
     }
     if (route.startsWith('proxy:')) return '<span style="color:var(--info);font-weight:600">' + ui.escHtml(route) + '</span>';
     return '<span style="color:var(--text-muted)">' + ui.escHtml(route) + '</span>';

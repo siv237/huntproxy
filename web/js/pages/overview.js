@@ -11,10 +11,10 @@ router.register('overview', (container) => {
 
     // Row 1: 4 stat cards
     const row1 = ui.el('div', 'grid grid-4');
-    row1.appendChild(buildStatCard('total', 'Total Proxies', '0', '—', 'neutral', 'server'));
-    row1.appendChild(buildStatCard('alive', 'Alive', '0', '—', 'neutral', 'shield'));
-    row1.appendChild(buildStatCard('dead', 'Dead', '0', '—', 'neutral', 'x-circle'));
-    row1.appendChild(buildStatCard('blacklisted', 'Blacklisted', '0', '—', 'neutral', 'users'));
+    row1.appendChild(buildStatCard('total', t('page.overview.totalProxies'), '0', '—', 'neutral', 'server'));
+    row1.appendChild(buildStatCard('alive', t('page.overview.alive'), '0', '—', 'neutral', 'shield'));
+    row1.appendChild(buildStatCard('dead', t('page.overview.dead'), '0', '—', 'neutral', 'x-circle'));
+    row1.appendChild(buildStatCard('blacklisted', t('page.overview.blacklisted'), '0', '—', 'neutral', 'users'));
     container.appendChild(row1);
 
     // Row 2: Pool Progress + Top Countries + Right sidebar (Activity)
@@ -164,16 +164,16 @@ router.register('overview', (container) => {
     card.style.flexDirection = 'column';
 
     const header = ui.el('div', 'card-header');
-    header.appendChild(ui.el('div', 'card-title', { id: 'pool-title', text: 'Pool Progress' }));
+    header.appendChild(ui.el('div', 'card-title', { id: 'pool-title', text: t('page.overview.poolProgress') }));
     const btns = ui.el('div', '', { style: 'display:flex;gap:4px;align-items:center' });
     const bstyle = 'font-size:11px;padding:2px 6px;border:1px solid var(--border);border-radius:3px;background:var(--surface-raised);cursor:pointer;line-height:1';
     const huntBtn = ui.el('button', '', { id: 'pool-hunt-btn', style: bstyle + ';color:var(--success)' });
     huntBtn.textContent = '▶';
-    huntBtn.title = 'Start hunt';
+    huntBtn.title = t('page.overview.startHunt');
     btns.appendChild(huntBtn);
     const stopBtn = ui.el('button', '', { id: 'pool-stop-btn', style: bstyle + ';color:var(--danger);display:none' });
     stopBtn.textContent = '■';
-    stopBtn.title = 'Stop hunt';
+    stopBtn.title = t('page.overview.stopHunt');
     btns.appendChild(stopBtn);
     header.appendChild(btns);
     card.appendChild(header);
@@ -192,20 +192,20 @@ router.register('overview', (container) => {
     body.appendChild(circle);
 
     const details = ui.el('div', '', { style: 'flex:1;min-width:180px' });
-    details.appendChild(ui.el('div', '', { id: 'pool-phase', style: 'font-size:13px;font-weight:600;color:var(--text-primary);margin-bottom:8px', text: 'Validating proxies' }));
+    details.appendChild(ui.el('div', '', { id: 'pool-phase', style: 'font-size:13px;font-weight:600;color:var(--text-primary);margin-bottom:8px', text: t('page.overview.validatingProxies') }));
 
     const bar = ui.el('div', 'progress-bar', { style: 'height:8px;margin-bottom:6px' });
     bar.appendChild(ui.el('div', '', { id: 'pool-bar-fill', style: 'width:0%;height:100%;background:var(--accent);transition:width 0.4s ease;border-radius:4px' }));
     details.appendChild(bar);
 
     const stats = ui.el('div', '', { style: 'display:flex;justify-content:space-between;font-size:12px;color:var(--text-secondary)' });
-    stats.innerHTML = '<span>Checked <b id="pool-checked" style="color:var(--text-primary)">0</b> / <b id="pool-total">0</b></span><span>Working <b id="pool-working" style="color:var(--success)">0</b></span>';
+    stats.innerHTML = `<span>${t('page.overview.checked')} <b id="pool-checked" style="color:var(--text-primary)">0</b> / <b id="pool-total">0</b></span><span>${t('page.overview.working')} <b id="pool-working" style="color:var(--success)">0</b></span>`;
     details.appendChild(stats);
     body.appendChild(details);
     card.appendChild(body);
 
     const currentProxy = ui.el('div', '', { id: 'pool-current-proxy', style: 'margin-top:10px;font-size:12px;color:var(--text-secondary);flex:1' });
-    currentProxy.innerHTML = '<span style="color:var(--text-muted)">ready</span>';
+    currentProxy.innerHTML = `<span style="color:var(--text-muted)">${t('common.ready')}</span>`;
     card.appendChild(currentProxy);
 
     const poolStats = ui.el('div', '', { id: 'pool-stats-row', style: 'display:grid;grid-template-columns:repeat(auto-fit,minmax(60px,1fr));gap:0.3em;margin-top:auto' });
@@ -219,7 +219,7 @@ router.register('overview', (container) => {
     const statsWrap = document.getElementById('pool-stats-row');
     if (!wrap) return;
     if (!det || !det.address) {
-      wrap.innerHTML = '<span style="color:var(--text-muted)">ready</span>';
+      wrap.innerHTML = `<span style="color:var(--text-muted)">${t('common.ready')}</span>`;
       if (statsWrap) statsWrap.innerHTML = '';
       return;
     }
@@ -241,7 +241,7 @@ router.register('overview', (container) => {
       const cols = ui.el('div', '', { style: 'display:grid;grid-template-columns:1fr auto 1fr;gap:0 0.5em;margin-bottom:0.3em;font-size:11px' });
 
       const lc = ui.el('div', '', { style: 'min-width:0' });
-      lc.appendChild(ui.el('div', '', { style: 'font-size:0.65em;color:var(--text-muted);text-transform:uppercase;margin-bottom:2px', text: 'Server' }));
+      lc.appendChild(ui.el('div', '', { style: 'font-size:0.65em;color:var(--text-muted);text-transform:uppercase;margin-bottom:2px', text: t('page.overview.server') }));
       const lr = ui.el('div', '', { style: 'display:flex;align-items:center;gap:0.3em' });
       lr.appendChild(ui.el('span', 'flag', { text: ui.flag(det.listen_country_code || det.country_code || ''), style: 'flex-shrink:0' }));
       lr.appendChild(ui.el('span', '', { style: 'color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap', text: (det.listen_country || '') + (det.listen_city ? ', ' + det.listen_city : '') }));
@@ -253,7 +253,7 @@ router.register('overview', (container) => {
       cols.appendChild(arrow);
 
       const rc = ui.el('div', '', { style: 'min-width:0' });
-      rc.appendChild(ui.el('div', '', { style: 'font-size:0.65em;color:var(--text-muted);text-transform:uppercase;margin-bottom:2px', text: 'Exit' }));
+      rc.appendChild(ui.el('div', '', { style: 'font-size:0.65em;color:var(--text-muted);text-transform:uppercase;margin-bottom:2px', text: t('page.overview.exit') }));
       const rr = ui.el('div', '', { style: 'display:flex;align-items:center;gap:0.3em' });
       rr.appendChild(ui.el('span', 'flag', { text: ui.flag(det.egress_country_code || det.country_code || ''), style: 'flex-shrink:0' }));      rr.appendChild(ui.el('span', '', { style: 'color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap', text: (det.egress_country || '') + (det.egress_city ? ', ' + det.egress_city : '') }));
       rc.appendChild(rr);
@@ -298,14 +298,14 @@ router.register('overview', (container) => {
     card.id = 'top-countries-card';
 
     const header = ui.el('div', 'card-header');
-    header.appendChild(ui.el('div', 'card-title', { text: 'Top Countries' }));
-    const viewAllBtn = ui.el('button', 'card-action', { text: 'View all' });
+    header.appendChild(ui.el('div', 'card-title', { text: t('page.overview.topCountries') }));
+    const viewAllBtn = ui.el('button', 'card-action', { text: t('common.viewAll') });
     viewAllBtn.addEventListener('click', () => router.navigate('proxies'));
     header.appendChild(viewAllBtn);
     card.appendChild(header);
 
     const list = ui.el('div', '', { id: 'countries-list', style: 'display:flex;flex-direction:column;gap:8px' });
-    list.innerHTML = '<div class="empty" style="font-size:12px;padding:16px">No data</div>';
+    list.innerHTML = `<div class="empty" style="font-size:12px;padding:16px">${t('common.noData')}</div>`;
     card.appendChild(list);
 
     return card;
@@ -337,14 +337,14 @@ router.register('overview', (container) => {
     card.id = 'recent-activity-card';
 
     const header = ui.el('div', 'card-header');
-    header.appendChild(ui.el('div', 'card-title', { text: 'Recent Activity' }));
-    const viewAllBtn = ui.el('button', 'card-action', { text: 'View all' });
+    header.appendChild(ui.el('div', 'card-title', { text: t('page.overview.recentActivity') }));
+    const viewAllBtn = ui.el('button', 'card-action', { text: t('common.viewAll') });
     viewAllBtn.addEventListener('click', () => router.navigate('logs'));
     header.appendChild(viewAllBtn);
     card.appendChild(header);
 
     const list = ui.el('div', '', { id: 'activity-list', style: 'display:flex;flex-direction:column;gap:2px' });
-    list.innerHTML = '<div class="empty" style="font-size:12px;padding:16px">No events</div>';
+    list.innerHTML = `<div class="empty" style="font-size:12px;padding:16px">${t('page.overview.noEvents')}</div>`;
     card.appendChild(list);
 
     return card;
@@ -386,8 +386,8 @@ router.register('overview', (container) => {
     card.id = 'top-rated-card';
 
     const header = ui.el('div', 'card-header');
-    header.appendChild(ui.el('div', 'card-title', { text: 'Top Rated Proxies' }));
-    const viewAllBtn = ui.el('button', 'card-action', { text: 'View all proxies' });
+    header.appendChild(ui.el('div', 'card-title', { text: t('page.overview.topRatedProxies') }));
+    const viewAllBtn = ui.el('button', 'card-action', { text: t('page.overview.viewAllProxies') });
     viewAllBtn.addEventListener('click', () => router.navigate('proxies'));
     header.appendChild(viewAllBtn);
     card.appendChild(header);
@@ -429,12 +429,12 @@ router.register('overview', (container) => {
   function buildSystemResourcesCard() {
     const card = ui.el('div', 'card');
     card.id = 'system-resources-card';
-    card.appendChild(ui.el('div', 'card-title', { text: 'System Resources', style: 'margin-bottom:12px' }));
+    card.appendChild(ui.el('div', 'card-title', { text: t('page.overview.systemResources'), style: 'margin-bottom:12px' }));
 
     const resources = [
-      { label: 'CPU Usage', id: 'res-cpu', value: 0 },
-      { label: 'Memory Usage', id: 'res-memory', value: 0 },
-      { label: 'Disk Usage', id: 'res-disk', value: 0 },
+      { label: t('page.overview.cpuUsage'), id: 'res-cpu', value: 0 },
+      { label: t('page.overview.memoryUsage'), id: 'res-memory', value: 0 },
+      { label: t('page.overview.diskUsage'), id: 'res-disk', value: 0 },
     ];
 
     resources.forEach(r => {
@@ -456,17 +456,17 @@ router.register('overview', (container) => {
   function buildQuickActionsCard() {
     const card = ui.el('div', 'card');
     card.id = 'quick-actions-card';
-    card.appendChild(ui.el('div', 'card-title', { text: 'Quick Actions', style: 'margin-bottom:10px' }));
+    card.appendChild(ui.el('div', 'card-title', { text: t('page.overview.quickActions'), style: 'margin-bottom:10px' }));
 
     const grid = ui.el('div', 'qa-grid');
 
     const actions = [
-      { icon: 'refresh', label: 'Refresh Pool', desc: 'Validate and update proxies', action: () => api.huntStart().then(() => app.toast('Hunt started')), color: 'var(--accent)', bg: 'rgba(99,102,241,0.1)' },
-      { icon: 'heart', label: 'Health Check', desc: 'Check all proxies', action: () => api.huntStart().then(() => app.toast('Health check started')), color: 'var(--success)', bg: 'rgba(16,185,129,0.1)' },
-      { icon: 'trash', label: 'Clear Dead', desc: 'Remove dead proxies', action: () => api.clearDead().then(() => app.toast('Dead proxies cleared')).catch(() => {}), color: 'var(--danger)', bg: 'rgba(239,68,68,0.1)' },
-      { icon: 'download', label: 'Export', desc: 'Export proxy list', action: () => { window.location.href = '/api/export'; }, color: 'var(--info)', bg: 'rgba(59,130,246,0.1)' },
-      { icon: 'upload', label: 'Import', desc: 'Import proxies', action: () => app.toast('Import started'), color: 'var(--warning)', bg: 'rgba(245,158,11,0.1)' },
-      { icon: 'settings', label: 'Settings', desc: 'Configure system', action: () => router.navigate('settings'), color: 'var(--text-secondary)', bg: 'var(--surface-raised)' },
+      { icon: 'refresh', label: t('page.overview.refreshPool'), desc: t('page.overview.refreshPoolDesc'), action: () => api.huntStart().then(() => app.toast(t('page.overview.huntStarted'))), color: 'var(--accent)', bg: 'rgba(99,102,241,0.1)' },
+      { icon: 'heart', label: t('page.overview.healthCheck'), desc: t('page.overview.healthCheckDesc'), action: () => api.huntStart().then(() => app.toast(t('page.overview.healthCheckStarted'))), color: 'var(--success)', bg: 'rgba(16,185,129,0.1)' },
+      { icon: 'trash', label: t('page.overview.clearDead'), desc: t('page.overview.clearDeadDesc'), action: () => api.clearDead().then(() => app.toast(t('page.overview.deadCleared'))).catch(() => {}), color: 'var(--danger)', bg: 'rgba(239,68,68,0.1)' },
+      { icon: 'download', label: t('page.overview.export'), desc: t('page.overview.exportDesc'), action: () => { window.location.href = '/api/export'; }, color: 'var(--info)', bg: 'rgba(59,130,246,0.1)' },
+      { icon: 'upload', label: t('page.overview.import'), desc: t('page.overview.importDesc'), action: () => app.toast('Import started'), color: 'var(--warning)', bg: 'rgba(245,158,11,0.1)' },
+      { icon: 'settings', label: t('page.overview.settingsAction'), desc: t('page.overview.settingsDesc'), action: () => router.navigate('settings'), color: 'var(--text-secondary)', bg: 'var(--surface-raised)' },
     ];
 
     actions.forEach(a => {
@@ -509,9 +509,9 @@ router.register('overview', (container) => {
     card.id = 'live-performance-card';
 
     const header = ui.el('div', 'card-header');
-    header.appendChild(ui.el('div', 'card-title', { text: 'Live Performance' }));
+    header.appendChild(ui.el('div', 'card-title', { text: t('page.overview.livePerformance') }));
     const sel = ui.el('select', '', { style: 'padding:2px 6px;font-size:11px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--bg);color:var(--text-secondary)', id: 'perf-range' });
-    ['1h', '6h', '24h'].forEach(t => sel.appendChild(ui.el('option', '', { text: 'Last ' + (t === '1h' ? '1 hour' : t === '6h' ? '6 hours' : '24 hours'), value: t })));
+    ['1h', '6h', '24h'].forEach(r => sel.appendChild(ui.el('option', '', { text: t(r === '1h' ? 'page.overview.last1hour' : r === '6h' ? 'page.overview.last6hours' : 'page.overview.last24hours'), value: r })));
     sel.addEventListener('change', () => {
       perfCurrentRange = sel.value;
       renderPerformanceFromCache();
@@ -567,7 +567,7 @@ router.register('overview', (container) => {
       ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text-muted').trim() || '#9CA3AF';
       ctx.font = '12px sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText('No data yet', w / 2, h / 2);
+      ctx.fillText(t('page.overview.noDataYet'), w / 2, h / 2);
       return;
     }
 
@@ -589,7 +589,7 @@ router.register('overview', (container) => {
       ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text-muted').trim() || '#9CA3AF';
       ctx.font = '12px sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText('No proxy traffic yet', w / 2, h / 2);
+      ctx.fillText(t('page.overview.noProxyTraffic'), w / 2, h / 2);
 
       ctx.font = '10px sans-serif';
       const minTs = pts[0].ts;
@@ -704,17 +704,17 @@ router.register('overview', (container) => {
 
     const header = ui.el('div', 'card-header');
     const titleRow = ui.el('div', '', { style: 'display:flex;align-items:center;gap:8px' });
-    titleRow.appendChild(ui.el('div', 'card-title', { id: 'proxy-card-title', text: 'Local Proxy' }));
+    titleRow.appendChild(ui.el('div', 'card-title', { id: 'proxy-card-title', text: t('page.overview.localProxy') }));
     const upstreamBtns = ui.el('div', '', { id: 'upstream-btns', style: 'display:flex;gap:4px' });
     titleRow.appendChild(upstreamBtns);
     header.appendChild(titleRow);
-    const poolBtn = ui.el('button', 'card-action', { text: 'Proxy Pool' });
+    const poolBtn = ui.el('button', 'card-action', { text: t('page.overview.proxyPool') });
     poolBtn.addEventListener('click', () => router.navigate('proxy-pool'));
     header.appendChild(poolBtn);
     card.appendChild(header);
 
     const body = ui.el('div', '', { id: 'current-proxy-body', style: 'flex:1' });
-    body.innerHTML = '<div class="empty" style="font-size:12px;padding:16px">No upstream selected</div>';
+    body.innerHTML = `<div class="empty" style="font-size:12px;padding:16px">${t('page.overview.noUpstreamSelected')}</div>`;
     card.appendChild(body);
 
     const statsRow = ui.el('div', '', { id: 'proxy-stats-row', style: 'display:grid;grid-template-columns:repeat(auto-fit,minmax(60px,1fr));gap:0.3em;margin-top:auto' });
@@ -740,7 +740,7 @@ router.register('overview', (container) => {
       card.style.borderColor = anyRunning ? '' : 'rgba(239,68,68,0.25)';
     }
     if (titleEl) {
-      titleEl.textContent = anyRunning ? 'Local Proxy' : 'Local Proxy — Остановлено';
+      titleEl.textContent = anyRunning ? t('page.overview.localProxy') : t('page.overview.localProxyStopped');
       titleEl.style.color = anyRunning ? '' : 'var(--danger)';
     }
 
@@ -766,11 +766,11 @@ router.register('overview', (container) => {
     httpRow.appendChild(ui.el('span', '', { style: 'color:var(--text-muted);font-weight:600;font-size:10px;text-transform:uppercase;width:44px;flex-shrink:0', text: 'HTTP' }));
     httpRow.appendChild(ui.el('span', '', { style: `font-family:monospace;font-weight:700;color:${running ? 'var(--success)' : 'var(--text-muted)'};font-size:12px`, text: String(port) }));
     if (running) {
-      httpRow.appendChild(mkBtn('■', 'Stop HTTP', 'var(--danger)', () => api.proxyStop().then(() => app.toast('Proxy stopped')).catch(e => app.toast('Error: ' + e.message, 'error'))));
+      httpRow.appendChild(mkBtn('■', 'Stop HTTP', 'var(--danger)', () => api.proxyStop().then(() => app.toast(t('page.overview.proxyStopped'))).catch(e => app.toast(t('common.error', { message: e.message }), 'error'))));
       httpRow.appendChild(ui.el('span', '', { style: 'color:var(--success);font-weight:600;font-size:11px', text: '✓' + (ps.connections_ok || 0) }));
       httpRow.appendChild(ui.el('span', '', { style: 'color:var(--danger);font-weight:600;font-size:11px', text: '✗' + (ps.connections_failed || 0) }));
     } else {
-      httpRow.appendChild(mkBtn('▶', 'Start HTTP', 'var(--success)', () => api.proxyStart(port).then(() => app.toast('Proxy started')).catch(e => app.toast('Error: ' + e.message, 'error'))));
+      httpRow.appendChild(mkBtn('▶', 'Start HTTP', 'var(--success)', () => api.proxyStart(port).then(() => app.toast(t('page.overview.proxyStarted'))).catch(e => app.toast(t('common.error', { message: e.message }), 'error'))));
     }
     body.appendChild(httpRow);
 
@@ -779,11 +779,11 @@ router.register('overview', (container) => {
     s5Row.appendChild(ui.el('span', '', { style: 'color:var(--text-muted);font-weight:600;font-size:10px;text-transform:uppercase;width:44px;flex-shrink:0', text: 'SOCKS5' }));
     s5Row.appendChild(ui.el('span', '', { style: `font-family:monospace;font-weight:700;color:${s5running ? 'var(--success)' : 'var(--text-muted)'};font-size:12px`, text: String(s5port) }));
     if (s5running) {
-      s5Row.appendChild(mkBtn('■', 'Stop SOCKS5', 'var(--danger)', () => api.socks5Stop().then(() => app.toast('SOCKS5 stopped')).catch(e => app.toast('Error: ' + e.message, 'error'))));
+      s5Row.appendChild(mkBtn('■', 'Stop SOCKS5', 'var(--danger)', () => api.socks5Stop().then(() => app.toast(t('page.overview.socks5Stopped'))).catch(e => app.toast(t('common.error', { message: e.message }), 'error'))));
       s5Row.appendChild(ui.el('span', '', { style: 'color:var(--success);font-weight:600;font-size:11px', text: '✓' + (ss.connections_ok || 0) }));
       s5Row.appendChild(ui.el('span', '', { style: 'color:var(--danger);font-weight:600;font-size:11px', text: '✗' + (ss.connections_failed || 0) }));
     } else {
-      s5Row.appendChild(mkBtn('▶', 'Start SOCKS5', 'var(--success)', () => api.socks5Start(s5port).then(() => app.toast('SOCKS5 started')).catch(e => app.toast('Error: ' + e.message, 'error'))));
+      s5Row.appendChild(mkBtn('▶', 'Start SOCKS5', 'var(--success)', () => api.socks5Start(s5port).then(() => app.toast(t('page.overview.socks5Started'))).catch(e => app.toast(t('common.error', { message: e.message }), 'error'))));
     }
     body.appendChild(s5Row);
 
@@ -791,8 +791,8 @@ router.register('overview', (container) => {
     if (btnsEl) {
       btnsEl.innerHTML = '';
       if (ap) {
-        btnsEl.appendChild(mkBtn('»', 'Next proxy', 'var(--accent)', () => api.proxyNext().then(() => app.toast('Switched to next proxy')).catch(e => app.toast('Error: ' + e.message, 'error'))));
-        const recheckBtn = mkBtn('↻', 'Recheck', 'var(--info)', () => {
+        btnsEl.appendChild(mkBtn('»', t('page.overview.nextProxy'), 'var(--accent)', () => api.proxyNext().then(() => app.toast(t('page.overview.switchedToNext'))).catch(e => app.toast(t('common.error', { message: e.message }), 'error'))));
+        const recheckBtn = mkBtn('↻', t('page.overview.recheck'), 'var(--info)', () => {
           recheckBtn.disabled = true;
           recheckBtn.style.color = 'var(--text-muted)';
           const icon = recheckBtn.querySelector('span');
@@ -805,7 +805,7 @@ router.register('overview', (container) => {
             recheckBtn.disabled = false;
             recheckBtn.style.color = 'var(--info)';
             if (icon) icon.style.animation = '';
-            app.toast('Error: ' + e.message, 'error');
+            app.toast(t('common.error', { message: e.message }), 'error');
           });
         });
         const recheckIcon = ui.el('span', '', { style: 'display:inline-block' });
@@ -823,8 +823,8 @@ router.register('overview', (container) => {
     }
 
     if (!ap) {
-      const nextBtn = ui.el('button', '', { style: 'padding:0.4em 1em;border:1px solid var(--border);border-radius:0.3em;background:var(--surface-raised);color:var(--accent);cursor:pointer', text: 'Select best proxy' });
-      nextBtn.addEventListener('click', () => api.proxyNext().then(() => app.toast('Proxy selected')).catch(e => app.toast('Error: ' + e.message, 'error')));
+      const nextBtn = ui.el('button', '', { style: 'padding:0.4em 1em;border:1px solid var(--border);border-radius:0.3em;background:var(--surface-raised);color:var(--accent);cursor:pointer', text: t('page.overview.selectBestProxy') });
+      nextBtn.addEventListener('click', () => api.proxyNext().then(() => app.toast(t('page.overview.proxySelected'))).catch(e => app.toast(t('common.error', { message: e.message }), 'error')));
       body.appendChild(nextBtn);
       return;
     }
@@ -844,7 +844,7 @@ router.register('overview', (container) => {
       const cols = ui.el('div', '', { style: 'display:grid;grid-template-columns:1fr auto 1fr;gap:0 0.5em;margin-bottom:0.3em;font-size:11px' });
 
       const lc = ui.el('div', '', { style: 'min-width:0' });
-      lc.appendChild(ui.el('div', '', { style: 'font-size:0.65em;color:var(--text-muted);text-transform:uppercase;margin-bottom:2px', text: 'Server' }));
+      lc.appendChild(ui.el('div', '', { style: 'font-size:0.65em;color:var(--text-muted);text-transform:uppercase;margin-bottom:2px', text: t('page.overview.server') }));
       const lr = ui.el('div', '', { style: 'display:flex;align-items:center;gap:0.3em' });
       lr.appendChild(ui.el('span', 'flag', { text: ui.flag(ap.listen_country_code || ap.country_code || ''), style: 'flex-shrink:0' }));
       lr.appendChild(ui.el('span', '', { style: 'color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap', text: (ap.listen_country || '') + (ap.listen_city ? ', ' + ap.listen_city : '') }));
@@ -856,7 +856,7 @@ router.register('overview', (container) => {
       cols.appendChild(arrow);
 
       const rc = ui.el('div', '', { style: 'min-width:0' });
-      rc.appendChild(ui.el('div', '', { style: 'font-size:0.65em;color:var(--text-muted);text-transform:uppercase;margin-bottom:2px', text: 'Exit' }));
+      rc.appendChild(ui.el('div', '', { style: 'font-size:0.65em;color:var(--text-muted);text-transform:uppercase;margin-bottom:2px', text: t('page.overview.exit') }));
       const rr = ui.el('div', '', { style: 'display:flex;align-items:center;gap:0.3em' });
       rr.appendChild(ui.el('span', 'flag', { text: ui.flag(ap.egress_country_code || ap.country_code || ''), style: 'flex-shrink:0' }));
       rr.appendChild(ui.el('span', '', { style: 'color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap', text: (ap.egress_country || '') + (ap.egress_city ? ', ' + ap.egress_city : '') }));
@@ -933,12 +933,12 @@ router.register('overview', (container) => {
 
       // Pool progress
       const p = s.progress || {};
-      const t = p.checking_total || p.downloaded || 0;
+      const poolTotal = p.checking_total || p.downloaded || 0;
       const checked = p.checked || 0;
-      const pct = t > 0 ? Math.round((checked / t) * 100) : 0;
+      const pct = poolTotal > 0 ? Math.round((checked / poolTotal) * 100) : 0;
       if (el('pool-pct')) el('pool-pct').textContent = pct + '%';
       if (el('pool-checked')) el('pool-checked').textContent = checked;
-      if (el('pool-total')) el('pool-total').textContent = t;
+      if (el('pool-total')) el('pool-total').textContent = poolTotal;
       if (el('pool-working')) el('pool-working').textContent = p.working || 0;
       if (el('pool-bar-fill')) el('pool-bar-fill').style.width = pct + '%';
       if (el('pool-circle-fill')) {
@@ -946,7 +946,7 @@ router.register('overview', (container) => {
         el('pool-circle-fill').style.strokeDashoffset = circumference - (pct / 100) * circumference;
       }
       if (el('pool-phase')) {
-        el('pool-phase').textContent = s.running ? 'Validating proxies' : 'Idle';
+        el('pool-phase').textContent = s.running ? t('page.overview.validatingProxies') : t('page.hunt.idle');
       }
       if (el('pool-current-proxy')) {
         renderPoolProxyInfo(s.last_proxy_details);
@@ -956,29 +956,29 @@ router.register('overview', (container) => {
         const stop = el('pool-stop-btn');
         if (s.paused) {
           btn.textContent = '▶';
-          btn.title = 'Resume';
+          btn.title = t('page.hunt.resume');
           btn.style.color = 'var(--warning,#9a6700)';
-          btn.onclick = () => api.huntResume().then(r => app.toast(r.ok ? 'Resumed' : r.error)).catch(e => app.toast('Error: ' + e.message, 'error'));
+          btn.onclick = () => api.huntResume().then(r => app.toast(r.ok ? t('page.hunt.resumed') : r.error)).catch(e => app.toast(t('common.error', { message: e.message }), 'error'));
         } else if (s.running) {
           btn.textContent = '⏸';
-          btn.title = 'Pause';
+          btn.title = t('page.hunt.pause');
           btn.style.color = 'var(--warning,#9a6700)';
-          btn.onclick = () => api.huntPause().then(r => app.toast(r.ok ? 'Paused' : r.error)).catch(e => app.toast('Error: ' + e.message, 'error'));
+          btn.onclick = () => api.huntPause().then(r => app.toast(r.ok ? t('page.hunt.pausedMsg') : r.error)).catch(e => app.toast(t('common.error', { message: e.message }), 'error'));
         } else {
           btn.textContent = '▶';
-          btn.title = 'Start';
+          btn.title = t('page.hunt.startHunt');
           btn.style.color = 'var(--success)';
-          btn.onclick = () => api.huntStart().then(r => app.toast(r.ok ? 'Started' : r.error)).catch(e => app.toast('Error: ' + e.message, 'error'));
+          btn.onclick = () => api.huntStart().then(r => app.toast(r.ok ? t('page.hunt.huntStarted') : r.error)).catch(e => app.toast(t('common.error', { message: e.message }), 'error'));
         }
         if (stop) {
           stop.style.display = (s.running || s.paused) ? '' : 'none';
           stop.style.color = 'var(--danger)';
-          stop.onclick = () => api.huntStop().then(() => app.toast('Stopped')).catch(e => app.toast('Error: ' + e.message, 'error'));
+          stop.onclick = () => api.huntStop().then(() => app.toast(t('page.hunt.huntStopped'))).catch(e => app.toast(t('common.error', { message: e.message }), 'error'));
         }
       }
       if (el('pool-title')) {
         const p = s.paused || false, m = s.manual_pause || false;
-        el('pool-title').textContent = p ? (m ? 'Pool Progress — Paused' : 'Pool Progress — No Internet') : (s.running ? 'Pool Progress — Running' : 'Pool Progress');
+        el('pool-title').textContent = p ? (m ? t('page.overview.poolProgress') + ' — ' + t('page.hunt.pausedMsg') : t('page.overview.poolProgress') + ' — No Internet') : (s.running ? t('page.overview.poolProgress') + ' — Running' : t('page.overview.poolProgress'));
       }
 
       // Top countries

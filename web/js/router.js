@@ -2,23 +2,23 @@ const router = {
   routes: {},
   current: '',
   titles: {
-    overview: ['Overview', 'Dashboard — key metrics from all systems'],
-    hunt: ['Hunt', 'Pool harvesting, validation and progress'],
-    'proxy-sources': ['Sources', 'Manage proxy source lists and track harvest quality per source'],
-    proxies: ['Proxies', 'Manage and monitor your proxy pool'],
-    'proxy-control': ['Proxy Control', 'Monitor and control internal proxy performance and traffic'],
-    'proxy-pool': ['Proxy Pool', 'Browse and select upstream proxies'],
-    blacklist: ['Blacklist', 'Manage blacklisted proxies'],
-    analytics: ['Analytics', 'Proxy performance analytics and trends'],
-    logs: ['Logs', 'System logs and activity'],
-    settings: ['Settings', 'Configure huntproxy settings'],
-    routes: ['Routes', 'Configure domain-based traffic routing rules'],
-    'domain-lists': ['Domain Lists', 'Manage domain lists for routing rules'],
-    'custom-proxies': ['Custom Proxies', 'Configure specialized proxies for routing (corporate, Tor, anti-ban)'],
-    'connectivity': ['Connectivity', 'Internet connectivity monitoring and canary hosts'],
-    downloads: ['Downloads', 'Export data files'],
-    api: ['API', 'API documentation and endpoints'],
-    about: ['About', 'About huntproxy'],
+    overview: ['page.overview.title', 'page.overview.subtitle'],
+    hunt: ['page.hunt.title', 'page.hunt.subtitle'],
+    'proxy-sources': ['page.proxySources.title', 'page.proxySources.subtitle'],
+    proxies: ['page.proxies.title', 'page.proxies.subtitle'],
+    'proxy-control': ['page.proxyControl.title', 'page.proxyControl.subtitle'],
+    'proxy-pool': ['page.proxyPool.title', 'page.proxyPool.subtitle'],
+    blacklist: ['page.blacklist.title', 'page.blacklist.subtitle'],
+    analytics: ['page.analytics.title', 'page.analytics.subtitle'],
+    logs: ['page.logs.title', 'page.logs.subtitle'],
+    settings: ['page.settings.title', 'page.settings.subtitle'],
+    routes: ['page.routes.title', 'page.routes.subtitle'],
+    'domain-lists': ['page.domainLists.title', 'page.domainLists.subtitle'],
+    'custom-proxies': ['page.customProxies.title', 'page.customProxies.subtitle'],
+    'connectivity': ['page.connectivity.title', 'page.connectivity.subtitle'],
+    downloads: ['page.downloads.title', 'page.downloads.subtitle'],
+    api: ['page.api.title', 'page.api.subtitle'],
+    about: ['page.about.title', 'page.about.subtitle'],
   },
 
   register(page, renderFn) {
@@ -53,7 +53,9 @@ const router = {
       el.classList.toggle('active', el.dataset.page === page);
     });
     // Title
-    const [title, sub] = this.titles[page] || [page, ''];
+    const [titleKey, subKey] = this.titles[page] || [page, ''];
+    const title = t(titleKey);
+    const sub = t(subKey);
     const tEl = document.getElementById('page-title');
     const sEl = document.getElementById('page-subtitle');
     if (tEl) tEl.textContent = title;
@@ -64,4 +66,3 @@ const router = {
 };
 
 window.addEventListener('hashchange', () => router.resolve());
-window.addEventListener('DOMContentLoaded', () => router.resolve());

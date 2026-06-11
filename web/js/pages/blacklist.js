@@ -18,7 +18,7 @@ router.register('blacklist', (container) => {
     container.style.flex = '1';
 
     const filterBar = ui.el('div', '', { style: 'display:flex;gap:8px;flex-wrap:wrap;align-items:center;flex-shrink:0' });
-    const search = ui.el('input', '', { type: 'text', placeholder: 'Search blacklisted proxy...', value: state.search, style: 'padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--bg);color:var(--text-primary);font-size:13px;min-width:200px' });
+    const search = ui.el('input', '', { type: 'text', placeholder: t('page.blacklist.searchPlaceholder'), value: state.search, style: 'padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--bg);color:var(--text-primary);font-size:13px;min-width:200px' });
     search.addEventListener('input', (e) => {
       state.search = e.target.value.toLowerCase();
       state.page = 1;
@@ -28,20 +28,20 @@ router.register('blacklist', (container) => {
 
     filterBar.appendChild(ui.el('div', '', { style: 'flex:1' }));
 
-    const refreshBtn = ui.el('button', 'btn btn-secondary', { text: 'Refresh' });
+    const refreshBtn = ui.el('button', 'btn btn-secondary', { text: t('common.refresh') });
     refreshBtn.addEventListener('click', () => load());
     filterBar.appendChild(refreshBtn);
 
-    const addBtn = ui.el('button', 'btn btn-primary', { html: '<svg width="14" height="14"><use href="#icon-plus"/></svg> Add' });
+    const addBtn = ui.el('button', 'btn btn-primary', { html: '<svg width="14" height="14"><use href="#icon-plus"/></svg> ' + t('common.add') });
     addBtn.addEventListener('click', () => {
-      const addr = prompt('Proxy address (ip:port):');
-      if (addr) blAdd(addr, prompt('Reason (optional):') || 'manual');
+      const addr = prompt(t('page.blacklist.proxyAddress'));
+      if (addr) blAdd(addr, prompt(t('page.blacklist.reasonOptional')) || 'manual');
     });
     filterBar.appendChild(addBtn);
 
     container.appendChild(filterBar);
 
-    const card = ui.card('Blacklist');
+    const card = ui.card(t('page.blacklist.title'));
     card.id = 'blacklist-table-card';
     card.style.flex = '1';
     card.style.minHeight = '0';
@@ -56,14 +56,14 @@ router.register('blacklist', (container) => {
     pagWrap.appendChild(left);
 
     const right = ui.el('div', '', { style: 'display:flex;gap:4px' });
-    const prev = ui.el('button', 'btn btn-sm btn-secondary', { text: 'Previous' });
+    const prev = ui.el('button', 'btn btn-sm btn-secondary', { text: t('common.previous') });
     prev.addEventListener('click', () => { if (state.page > 1) { state.page--; load(); } });
     right.appendChild(prev);
 
     const pages = ui.el('div', '', { style: 'display:flex;gap:4px', id: 'bl-page-btns' });
     right.appendChild(pages);
 
-    const next = ui.el('button', 'btn btn-sm btn-secondary', { text: 'Next' });
+    const next = ui.el('button', 'btn btn-sm btn-secondary', { text: t('common.next') });
     next.addEventListener('click', () => { state.page++; load(); });
     right.appendChild(next);
     pagWrap.appendChild(right);
@@ -82,7 +82,7 @@ router.register('blacklist', (container) => {
       renderPagination();
     } catch (e) {
       console.error('blacklist load', e);
-      app.toast('Failed to load blacklist', 'error');
+      app.toast(t('page.blacklist.failedToLoad'), 'error');
     }
   }
 
@@ -97,7 +97,7 @@ router.register('blacklist', (container) => {
     if (!card) return;
     card.innerHTML = '';
     const header = ui.el('div', 'card-header');
-    header.appendChild(ui.el('div', 'card-title', { text: 'Blacklist' }));
+    header.appendChild(ui.el('div', 'card-title', { text: t('page.blacklist.title') }));
     card.appendChild(header);
 
     let rows = state.blacklist;
@@ -111,7 +111,7 @@ router.register('blacklist', (container) => {
     rows = rows.slice().sort((a, b) => ui.sortValue(a, b, state.sortKey, state.sortDir));
 
     if (!rows.length) {
-      card.appendChild(ui.el('div', 'empty', { text: 'No blacklisted proxies' }));
+      card.appendChild(ui.el('div', 'empty', { text: t('page.blacklist.noBlacklisted') }));
       return;
     }
 
@@ -128,7 +128,7 @@ router.register('blacklist', (container) => {
       b.country || '—',
       `<span style="color:var(--danger)">${b.reason || '—'}</span>`,
       Math.round(b.score || 0),
-      `<button class="btn btn-xs btn-secondary" onclick="blRemove('${b.address}')">Remove</button>`,
+      `<button class="btn btn-xs btn-secondary" onclick="blRemove('${b.address}')">${t('common.remove')}</button>`,
     ]);
     const tblWrap = ui.el('div', 'table-wrap', { style: 'flex:1;min-height:0;overflow-y:auto' });
     tblWrap.appendChild(ui.table(headers, bodyRows));
@@ -137,7 +137,7 @@ router.register('blacklist', (container) => {
 
   function renderPagination() {
     const info = document.getElementById('bl-pag-info');
-    if (info) info.textContent = `Showing ${(state.page - 1) * state.limit + 1} to ${Math.min(state.page * state.limit, state.total)} of ${state.total} entries`;
+      if (info) info.textContent = t('page.blacklist.showing', {from: (state.page - 1) * state.limit + 1, to: Math.min(state.page * state.limit, state.total), total: state.total});
 
     const btns = document.getElementById('bl-page-btns');
     if (!btns) return;
@@ -155,20 +155,20 @@ router.register('blacklist', (container) => {
   async function blAdd(addr, reason) {
     try {
       await api.blAdd(addr, reason);
-      app.toast('Added to blacklist');
+      app.toast(t('page.blacklist.addedToBlacklist'));
       load();
     } catch (e) {
-      app.toast('Error: ' + e.message, 'error');
+      app.toast(t('common.error', {message: e.message}), 'error');
     }
   }
 
   async function blRemove(addr) {
     try {
       await api.blRemove(addr);
-      app.toast('Removed from blacklist');
+      app.toast(t('page.blacklist.removedFromBlacklist'));
       load();
     } catch (e) {
-      app.toast('Error: ' + e.message, 'error');
+      app.toast(t('common.error', {message: e.message}), 'error');
     }
   }
 
@@ -178,24 +178,22 @@ router.register('blacklist', (container) => {
   else window._pageIntervals = [id];
 });
 
-// Expose functions for inline onclick
 window.blAdd = async function(addr, reason) {
   try {
     await api.blAdd(addr, reason || 'manual');
-    app.toast('Added to blacklist');
+    app.toast(t('page.blacklist.addedToBlacklist'));
     if (router.current === 'blacklist') router.resolve();
     else if (router.current === 'proxies') router.resolve();
   } catch (e) {
-    app.toast('Error: ' + e.message, 'error');
+    app.toast(t('common.error', {message: e.message}), 'error');
   }
 };
 
 window.blRemove = async function(addr) {
   try {
     await api.blRemove(addr);
-    app.toast('Removed from blacklist');
-    if (router.current === 'blacklist') router.resolve();
+    app.toast(t('page.blacklist.removedFromBlacklist'));
   } catch (e) {
-    app.toast('Error: ' + e.message, 'error');
+    app.toast(t('common.error', {message: e.message}), 'error');
   }
 };

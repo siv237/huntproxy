@@ -14,49 +14,49 @@ router.register('logs', (container) => {
     container.style.flex = '1';
 
     const filterBar = ui.el('div', '', { style: 'display:flex;gap:8px;flex-wrap:wrap;align-items:center;flex-shrink:0' });
-    const search = ui.el('input', '', { type: 'text', placeholder: 'Filter logs...', value: state.filter, style: 'padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--bg);color:var(--text-primary);font-size:13px;min-width:220px' });
+    const search = ui.el('input', '', { type: 'text', placeholder: t('page.logs.filterPlaceholder'), value: state.filter, style: 'padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--bg);color:var(--text-primary);font-size:13px;min-width:220px' });
     search.addEventListener('input', (e) => {
       state.filter = e.target.value.toLowerCase();
       render();
     });
     filterBar.appendChild(search);
 
-    const levels = ['All', 'INFO', 'WARN', 'ERROR'];
-    levels.forEach(l => {
-      const btn = ui.el('button', `btn btn-sm ${state.level === l.toLowerCase() || (l === 'All' && state.level === 'all') ? 'btn-primary' : 'btn-secondary'}`, { text: l });
-      btn.addEventListener('click', () => {
-        state.level = l === 'All' ? 'all' : l.toLowerCase();
-        render();
-      });
-      filterBar.appendChild(btn);
-    });
+     const levels = [{label: t('page.logs.all'), value: 'all'}, {label: 'INFO', value: 'info'}, {label: 'WARN', value: 'warn'}, {label: 'ERROR', value: 'error'}];
+     levels.forEach(l => {
+       const btn = ui.el('button', `btn btn-sm ${state.level === l.value ? 'btn-primary' : 'btn-secondary'}`, { text: l.label });
+       btn.addEventListener('click', () => {
+         state.level = l.value;
+         render();
+       });
+       filterBar.appendChild(btn);
+     });
 
     filterBar.appendChild(ui.el('div', '', { style: 'flex:1' }));
 
-    const liveBtn = ui.el('button', 'btn btn-secondary', { text: 'Live' });
+    const liveBtn = ui.el('button', 'btn btn-secondary', { text: t('page.logs.live') });
     let liveInterval = null;
     liveBtn.addEventListener('click', () => {
       if (liveInterval) {
         clearInterval(liveInterval);
         liveInterval = null;
-        liveBtn.textContent = 'Live';
+        liveBtn.textContent = t('page.logs.live');
         liveBtn.className = 'btn btn-secondary';
       } else {
         load();
         liveInterval = setInterval(load, 3000);
-        liveBtn.textContent = 'Stop Live';
+        liveBtn.textContent = t('page.logs.stopLive');
         liveBtn.className = 'btn btn-primary';
       }
     });
     filterBar.appendChild(liveBtn);
 
-    const clearBtn = ui.el('button', 'btn btn-secondary', { text: 'Clear' });
+    const clearBtn = ui.el('button', 'btn btn-secondary', { text: t('page.logs.clear') });
     clearBtn.addEventListener('click', () => { state.lines = []; render(); });
     filterBar.appendChild(clearBtn);
 
     container.appendChild(filterBar);
 
-    const card = ui.card('System Logs');
+    const card = ui.card(t('page.logs.systemLogs'));
     card.id = 'logs-card';
     card.style.flex = '1';
     card.style.minHeight = '0';
@@ -83,7 +83,7 @@ router.register('logs', (container) => {
     if (!card) return;
     card.innerHTML = '';
     const header = ui.el('div', 'card-header');
-    header.appendChild(ui.el('div', 'card-title', { text: 'System Logs' }));
+    header.appendChild(ui.el('div', 'card-title', { text: t('page.logs.systemLogs') }));
     const count = ui.el('div', '', { style: 'font-size:12px;color:var(--text-secondary)', text: `${state.lines.length} lines` });
     header.appendChild(count);
     card.appendChild(header);
@@ -97,7 +97,7 @@ router.register('logs', (container) => {
     }
 
     if (!lines.length) {
-      card.appendChild(ui.el('div', 'empty', { text: 'No matching logs' }));
+      card.appendChild(ui.el('div', 'empty', { text: t('page.logs.noMatching') }));
       return;
     }
 

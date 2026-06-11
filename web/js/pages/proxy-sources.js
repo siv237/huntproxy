@@ -21,23 +21,23 @@ router.register('proxy-sources', (container) => {
   }
 
   function buildSourcesCard() {
-    const card = ui.card('Proxy Sources');
+    const card = ui.card(t('page.proxySources.proxySources'));
     card.id = 'card-proxy-sources';
     card.style.overflow = 'hidden';
 
-    const addBtn = ui.el('button', 'btn btn-sm btn-primary', { text: '+ New Source', style: 'margin-bottom:8px' });
+    const addBtn = ui.el('button', 'btn btn-sm btn-primary', { text: t('page.proxySources.newSource'), style: 'margin-bottom:8px' });
     addBtn.addEventListener('click', () => {
       editingId = null;
       showEditor(null);
     });
 
-    const refreshBtn = ui.el('button', 'btn btn-sm btn-secondary', { text: '↻ Refresh', style: 'margin-bottom:8px;margin-left:6px' });
+    const refreshBtn = ui.el('button', 'btn btn-sm btn-secondary', { text: t('page.proxySources.refresh'), style: 'margin-bottom:8px;margin-left:6px' });
     refreshBtn.addEventListener('click', () => {
       refreshBtn.disabled = true;
-      refreshBtn.textContent = '↻ Fetching...';
+      refreshBtn.textContent = t('page.proxySources.fetching');
       api.proxySourcesFetch().then(r => {
         refreshBtn.disabled = false;
-        refreshBtn.textContent = '↻ Refresh';
+        refreshBtn.textContent = t('page.proxySources.refresh');
         if (r.ok) {
           const parts = [];
           if (r.sources) {
@@ -49,8 +49,8 @@ router.register('proxy-sources', (container) => {
           }
           const total = r.total_addresses || 0;
           const statusHtml = parts.length
-            ? parts.join(' &nbsp;·&nbsp; ') + `<br><span style="color:var(--text-muted)">${total} unique addresses</span>`
-            : `<span style="color:var(--text-muted)">No enabled sources</span>`;
+            ? parts.join(' &nbsp;·&nbsp; ') + `<br><span style="color:var(--text-muted)">${t('page.proxySources.uniqueAddresses', {count: total})}</span>`
+            : `<span style="color:var(--text-muted)">${t('page.proxySources.noEnabledSources')}</span>`;
           const statusEl = document.getElementById('fetch-status');
           if (statusEl) {
             statusEl.innerHTML = statusHtml;
@@ -65,8 +65,8 @@ router.register('proxy-sources', (container) => {
         load();
       }).catch(e => {
         refreshBtn.disabled = false;
-        refreshBtn.textContent = '↻ Refresh';
-        app.toast('Error: ' + e.message, 'error');
+        refreshBtn.textContent = t('page.proxySources.refresh');
+        app.toast(t('common.error', {message: e.message}), 'error');
       });
     });
 
@@ -77,19 +77,19 @@ router.register('proxy-sources', (container) => {
     card.appendChild(fetchStatus);
 
     const tblWrap = ui.el('div', '', { id: 'proxy-sources-tbl', style: 'flex:1;min-height:0;overflow-y:auto' });
-    tblWrap.innerHTML = '<div class="empty" style="padding:8px;font-size:11px">No proxy sources</div>';
+    tblWrap.innerHTML = `<div class="empty" style="padding:8px;font-size:11px">${t('page.proxySources.noSources')}</div>`;
     card.appendChild(tblWrap);
 
     return card;
   }
 
   function buildEditorCard() {
-    const card = ui.card('Source Editor');
+    const card = ui.card(t('page.proxySources.sourceEditor'));
     card.id = 'card-source-editor';
     card.style.overflow = 'hidden';
 
     const body = ui.el('div', '', { id: 'source-editor-body' });
-    body.innerHTML = '<div class="empty" style="padding:8px;font-size:11px">Select a source to edit or add a new one</div>';
+    body.innerHTML = `<div class="empty" style="padding:8px;font-size:11px">${t('page.proxySources.selectToEdit')}</div>`;
     card.appendChild(body);
 
     return card;
@@ -102,13 +102,13 @@ router.register('proxy-sources', (container) => {
     editingId = src ? src.id : null;
 
     const nameRow = ui.el('div', '', { style: 'margin-bottom:10px' });
-    nameRow.appendChild(ui.el('div', '', { style: 'font-size:12px;color:var(--text-secondary);margin-bottom:4px', text: 'Name:' }));
+    nameRow.appendChild(ui.el('div', '', { style: 'font-size:12px;color:var(--text-secondary);margin-bottom:4px', text: t('page.proxySources.nameLabel') }));
     const nameInput = ui.el('input', '', { id: 'src-name', type: 'text', value: src ? src.name : '', placeholder: 'e.g. monosans/socks5', style: 'width:100%;padding:6px 10px;font-size:13px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--bg);color:var(--text-primary)' });
     nameRow.appendChild(nameInput);
     body.appendChild(nameRow);
 
     const idRow = ui.el('div', '', { style: 'margin-bottom:10px' });
-    idRow.appendChild(ui.el('div', '', { style: 'font-size:12px;color:var(--text-secondary);margin-bottom:4px', text: 'ID (auto from name):' }));
+    idRow.appendChild(ui.el('div', '', { style: 'font-size:12px;color:var(--text-secondary);margin-bottom:4px', text: t('page.proxySources.idLabel') }));
     const idInput = ui.el('input', '', { id: 'src-id', type: 'text', value: src ? src.id : '', placeholder: 'auto-generated', style: 'width:100%;padding:6px 10px;font-size:13px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--bg);color:var(--text-primary);' + (src ? 'opacity:0.6' : '') });
     if (src) idInput.disabled = true;
     idRow.appendChild(idInput);
@@ -121,13 +121,13 @@ router.register('proxy-sources', (container) => {
     });
 
     const urlRow = ui.el('div', '', { style: 'margin-bottom:10px' });
-    urlRow.appendChild(ui.el('div', '', { style: 'font-size:12px;color:var(--text-secondary);margin-bottom:4px', text: 'URL (plain text ip:port list):' }));
+    urlRow.appendChild(ui.el('div', '', { style: 'font-size:12px;color:var(--text-secondary);margin-bottom:4px', text: t('page.proxySources.urlLabel') }));
     const urlInput = ui.el('input', '', { id: 'src-url', type: 'text', value: src ? src.url : '', placeholder: 'https://example.com/proxies.txt', style: 'width:100%;padding:6px 10px;font-size:13px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--bg);color:var(--text-primary)' });
     urlRow.appendChild(urlInput);
     body.appendChild(urlRow);
 
     const protoRow = ui.el('div', '', { style: 'margin-bottom:12px' });
-    protoRow.appendChild(ui.el('div', '', { style: 'font-size:12px;color:var(--text-secondary);margin-bottom:4px', text: 'Protocol:' }));
+    protoRow.appendChild(ui.el('div', '', { style: 'font-size:12px;color:var(--text-secondary);margin-bottom:4px', text: t('page.proxySources.protocolLabel') }));
     const protoSelect = ui.el('select', '', { id: 'src-protocol', style: 'width:100%;padding:6px 8px;font-size:13px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--bg);color:var(--text-primary)' });
     ['mixed', 'http', 'https', 'socks4', 'socks5'].forEach(p => {
       const opt = ui.el('option', '', { value: p, text: p.toUpperCase() });
@@ -141,24 +141,24 @@ router.register('proxy-sources', (container) => {
     if (src && src.last_fetched_at) {
       const statsHtml = `
         <div style="padding:8px;background:var(--surface-raised);border-radius:var(--radius-xs);font-size:11px;margin-bottom:12px">
-          <div style="margin-bottom:4px;color:var(--text-secondary)">Source Stats</div>
-          <div>Last fetched: <b>${ui.ago(src.last_fetched_at)}</b></div>
-          <div>Last status: <b style="color:${src.last_fetch_status === 'ok' ? 'var(--success)' : 'var(--danger)'}">${src.last_fetch_status || '—'}</b></div>
-          ${src.last_fetch_error ? `<div>Error: <span style="color:var(--danger)">${ui.escHtml(src.last_fetch_error)}</span></div>` : ''}
+          <div style="margin-bottom:4px;color:var(--text-secondary)">${t('page.proxySources.sourceStats')}</div>
+          <div>${t('page.proxySources.lastFetched')}: <b>${ui.ago(src.last_fetched_at)}</b></div>
+          <div>${t('page.proxySources.lastStatus')}: <b style="color:${src.last_fetch_status === 'ok' ? 'var(--success)' : 'var(--danger)'}">${src.last_fetch_status || '—'}</b></div>
+          ${src.last_fetch_error ? `<div>${t('common.error', {message: ui.escHtml(src.last_fetch_error)})}</div>` : ''}
           <div style="margin-top:6px">
-            <span style="color:var(--success)">Last: ${src.last_working} working</span> /
-            <span style="color:var(--danger)">${src.last_dead} dead</span>
-            (fetched ${src.last_fetch_count})
+            <span style="color:var(--success)">Last: ${src.last_working} ${t('page.proxySources.working')}</span> /
+            <span style="color:var(--danger)">${src.last_dead} ${t('page.proxySources.dead')}</span>
+            (${t('page.proxySources.fetched')} ${src.last_fetch_count})
           </div>
           <div style="margin-top:2px">
-            <span style="color:var(--text-muted)">Cumulative: ${src.total_working} working / ${src.total_dead} dead / ${src.total_fetched} fetched</span>
+            <span style="color:var(--text-muted)">${t('page.proxySources.cumulative')}: ${src.total_working} ${t('page.proxySources.working')} / ${src.total_dead} ${t('page.proxySources.dead')} / ${src.total_fetched} ${t('page.proxySources.fetched')}</span>
           </div>
         </div>`;
       body.appendChild(ui.el('div', '', { html: statsHtml }));
     }
 
     const btnRow = ui.el('div', '', { style: 'display:flex;gap:8px' });
-    const saveBtn = ui.el('button', 'btn btn-sm btn-primary', { text: src ? 'Save Changes' : 'Add Source' });
+    const saveBtn = ui.el('button', 'btn btn-sm btn-primary', { text: src ? t('page.proxySources.saveChanges') : t('page.proxySources.addSource') });
     saveBtn.addEventListener('click', () => {
       const name = document.getElementById('src-name').value.trim();
       let sourceId = document.getElementById('src-id').value.trim().replace(/[^a-z0-9-_]/gi, '-').toLowerCase();
@@ -166,31 +166,31 @@ router.register('proxy-sources', (container) => {
       const url = document.getElementById('src-url').value.trim();
       const protocol = document.getElementById('src-protocol').value;
 
-      if (!name) { app.toast('Name is required', 'error'); return; }
-      if (!url) { app.toast('URL is required', 'error'); return; }
+      if (!name) { app.toast(t('common.nameRequired'), 'error'); return; }
+      if (!url) { app.toast(t('common.urlRequired'), 'error'); return; }
 
       const data = { id: sourceId, name, url, protocol };
 
       if (editingId) {
         api.proxySourceUpdate(editingId, data).then(() => {
-          app.toast('Source updated');
+          app.toast(t('page.proxySources.sourceUpdated'));
           editingId = null;
           load();
           resetEditor();
-        }).catch(e => app.toast('Error: ' + e.message, 'error'));
+        }).catch(e => app.toast(t('common.error', {message: e.message}), 'error'));
       } else {
         api.proxySourceCreate(data).then(() => {
-          app.toast('Source added');
+          app.toast(t('page.proxySources.sourceAdded'));
           editingId = null;
           load();
           resetEditor();
-        }).catch(e => app.toast('Error: ' + e.message, 'error'));
+        }).catch(e => app.toast(t('common.error', {message: e.message}), 'error'));
       }
     });
     btnRow.appendChild(saveBtn);
 
     if (src) {
-      const cancelBtn = ui.el('button', 'btn btn-sm btn-ghost', { text: 'Cancel' });
+      const cancelBtn = ui.el('button', 'btn btn-sm btn-ghost', { text: t('common.cancel') });
       cancelBtn.addEventListener('click', () => {
         editingId = null;
         resetEditor();
@@ -203,7 +203,7 @@ router.register('proxy-sources', (container) => {
 
   function resetEditor() {
     const body = document.getElementById('source-editor-body');
-    if (body) body.innerHTML = '<div class="empty" style="padding:8px;font-size:11px">Select a source to edit or add a new one</div>';
+    if (body) body.innerHTML = `<div class="empty" style="padding:8px;font-size:11px">${t('page.proxySources.selectToEdit')}</div>`;
   }
 
   function qualityPct(working, dead) {
@@ -227,7 +227,7 @@ router.register('proxy-sources', (container) => {
   }
 
   function statusBadge(src) {
-    if (!src.last_fetched_at) return '<span style="color:var(--text-muted);font-size:11px">Never</span>';
+    if (!src.last_fetched_at) return `<span style="color:var(--text-muted);font-size:11px">${t('page.proxySources.never')}</span>`;
     if (src.last_fetch_status === 'ok') return `<span style="color:var(--success);font-size:11px">OK</span>`;
     return `<span style="color:var(--danger);font-size:11px" title="${ui.escHtml(src.last_fetch_error || '')}">ERR</span>`;
   }
@@ -238,7 +238,7 @@ router.register('proxy-sources', (container) => {
     sources = list || [];
 
     if (!list || !list.length) {
-      wrap.innerHTML = '<div class="empty" style="padding:8px;font-size:11px">No proxy sources. Add one to harvest proxies.</div>';
+      wrap.innerHTML = `<div class="empty" style="padding:8px;font-size:11px">${t('page.proxySources.noSources')}</div>`;
       return;
     }
 
@@ -267,7 +267,7 @@ router.register('proxy-sources', (container) => {
       linkBtn.rel = 'noopener';
       linkBtn.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;font-size:10px;color:var(--text-muted);text-decoration:none;border:1px solid var(--border);border-radius:3px;margin-left:4px;vertical-align:middle;flex-shrink:0';
       linkBtn.textContent = '↗';
-      linkBtn.title = 'Open source URL';
+      linkBtn.title = t('page.proxySources.openSourceUrl');
 
       const nameCell = document.createElement('span');
       nameCell.style.cssText = 'display:inline-flex;align-items:center;gap:0';
@@ -277,21 +277,21 @@ router.register('proxy-sources', (container) => {
       const editBtn = document.createElement('button');
       editBtn.className = 'btn btn-xs btn-secondary';
       editBtn.style.cssText = 'padding:1px 4px;font-size:9px';
-      editBtn.textContent = 'Edit';
+      editBtn.textContent = t('common.edit');
       editBtn.dataset.sourceId = s.id;
       editBtn.dataset.action = 'edit';
 
       const delBtn = document.createElement('button');
       delBtn.className = 'btn btn-xs btn-danger';
       delBtn.style.cssText = 'padding:1px 4px;font-size:9px';
-      delBtn.textContent = 'Del';
+      delBtn.textContent = t('common.delete');
       delBtn.dataset.sourceId = s.id;
       delBtn.dataset.action = 'delete';
 
       const toggleBtn = document.createElement('button');
       toggleBtn.className = 'btn btn-xs ' + (s.enabled ? 'btn-primary' : 'btn-ghost');
       toggleBtn.style.cssText = 'padding:1px 4px;font-size:9px';
-      toggleBtn.textContent = s.enabled ? 'ON' : 'OFF';
+      toggleBtn.textContent = s.enabled ? t('common.on') : t('common.off');
       toggleBtn.dataset.sourceId = s.id;
       toggleBtn.dataset.action = 'toggle';
 
@@ -325,26 +325,26 @@ router.register('proxy-sources', (container) => {
   function editSource(id) {
     api.proxySourceGet(id).then(src => {
       if (src) showEditor(src);
-      else app.toast('Source not found', 'error');
-    }).catch(e => app.toast('Error: ' + e.message, 'error'));
+      else app.toast(t('page.proxySources.sourceNotFound'), 'error');
+    }).catch(e => app.toast(t('common.error', {message: e.message}), 'error'));
   }
 
   function deleteSource(id) {
-    if (!confirm('Delete this proxy source?')) return;
+    if (!confirm(t('common.confirmDelete', {item: 'proxy source'}))) return;
     api.proxySourceDelete(id).then(() => {
-      app.toast('Source deleted');
+      app.toast(t('page.proxySources.sourceDeleted'));
       if (editingId === id) {
         editingId = null;
         resetEditor();
       }
       load();
-    }).catch(e => app.toast('Error: ' + e.message, 'error'));
+    }).catch(e => app.toast(t('common.error', {message: e.message}), 'error'));
   }
 
   function toggleSource(id) {
     api.proxySourceToggle(id).then(() => {
       load();
-    }).catch(e => app.toast('Error: ' + e.message, 'error'));
+    }).catch(e => app.toast(t('common.error', {message: e.message}), 'error'));
   }
 
   build();

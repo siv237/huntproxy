@@ -32,7 +32,7 @@ router.register('connectivity', (container) => {
   }
 
   function buildStatusCard() {
-    const card = ui.card('Internet Connectivity');
+    const card = ui.card(t('page.connectivity.internetConnectivity'));
     card.id = 'card-canary-status';
 
     const indicator = ui.el('div', '', { style: 'display:flex;align-items:center;gap:14px' });
@@ -46,7 +46,7 @@ router.register('connectivity', (container) => {
     indicator.appendChild(dotWrap);
 
     const info = ui.el('div', '', { style: 'flex:1' });
-    info.innerHTML = '<div id="canary-big-text" style="font-size:16px;font-weight:700;color:var(--text-muted)">Checking...</div>'
+    info.innerHTML = '<div id="canary-big-text" style="font-size:16px;font-weight:700;color:var(--text-muted)">' + t('page.connectivity.checking') + '</div>'
       + '<div id="canary-big-sub" style="font-size:11px;color:var(--text-secondary);margin-top:2px"></div>';
     indicator.appendChild(info);
 
@@ -55,15 +55,15 @@ router.register('connectivity', (container) => {
   }
 
   function buildDirectInfoCard() {
-    const card = ui.card('Direct Connection');
+    const card = ui.card(t('page.connectivity.directConnection'));
     card.id = 'card-direct-info';
 
     const grid = ui.el('div', '', { id: 'direct-info-grid', style: 'display:grid;grid-template-columns:repeat(4,1fr);gap:8px' });
     const fields = [
-      { id: 'di-ip', label: 'IP Address' },
-      { id: 'di-country', label: 'Country' },
-      { id: 'di-city', label: 'City' },
-      { id: 'di-isp', label: 'ISP' },
+      { id: 'di-ip', label: t('page.connectivity.ipAddress') },
+      { id: 'di-country', label: t('page.connectivity.country') },
+      { id: 'di-city', label: t('page.connectivity.city') },
+      { id: 'di-isp', label: t('page.connectivity.isp') },
     ];
     fields.forEach(f => {
       const item = ui.el('div', '', { style: 'padding:6px 8px;background:var(--surface-raised);border-radius:var(--radius-xs)' });
@@ -76,7 +76,7 @@ router.register('connectivity', (container) => {
   }
 
   function buildHostsCard() {
-    const card = ui.card('Canary Hosts');
+    const card = ui.card(t('page.connectivity.canaryHosts'));
     card.id = 'card-canary-hosts';
 
     const tblWrap = ui.el('div', '', { id: 'canary-hosts-tbl', style: 'margin-bottom:10px' });
@@ -89,7 +89,7 @@ router.register('connectivity', (container) => {
     const inputRow = ui.el('div', '', { style: 'display:flex;gap:6px;align-items:center' });
     const input = ui.el('input', '', { id: 'canary-host-input', type: 'text', placeholder: 'e.g. ya.ru, google.com', style: 'flex:1;padding:6px 10px;font-size:13px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--bg);color:var(--text-primary)' });
     inputRow.appendChild(input);
-    const addBtn = ui.el('button', 'btn btn-sm btn-primary', { text: '+ Add', style: 'flex-shrink:0' });
+    const addBtn = ui.el('button', 'btn btn-sm btn-primary', { text: t('page.connectivity.addHost'), style: 'flex-shrink:0' });
     addBtn.addEventListener('click', () => addHost());
     inputRow.appendChild(addBtn);
     editor.appendChild(inputRow);
@@ -105,10 +105,10 @@ router.register('connectivity', (container) => {
     const host = input.value.trim().toLowerCase().replace(/[^a-z0-9.\-_]/g, '');
     if (!host) return;
     const chips = document.getElementById('canary-chips');
-    if (chips && chips.querySelector('[data-host="' + CSS.escape(host) + '"]')) { app.toast('Host already added', 'error'); return; }
+    if (chips && chips.querySelector('[data-host="' + CSS.escape(host) + '"]')) { app.toast(t('page.connectivity.hostAlreadyAdded'), 'error'); return; }
     const hosts = getChipHosts();
     hosts.push(host);
-    api.canarySetHosts(hosts).then(() => { input.value = ''; app.toast('Host added'); load(); }).catch(e => app.toast('Error: ' + e.message, 'error'));
+    api.canarySetHosts(hosts).then(() => { input.value = ''; app.toast(t('page.connectivity.hostAdded')); load(); }).catch(e => app.toast(t('common.error', { message: e.message }), 'error'));
   }
 
   function getChipHosts() {
@@ -119,7 +119,7 @@ router.register('connectivity', (container) => {
 
   function removeChip(host) {
     const hosts = getChipHosts().filter(h => h !== host);
-    api.canarySetHosts(hosts).then(() => { app.toast('Host removed'); load(); }).catch(e => app.toast('Error: ' + e.message, 'error'));
+    api.canarySetHosts(hosts).then(() => { app.toast(t('page.connectivity.hostRemoved')); load(); }).catch(e => app.toast(t('common.error', { message: e.message }), 'error'));
   }
 
   function renderChips(hosts) {
@@ -137,22 +137,22 @@ router.register('connectivity', (container) => {
   }
 
   function buildGraphCard() {
-    const card = ui.card('Availability (last 24h)');
+    const card = ui.card(t('page.connectivity.availability24h'));
     card.id = 'card-canary-graph';
     const canvas = ui.el('canvas', '', { id: 'canary-canvas', style: 'width:100%;height:160px' });
     card.appendChild(canvas);
     const legend = ui.el('div', '', { style: 'display:flex;gap:16px;font-size:11px;margin-top:6px' });
-    legend.innerHTML = '<span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:2px;background:var(--success)"></span> Online</span>'
-      + '<span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:2px;background:var(--danger)"></span> Offline</span>';
+    legend.innerHTML = '<span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:2px;background:var(--success)"></span> ' + t('page.connectivity.onlineLegend') + '</span>'
+      + '<span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:2px;background:var(--danger)"></span> ' + t('page.connectivity.offlineLegend') + '</span>';
     card.appendChild(legend);
     return card;
   }
 
   function buildEventLogCard() {
-    const card = ui.card('Event Log');
+    const card = ui.card(t('page.connectivity.eventLog'));
     card.id = 'card-canary-log';
     const logWrap = ui.el('div', '', { id: 'canary-log-wrap', style: 'max-height:200px;overflow-y:auto;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11px;line-height:1.6' });
-    logWrap.innerHTML = '<div class="empty" style="padding:8px;font-size:11px">Waiting for events...</div>';
+    logWrap.innerHTML = '<div class="empty" style="padding:8px;font-size:11px">' + t('page.connectivity.waitingForEvents') + '</div>';
     card.appendChild(logWrap);
     return card;
   }
@@ -172,7 +172,7 @@ router.register('connectivity', (container) => {
       dot.style.background = 'var(--success)';
       dot.textContent = '\u2713';
       text.style.color = 'var(--success)';
-      text.textContent = 'Internet: Online';
+      text.textContent = t('page.connectivity.online');
       dot.style.animation = '';
       if (pulse) { pulse.style.background = 'var(--success)'; triggerPulse(pulse); }
     } else {
@@ -180,7 +180,7 @@ router.register('connectivity', (container) => {
       dot.textContent = '\u2717';
       text.style.color = 'var(--danger)';
       dot.style.animation = 'blink 1s infinite';
-      text.textContent = 'Internet: Offline';
+      text.textContent = t('page.connectivity.offline');
       if (pulse) { pulse.style.background = 'var(--danger)'; triggerPulse(pulse); }
     }
 
@@ -192,13 +192,13 @@ router.register('connectivity', (container) => {
     }
 
     if (wasAlive === true && isAlive === false) {
-      addEvent('DOWN', 'Internet went offline', 'error');
+      addEvent('DOWN', t('page.connectivity.internetWentOffline'), 'error');
     } else if (wasAlive === false && isAlive === true) {
-      addEvent('UP', 'Internet restored', 'ok');
+      addEvent('UP', t('page.connectivity.internetRestored'), 'ok');
     }
 
     if (isAlive && data.direct_ip && lastIp && data.direct_ip !== lastIp) {
-      addEvent('CHANGE', 'IP changed: ' + lastIp + ' \u2192 ' + data.direct_ip + ' (' + data.direct_isp + ')', 'warn');
+      addEvent('CHANGE', t('page.connectivity.ipChanged', { old: lastIp, new: data.direct_ip, isp: data.direct_isp }), 'warn');
     }
     if (isAlive && data.direct_ip) lastIp = data.direct_ip;
     lastAlive = isAlive;
@@ -258,7 +258,7 @@ router.register('connectivity', (container) => {
     const hosts = data.hosts || {};
     const latencies = data.latencies || {};
     const entries = Object.entries(hosts);
-    if (!entries.length) { wrap.innerHTML = '<div class="empty" style="padding:8px;font-size:11px">No canary hosts</div>'; return; }
+    if (!entries.length) { wrap.innerHTML = '<div class="empty" style="padding:8px;font-size:11px">' + t('page.connectivity.noCanaryHosts') + '</div>'; return; }
 
     const headers = [
       { label: 'Host', width: '180px' },
@@ -297,7 +297,7 @@ router.register('connectivity', (container) => {
     const colorMuted = getComputedStyle(document.documentElement).getPropertyValue('--text-muted').trim() || '#888';
     if (!hist || !hist.length) {
       ctx.fillStyle = colorMuted; ctx.font = '12px sans-serif'; ctx.textAlign = 'center';
-      ctx.fillText('No data yet', W / 2, H / 2); return;
+      ctx.fillText(t('page.connectivity.noDataYet'), W / 2, H / 2); return;
     }
     const pad = 4;
     const barH = H - 24;
@@ -333,8 +333,8 @@ router.register('connectivity', (container) => {
       const dot = document.getElementById('canary-dot');
       const text = document.getElementById('canary-text');
       if (dot && text && data) {
-        if (data.alive) { dot.className = 'status-dot online'; text.textContent = 'Internet: OK'; }
-        else { dot.className = 'status-dot offline'; text.textContent = 'Internet: DOWN'; }
+        if (data.alive) { dot.className = 'status-dot online'; text.textContent = t('sidebar.internetOK'); }
+        else { dot.className = 'status-dot offline'; text.textContent = t('sidebar.internetDown'); }
       }
     } catch (e) {
       console.error('connectivity load', e);

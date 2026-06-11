@@ -5,8 +5,8 @@ router.register('routes', (container) => {
   let _loading = false;
 
   const ROUTE_OPTIONS = [
-    { value: 'direct', label: 'Direct (no proxy)' },
-    { value: 'pool', label: 'Pool (best available)' },
+    { value: 'direct', labelKey: 'route.directNoProxy' },
+    { value: 'pool', labelKey: 'route.poolBest' },
   ];
 
   function setContainerStyle() {
@@ -27,7 +27,7 @@ router.register('routes', (container) => {
   }
 
   function buildModeCard() {
-    const card = ui.card('Routing Mode');
+    const card = ui.card(t('page.routes.routingMode'));
     card.id = 'card-routing-mode';
 
     const toggleRow = ui.el('div', '', { style: 'display:flex;align-items:center;gap:12px;margin-bottom:10px' });
@@ -41,7 +41,7 @@ router.register('routes', (container) => {
       }
     });
     toggleLabel.appendChild(toggleCb);
-    toggleLabel.appendChild(ui.el('span', '', { text: 'Domain-based routing' }));
+    toggleLabel.appendChild(ui.el('span', '', { text: t('page.routes.domainBasedRouting') }));
     toggleRow.appendChild(toggleLabel);
 
     const statusBadge = ui.el('span', '', { id: 'routing-status-badge', style: 'font-size:11px;padding:2px 8px;border-radius:10px;font-weight:600' });
@@ -65,7 +65,7 @@ router.register('routes', (container) => {
   }
 
   function buildRulesCard() {
-    const card = ui.card('Active Routes');
+    const card = ui.card(t('page.routes.activeRoutes'));
     card.id = 'card-routing-rules';
 
     const addBtn = ui.el('button', 'btn btn-sm btn-primary', { text: '+ Add Route', style: 'margin-bottom:8px' });
@@ -80,14 +80,14 @@ router.register('routes', (container) => {
   }
 
   function buildTestCard() {
-    const card = ui.card('Test Route');
+    const card = ui.card(t('page.routes.testRoute'));
     card.id = 'card-route-test';
 
     const row = ui.el('div', '', { style: 'display:flex;gap:8px;align-items:center' });
     const input = ui.el('input', '', { id: 'route-test-input', type: 'text', placeholder: 'e.g. twitter.com', style: 'flex:1;padding:6px 10px;font-size:13px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--bg);color:var(--text-primary)' });
     row.appendChild(input);
 
-    const testBtn = ui.el('button', 'btn btn-sm btn-secondary', { text: 'Test' });
+    const testBtn = ui.el('button', 'btn btn-sm btn-secondary', { text: t('common.test') });
     testBtn.addEventListener('click', () => {
       const domain = input.value.trim();
       if (!domain) return;
@@ -148,11 +148,11 @@ router.register('routes', (container) => {
     modal.appendChild(routeSelect);
 
     const btnRow = ui.el('div', '', { style: 'display:flex;gap:8px;justify-content:flex-end' });
-    const cancelBtn = ui.el('button', 'btn btn-sm btn-ghost', { text: 'Cancel' });
+    const cancelBtn = ui.el('button', 'btn btn-sm btn-ghost', { text: t('page.routes.cancel') });
     cancelBtn.addEventListener('click', () => overlay.remove());
     btnRow.appendChild(cancelBtn);
 
-    const addBtn = ui.el('button', 'btn btn-sm btn-primary', { text: 'Add Route' });
+    const addBtn = ui.el('button', 'btn btn-sm btn-primary', { text: t('page.routes.addRoute') });
     addBtn.addEventListener('click', () => {
       const listId = listSelect.value;
       const route = routeSelect.value;
@@ -320,7 +320,7 @@ router.register('routes', (container) => {
   function populateRouteSelect(selectEl, selectedValue) {
     selectEl.innerHTML = '';
     ROUTE_OPTIONS.forEach(opt => {
-      const o = ui.el('option', '', { value: opt.value, text: opt.label });
+      const o = ui.el('option', '', { value: opt.value, text: t(opt.labelKey) });
       if (opt.value === selectedValue) o.selected = true;
       selectEl.appendChild(o);
     });

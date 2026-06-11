@@ -9,7 +9,7 @@ router.register('settings', (container) => {
     container.style.minHeight = '0';
     container.style.flex = '1';
 
-    const card = ui.card('Settings');
+    const card = ui.card(t('page.settings.title'));
     card.id = 'settings-card';
     card.style.flex = '1';
     card.style.minHeight = '0';
@@ -17,11 +17,11 @@ router.register('settings', (container) => {
     container.appendChild(card);
 
     const btns = ui.el('div', '', { style: 'display:flex;gap:8px;margin-top:16px' });
-    const saveBtn = ui.el('button', 'btn btn-primary', { text: 'Save Settings' });
+    const saveBtn = ui.el('button', 'btn btn-primary', { text: t('page.settings.saveSettings') });
     saveBtn.addEventListener('click', () => save());
     btns.appendChild(saveBtn);
 
-    const reloadBtn = ui.el('button', 'btn btn-secondary', { text: 'Reload' });
+    const reloadBtn = ui.el('button', 'btn btn-secondary', { text: t('page.settings.reload') });
     reloadBtn.addEventListener('click', () => load());
     btns.appendChild(reloadBtn);
     container.appendChild(btns);
@@ -46,7 +46,7 @@ router.register('settings', (container) => {
     if (!card) return;
     card.innerHTML = '';
     const header = ui.el('div', 'card-header');
-    header.appendChild(ui.el('div', 'card-title', { text: 'Settings' }));
+    header.appendChild(ui.el('div', 'card-title', { text: t('page.settings.title') }));
     card.appendChild(header);
 
     const grid = ui.el('div', 'grid grid-2');

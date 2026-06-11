@@ -22,7 +22,7 @@ router.register('custom-proxies', (container) => {
   }
 
   function buildListCard() {
-    const card = ui.card('Custom Proxies');
+    const card = ui.card(t('page.customProxies.customProxies'));
     card.id = 'card-custom-proxies';
     card.style.overflow = 'hidden';
 
@@ -41,7 +41,7 @@ router.register('custom-proxies', (container) => {
   }
 
   function buildEditorCard() {
-    const card = ui.card('Proxy Editor');
+    const card = ui.card(t('page.customProxies.proxyEditor'));
     card.id = 'card-proxy-editor';
     card.style.overflow = 'hidden';
 
@@ -139,7 +139,7 @@ router.register('custom-proxies', (container) => {
     body.appendChild(hints);
 
     const btnRow = ui.el('div', '', { style: 'display:flex;gap:8px;align-items:center' });
-    const testBtn = ui.el('button', 'btn btn-sm btn-secondary', { text: 'Test Connection' });
+    const testBtn = ui.el('button', 'btn btn-sm btn-secondary', { text: t('page.customProxies.testConnection') });
     testBtn.addEventListener('click', () => {
       const host = document.getElementById('pe-host').value.trim();
       const port = parseInt(document.getElementById('pe-port').value) || 0;
@@ -218,7 +218,7 @@ router.register('custom-proxies', (container) => {
     btnRow.appendChild(saveBtn);
 
     if (p) {
-      const cancelBtn = ui.el('button', 'btn btn-sm btn-ghost', { text: 'Cancel' });
+      const cancelBtn = ui.el('button', 'btn btn-sm btn-ghost', { text: t('common.cancel') });
       cancelBtn.addEventListener('click', () => {
         editingId = null;
         resetEditor();
@@ -354,7 +354,7 @@ router.register('custom-proxies', (container) => {
   }
 
   function deleteProxy(id) {
-    if (!confirm('Delete this custom proxy?')) return;
+    if (!confirm(t('common.confirmDelete', { item: 'proxy' }))) return;
     api.customProxyDelete(id).then(() => {
       app.toast('Proxy deleted');
       if (editingId === id) {
