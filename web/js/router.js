@@ -18,6 +18,7 @@ const router = {
     'connectivity': ['Connectivity', 'Internet connectivity monitoring and canary hosts'],
     downloads: ['Downloads', 'Export data files'],
     api: ['API', 'API documentation and endpoints'],
+    about: ['About', 'About huntproxy'],
   },
 
   register(page, renderFn) {
