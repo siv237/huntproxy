@@ -1,193 +1,305 @@
 router.register('proxies', (container) => {
-  let state = {
-    status: '', // all, alive, dead, blacklisted
-    page: 1,
-    limit: 20,
-    proxies: [],
-    total: 0,
-    search: '',
-    sortKey: 'score',
-    sortDir: -1,
-  };
+  let groupBy = 'country';
+  let statusFilter = 'alive';
+  let search = '';
+  let groups = [];
+  let totalCount = 0;
+  let _loading = false;
+  let expandedKeys = {};
+  let loadedKeys = {};
+
+  let _built = false;
 
   function build() {
     container.innerHTML = '';
     container.style.display = 'flex';
     container.style.flexDirection = 'column';
-    container.style.gap = '10px';
+    container.style.gap = '8px';
     container.style.minHeight = '0';
     container.style.flex = '1';
+    container.style.overflow = 'hidden';
 
-    // Filter bar
-    const filterBar = ui.el('div', '', { style: 'display:flex;gap:8px;flex-wrap:wrap;align-items:center;flex-shrink:0' });
-    const tabs = ['All', 'Alive', 'Dead', 'Blacklisted'];
-    tabs.forEach(t => {
-      const btn = ui.el('button', `btn ${state.status === t.toLowerCase() || (t === 'All' && !state.status) ? 'btn-primary' : 'btn-secondary'}`, { text: t });
-      btn.addEventListener('click', () => {
-        state.status = t === 'All' ? '' : t.toLowerCase();
-        state.page = 1;
-        load();
-      });
-      filterBar.appendChild(btn);
-    });
+    const toolbar = ui.el('div', '', { style: 'display:flex;gap:8px;flex-wrap:wrap;align-items:center;flex-shrink:0' });
 
-    const search = ui.el('input', '', { type: 'text', placeholder: 'Search proxy...', value: state.search, style: 'padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--bg);color:var(--text-primary);font-size:13px;min-width:180px' });
-    search.addEventListener('input', (e) => {
-      state.search = e.target.value.toLowerCase();
-      state.page = 1;
-      load();
-    });
-    filterBar.appendChild(search);
+    const groupTabs = ui.el('div', '', { id: 'group-tabs', style: 'display:flex;gap:0;border:1px solid var(--border);border-radius:var(--radius-xs);overflow:hidden' });
+    const gBtn = (label, mode) => {
+      const b = ui.el('button', '', { text: label, 'data-mode': mode, style: `padding:5px 12px;font-size:12px;border:none;cursor:pointer` });
+      b.addEventListener('click', () => { groupBy = mode; expandedKeys = {}; loadedKeys = {}; _built = false; updateTabs(); load(); });
+      return b;
+    };
+    groupTabs.appendChild(gBtn('By Country', 'country'));
+    groupTabs.appendChild(gBtn('By Source', 'source'));
+    toolbar.appendChild(groupTabs);
 
-    filterBar.appendChild(ui.el('div', '', { style: 'flex:1' }));
-    const refreshBtn = ui.el('button', 'btn btn-secondary', { html: '<svg width="14" height="14"><use href="#icon-proxies"/></svg> Refresh' });
-    refreshBtn.addEventListener('click', () => load());
-    filterBar.appendChild(refreshBtn);
+    const statusTabs = ui.el('div', '', { id: 'status-tabs', style: 'display:flex;gap:0;border:1px solid var(--border);border-radius:var(--radius-xs);overflow:hidden' });
+    const sBtn = (label, val) => {
+      const b = ui.el('button', '', { text: label, 'data-val': val, style: `padding:5px 10px;font-size:12px;border:none;cursor:pointer` });
+      b.addEventListener('click', () => { statusFilter = val; expandedKeys = {}; loadedKeys = {}; _built = false; updateTabs(); load(); });
+      return b;
+    };
+    statusTabs.appendChild(sBtn('All', ''));
+    statusTabs.appendChild(sBtn('Alive', 'alive'));
+    statusTabs.appendChild(sBtn('Dead', 'dead'));
+    toolbar.appendChild(statusTabs);
 
-    const exportBtn = ui.el('button', 'btn btn-secondary', { html: '<svg width="14" height="14"><use href="#icon-downloads"/></svg> Export' });
-    exportBtn.addEventListener('click', () => api.exportProxies().then(() => app.toast('Exported')));
-    filterBar.appendChild(exportBtn);
+    const searchInput = ui.el('input', '', { type: 'text', placeholder: 'Search proxy, country, source...', value: search, style: 'padding:5px 10px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--bg);color:var(--text-primary);font-size:13px;min-width:200px;flex:1' });
+    searchInput.addEventListener('input', (e) => { search = e.target.value.toLowerCase(); renderGroups(); });
+    toolbar.appendChild(searchInput);
 
-    container.appendChild(filterBar);
+    toolbar.appendChild(ui.el('div', '', { style: 'flex:1' }));
+    const totalLabel = ui.el('div', '', { id: 'proxies-total-label', style: 'font-size:12px;color:var(--text-secondary)' });
+    toolbar.appendChild(totalLabel);
 
-    // Table card
-    const card = ui.card('Proxies');
-    card.id = 'proxies-table-card';
-    card.style.flex = '1';
-    card.style.minHeight = '0';
-    card.style.overflow = 'hidden';
-    card.style.display = 'flex';
-    card.style.flexDirection = 'column';
-    container.appendChild(card);
+    container.appendChild(toolbar);
 
-    // Pagination
-    const pagWrap = ui.el('div', '', { style: 'display:flex;justify-content:space-between;align-items:center;flex-shrink:0' });
-    const left = ui.el('div', '', { style: 'font-size:12px;color:var(--text-secondary)' });
-    left.id = 'proxies-pag-info';
-    pagWrap.appendChild(left);
-
-    const right = ui.el('div', '', { style: 'display:flex;gap:4px' });
-    const prev = ui.el('button', 'btn btn-sm btn-secondary', { text: 'Previous' });
-    prev.addEventListener('click', () => { if (state.page > 1) { state.page--; load(); } });
-    right.appendChild(prev);
-
-    const pages = ui.el('div', '', { style: 'display:flex;gap:4px', id: 'proxies-page-btns' });
-    right.appendChild(pages);
-
-    const next = ui.el('button', 'btn btn-sm btn-secondary', { text: 'Next' });
-    next.addEventListener('click', () => { state.page++; load(); });
-    right.appendChild(next);
-    pagWrap.appendChild(right);
-    container.appendChild(pagWrap);
+    const listWrap = ui.el('div', '', { id: 'proxies-group-list', style: 'flex:1;min-height:0;overflow-y:auto;padding-right:4px' });
+    container.appendChild(listWrap);
   }
 
   build();
+  updateTabs();
+
+  function updateTabs() {
+    const gt = document.getElementById('group-tabs');
+    if (gt) gt.querySelectorAll('button').forEach(b => {
+      const active = b.dataset.mode === groupBy;
+      b.style.background = active ? 'var(--accent)' : 'var(--surface)';
+      b.style.color = active ? 'var(--bg)' : 'var(--text-primary)';
+    });
+    const st = document.getElementById('status-tabs');
+    if (st) st.querySelectorAll('button').forEach(b => {
+      const active = b.dataset.val === statusFilter;
+      b.style.background = active ? 'var(--accent)' : 'var(--surface)';
+      b.style.color = active ? 'var(--bg)' : 'var(--text-primary)';
+    });
+  }
 
   async function load() {
+    if (_loading) return;
+    _loading = true;
     try {
-      const params = { status: state.status, page: state.page, limit: state.limit };
-      const data = await api.proxies(params);
-      state.proxies = data.proxies || [];
-      state.total = data.total || 0;
-      renderTable();
-      renderPagination();
+      const data = await api.proxies({ mode: 'grouped', group_by: groupBy, status: statusFilter });
+      groups = data.groups || [];
+      totalCount = data.total || 0;
+      renderGroups();
     } catch (e) {
       console.error('proxies load', e);
-      app.toast('Failed to load proxies', 'error');
+    } finally {
+      _loading = false;
     }
   }
 
-  function setSort(key) {
-    if (state.sortKey === key) state.sortDir *= -1;
-    else { state.sortKey = key; state.sortDir = -1; }
-    renderTable();
+  async function loadGroupProxies(key) {
+    const body = document.getElementById('spoiler-body-' + key);
+    if (!body) return;
+    body.innerHTML = '<div style="padding:12px;color:var(--text-muted);font-size:12px">Loading...</div>';
+    try {
+      const data = await api.proxies({ mode: 'group-proxies', group_by: groupBy, group_key: key, status: statusFilter });
+      const proxies = data.proxies || [];
+      loadedKeys[key] = proxies;
+      renderGroupBody(key, proxies);
+    } catch (e) {
+      body.innerHTML = `<div style="padding:12px;color:var(--danger);font-size:12px">Error: ${ui.escHtml(e.message)}</div>`;
+    }
   }
 
-  function renderTable() {
-    const card = document.getElementById('proxies-table-card');
-    if (!card) return;
-    card.innerHTML = '';
-    const header = ui.el('div', 'card-header');
-    header.appendChild(ui.el('div', 'card-title', { text: 'Proxies' }));
-    card.appendChild(header);
+  function toggleGroup(key) {
+    expandedKeys[key] = !expandedKeys[key];
+    const body = document.getElementById('spoiler-body-' + key);
+    const chevron = document.getElementById('spoiler-chevron-' + key);
+    if (expandedKeys[key]) {
+      if (body) body.style.display = 'block';
+      if (chevron) chevron.textContent = '▼';
+      if (!loadedKeys[key]) {
+        loadGroupProxies(key);
+      }
+    } else {
+      if (body) body.style.display = 'none';
+      if (chevron) chevron.textContent = '▶';
+    }
+  }
 
-    let rows = state.proxies;
-    if (state.search) {
-      rows = rows.filter(r =>
-        (r.address || '').toLowerCase().includes(state.search) ||
-        (r.country || '').toLowerCase().includes(state.search)
+  function pctBar(pct) {
+    const color = pct >= 50 ? 'var(--success)' : pct >= 20 ? 'var(--warning)' : 'var(--danger)';
+    return `<div style="display:inline-block;width:40px;height:6px;background:var(--border);border-radius:3px;vertical-align:middle;margin-left:6px"><div style="width:${pct}%;height:100%;background:${color};border-radius:3px"></div></div>`;
+  }
+
+  function renderProxyRow(p) {
+    const statusColor = p.in_blacklist ? 'var(--danger)' : p.last_status === 'ok' ? 'var(--success)' : 'var(--danger)';
+    const statusText = p.in_blacklist ? 'BL' : p.last_status === 'ok' ? 'OK' : 'FAIL';
+    const proto = (p.protocol || 'http').toUpperCase();
+    const latency = p.last_latency != null ? (p.last_latency < 1 ? (p.last_latency * 1000).toFixed(0) + 'ms' : p.last_latency.toFixed(2) + 's') : '—';
+    const score = Math.round(p.score || 0);
+    const flag = ui.flag(p.country_code);
+
+    return [
+      `<span style="font-size:12px;font-family:monospace;color:var(--text-primary)">${ui.escHtml(p.address)}</span>`,
+      `<span style="font-size:12px">${flag} ${ui.escHtml(p.country || '—')}</span>`,
+      `<span style="font-size:11px;color:var(--text-muted)">${proto}</span>`,
+      `<span style="font-size:11px">${latency}</span>`,
+      `<span style="font-size:11px;font-weight:600">${score}</span>`,
+      `<span style="color:${statusColor};font-weight:600;font-size:11px">${statusText}</span>`,
+      `<span style="font-size:11px;color:var(--text-muted)">${ui.ago(p.last_check)}</span>`,
+      `<button class="btn btn-xs btn-danger" data-bl-addr="${ui.escHtml(p.address)}" style="padding:1px 4px;font-size:9px">BL</button>`,
+    ];
+  }
+
+  function renderGroupBody(key, proxies) {
+    const body = document.getElementById('spoiler-body-' + key);
+    if (!body) return;
+    body.innerHTML = '';
+
+    let filtered = proxies;
+    if (search) {
+      filtered = proxies.filter(p =>
+        (p.address || '').toLowerCase().includes(search) ||
+        (p.country || '').toLowerCase().includes(search) ||
+        (p.protocol || '').toLowerCase().includes(search)
       );
     }
 
-    rows = rows.slice().sort((a, b) => ui.sortValue(a, b, state.sortKey, state.sortDir));
-
-    if (!rows.length) {
-      card.appendChild(ui.el('div', 'empty', { text: 'No proxies found' }));
+    if (!filtered.length) {
+      body.innerHTML = '<div style="padding:8px;color:var(--text-muted);font-size:12px">No matching proxies</div>';
       return;
     }
 
-    const h = (label, key, width, align) => ({ label: label + (key ? ui.sortArrow(key, state.sortKey, state.sortDir) : ''), width, align, sortKey: key, onSort: key ? () => setSort(key) : undefined });
+    const sorted = filtered.slice().sort((a, b) => (b.score || 0) - (a.score || 0));
+    const tblWrap = ui.el('div', 'table-wrap', { style: 'max-height:400px;overflow-y:auto' });
     const headers = [
-      h('#', null, '30px', 'center'),
-      h('Proxy', 'address', null, 'left'),
-      h('Country', 'country', '120px', 'left'),
-      h('Type', 'protocol', '60px', 'center'),
-      h('Latency', 'last_latency', '70px', 'right'),
-      h('Score', 'score', '50px', 'right'),
-      h('Status', 'last_status', '70px', 'center'),
-      h('Last Check', 'last_check', '80px', 'right'),
-      h('', null, '60px', 'center'),
+      { label: 'Proxy', width: null },
+      { label: 'Country', width: '120px' },
+      { label: 'Proto', width: '50px', align: 'center' },
+      { label: 'Latency', width: '65px', align: 'right' },
+      { label: 'Score', width: '45px', align: 'right' },
+      { label: 'Status', width: '50px', align: 'center' },
+      { label: 'Last', width: '60px', align: 'right' },
+      { label: '', width: '35px', align: 'center' },
     ];
-    const bodyRows = rows.map((p, i) => {
-      const idx = (state.page - 1) * state.limit + i + 1;
-      const statusBadge = p.in_blacklist ? ui.badge('Blacklisted', 'red') :
-        p.last_status === 'ok' ? ui.badge('Alive', 'green') : ui.badge('Dead', 'red');
-      return [
-        `<span style="color:var(--text-muted)">${idx}</span>`,
-        `<span class="addr" onclick="router.navigate('proxy-detail/${encodeURIComponent(p.address)}')">${p.address}</span>`,
-        `${ui.flag(p.country_code)} ${p.country || 'Unknown'}`,
-        (p.protocol || 'http').toUpperCase(),
-        ui.fmtLatency(p.last_latency),
-        Math.round(p.score),
-        statusBadge.outerHTML,
-        ui.ago(p.last_check),
-        `<button class="btn btn-xs btn-danger" onclick="blAdd('${p.address}')">BL</button>`,
-      ];
+    const rows = sorted.map(p => renderProxyRow(p));
+    tblWrap.appendChild(ui.table(headers, rows));
+    body.appendChild(tblWrap);
+
+    body.querySelectorAll('[data-bl-addr]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const addr = btn.dataset.blAddr;
+        if (addr) blAdd(addr);
+      });
     });
-    const tblWrap = ui.el('div', 'table-wrap', { style: 'flex:1;min-height:0;overflow-y:auto' });
-    tblWrap.appendChild(ui.table(headers, bodyRows));
-    card.appendChild(tblWrap);
   }
 
-  function renderPagination() {
-    const info = document.getElementById('proxies-pag-info');
-    if (info) info.textContent = `Showing ${(state.page - 1) * state.limit + 1} to ${Math.min(state.page * state.limit, state.total)} of ${state.total} proxies`;
+  function renderGroups() {
+    const totalLabel = document.getElementById('proxies-total-label');
+    if (totalLabel) totalLabel.textContent = `${totalCount} proxies`;
 
-    const btns = document.getElementById('proxies-page-btns');
-    if (!btns) return;
-    btns.innerHTML = '';
-    const totalPages = Math.ceil(state.total / state.limit) || 1;
-    const start = Math.max(1, state.page - 2);
-    const end = Math.min(totalPages, start + 4);
-    for (let i = start; i <= end; i++) {
-      const b = ui.el('button', `btn btn-sm ${i === state.page ? 'btn-primary' : 'btn-secondary'}`, { text: i.toString() });
-      b.addEventListener('click', () => { state.page = i; load(); });
-      btns.appendChild(b);
+    const listWrap = document.getElementById('proxies-group-list');
+    if (!listWrap) return;
+
+    let filtered = groups;
+    if (search) {
+      filtered = groups.filter(g => g.label.toLowerCase().includes(search));
     }
+
+    if (!filtered.length) {
+      listWrap.innerHTML = '';
+      listWrap.appendChild(ui.el('div', 'empty', { text: 'No proxies found' }));
+      _built = false;
+      return;
+    }
+
+    const existingKeys = new Set();
+    listWrap.querySelectorAll('[data-group-key]').forEach(el => existingKeys.add(el.dataset.groupKey));
+
+    const filteredKeys = new Set(filtered.map(g => g.key));
+
+    if (_built && existingKeys.size === filteredKeys.size && filtered.every(g => existingKeys.has(g.key))) {
+      filtered.forEach(g => updateGroupHeader(g));
+      return;
+    }
+
+    _built = true;
+    listWrap.innerHTML = '';
+
+    filtered.forEach(g => {
+      const isExpanded = !!expandedKeys[g.key];
+      const spoiler = ui.el('div', '', { style: 'border:1px solid var(--border);border-radius:var(--radius-xs);overflow:hidden;margin-bottom:6px', 'data-group-key': g.key });
+
+      const header = ui.el('div', '', {
+        id: 'spoiler-header-' + g.key,
+        style: `display:flex;align-items:center;gap:8px;padding:8px 12px;cursor:pointer;background:var(--surface);user-select:none;transition:background 0.15s`
+      });
+      header.addEventListener('mouseenter', () => header.style.background = 'var(--surface-raised)');
+      header.addEventListener('mouseleave', () => header.style.background = 'var(--surface)');
+      header.addEventListener('click', () => toggleGroup(g.key));
+
+      const chevron = ui.el('span', '', { id: 'spoiler-chevron-' + g.key, text: isExpanded ? '▼' : '▶', style: 'font-size:10px;color:var(--text-muted);width:14px;flex-shrink:0' });
+      header.appendChild(chevron);
+
+      const label = ui.el('span', '', { html: g.label, style: 'font-size:13px;font-weight:500;color:var(--text-primary);flex-shrink:0;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap' });
+      header.appendChild(label);
+
+      const countBadge = ui.el('span', '', { id: 'spoiler-count-' + g.key, html: countHtml(g), style: 'font-size:12px;flex-shrink:0' });
+      header.appendChild(countBadge);
+
+      const pctLabel = ui.el('span', '', { id: 'spoiler-pct-' + g.key, html: pctHtml(g), style: 'flex-shrink:0' });
+      header.appendChild(pctLabel);
+
+      header.appendChild(ui.el('div', '', { style: 'flex:1' }));
+
+      const deadLabel = ui.el('span', '', { id: 'spoiler-dead-' + g.key, html: deadHtml(g), style: 'flex-shrink:0' });
+      header.appendChild(deadLabel);
+
+      spoiler.appendChild(header);
+
+      const body = ui.el('div', '', {
+        id: 'spoiler-body-' + g.key,
+        style: `display:${isExpanded ? 'block' : 'none'};border-top:1px solid var(--border)`
+      });
+
+      if (isExpanded && loadedKeys[g.key]) {
+        renderGroupBody(g.key, loadedKeys[g.key]);
+      } else if (isExpanded) {
+        body.innerHTML = '<div style="padding:12px;color:var(--text-muted);font-size:12px">Loading...</div>';
+      }
+
+      spoiler.appendChild(body);
+      listWrap.appendChild(spoiler);
+    });
+  }
+
+  function countHtml(g) {
+    return `<span style="color:var(--success);font-weight:600">${g.alive}</span><span style="color:var(--text-muted)">/</span><span style="color:var(--text-primary)">${g.total}</span>`;
+  }
+
+  function pctHtml(g) {
+    const color = g.alive_pct >= 50 ? 'var(--success)' : g.alive_pct >= 20 ? 'var(--warning)' : 'var(--danger)';
+    return `<span style="color:${color};font-weight:600;font-size:12px">${g.alive_pct}%</span>${pctBar(g.alive_pct)}`;
+  }
+
+  function deadHtml(g) {
+    return `<span style="color:var(--danger);font-size:11px">${g.dead} dead</span>`;
+  }
+
+  function updateGroupHeader(g) {
+    const count = document.getElementById('spoiler-count-' + g.key);
+    const pct = document.getElementById('spoiler-pct-' + g.key);
+    const dead = document.getElementById('spoiler-dead-' + g.key);
+    if (count) count.innerHTML = countHtml(g);
+    if (pct) pct.innerHTML = pctHtml(g);
+    if (dead) dead.innerHTML = deadHtml(g);
   }
 
   async function blAdd(addr) {
     try {
       await api.blAdd(addr, 'manual');
       app.toast('Added to blacklist');
-      load();
     } catch (e) {
       app.toast('Error: ' + e.message, 'error');
     }
   }
 
   load();
-  const id = setInterval(load, 10000);
+  const id = setInterval(load, 15000);
   if (window._pageIntervals) window._pageIntervals.push(id);
   else window._pageIntervals = [id];
 });

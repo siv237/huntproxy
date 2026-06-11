@@ -36,6 +36,7 @@
   <symbol id="icon-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></symbol>
   <symbol id="icon-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></symbol>
   <symbol id="icon-arrow-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></symbol>
+  <symbol id="icon-proxy-sources" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></symbol>
   <symbol id="icon-chevron-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></symbol>
   <symbol id="icon-menu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></symbol>
 </svg>
@@ -57,6 +58,10 @@
         <button class="nav-item" data-page="hunt" onclick="router.navigate('hunt')">
           <svg><use href="#icon-pool"/></svg>
           <span>Hunt</span>
+        </button>
+        <button class="nav-item" data-page="proxy-sources" onclick="router.navigate('proxy-sources')">
+          <svg><use href="#icon-proxy-sources"/></svg>
+          <span>Sources</span>
         </button>
         <button class="nav-item" data-page="proxies" onclick="router.navigate('proxies')">
           <svg><use href="#icon-proxies"/></svg>
@@ -178,6 +183,7 @@
 <script src="/js/components.js"></script>
 <script src="/js/pages/overview.js"></script>
 <script src="/js/pages/hunt.js"></script>
+<script src="/js/pages/proxy-sources.js"></script>
 <script src="/js/pages/proxies.js"></script>
 <script src="/js/pages/proxy-control.js"></script>
 <script src="/js/pages/proxy-pool.js"></script>

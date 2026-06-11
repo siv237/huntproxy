@@ -75,8 +75,82 @@ def country_code_from_name(name: str) -> str:
         "Nigeria": "NG", "Zimbabwe": "ZW", "United Arab Emirates": "AE",
         "Kazakhstan": "KZ", "Uzbekistan": "UZ", "Latvia": "LV",
         "Ecuador": "EC", "Syria": "SY", "Tanzania": "TZ",
+        "Argentina": "AR", "Belgium": "BE", "Bulgaria": "BG",
+        "Chile": "CL", "Colombia": "CO", "Egypt": "EG", "Iran": "IR",
+        "Iraq": "IQ", "Kenya": "KE", "Lebanon": "LB", "Morocco": "MA",
+        "Myanmar": "MM", "Pakistan": "PK", "Panama": "PA", "Peru": "PE",
+        "Saudi Arabia": "SA", "South Africa": "ZA", "Venezuela": "VE",
+        "Austria": "AT", "Belarus": "BY", "Cambodia": "KH", "Czechia": "CZ",
+        "Dominican Republic": "DO", "Ghana": "GH", "Guatemala": "GT",
+        "Hungary": "HU", "Paraguay": "PY", "Qatar": "QA", "Slovakia": "SK",
+        "Albania": "AL", "Georgia": "GE", "Kosovo": "XK", "Moldova": "MD",
+        "Senegal": "SN", "Cyprus": "CY", "Israel": "IL", "Lithuania": "LT",
+        "New Zealand": "NZ", "Iceland": "IS", "Croatia": "HR",
+        "Slovenia": "SI", "Serbia": "RS", "Bosnia": "BA",
+        "North Macedonia": "MK", "Algeria": "DZ", "Tunisia": "TN",
+        "Ethiopia": "ET", "Uganda": "UG", "Mozambique": "MZ",
+        "Nepal": "NP", "Sri Lanka": "LK", "Afghanistan": "AF",
+        "Jordan": "JO", "Kuwait": "KW", "Bahrain": "BH", "Oman": "OM",
+        "Costa Rica": "CR", "Uruguay": "UY", "Bolivia": "BO",
+        "Honduras": "HN", "El Salvador": "SV", "Nicaragua": "NI",
+        "Jamaica": "JM", "Trinidad": "TT", "Barbados": "BB",
+        "Bahamas": "BS", "Bermuda": "BM", "Cayman Islands": "KY",
+        "Palestine": "PS", "Maldives": "MV", "Rwanda": "RW",
+        "Zambia": "ZM", "Botswana": "BW", "Namibia": "NA",
+        "Congo": "CG", "DR Congo": "CD", "Cameroon": "CM",
+        "Ivory Coast": "CI", "Côte d'Ivoire": "CI", "Senegal": "SN",
+        "Mali": "ML", "Burkina Faso": "BF", "Niger": "NE",
+        "Chad": "TD", "Gabon": "GA", "Mauritius": "MU",
+        "Madagascar": "MG", "Papua New Guinea": "PG",
+        "Fiji": "FJ", "Samoa": "WS", "Tonga": "TO",
     }
     return mapping.get(name, "")
+
+
+def country_name_from_code(code: str) -> str:
+    mapping = {
+        "US": "United States", "GB": "United Kingdom", "DE": "Germany",
+        "FR": "France", "NL": "Netherlands", "JP": "Japan", "CA": "Canada",
+        "RU": "Russia", "CN": "China", "BR": "Brazil", "ES": "Spain",
+        "IT": "Italy", "PL": "Poland", "UA": "Ukraine", "IN": "India",
+        "AU": "Australia", "SG": "Singapore", "KR": "South Korea",
+        "MX": "Mexico", "SE": "Sweden", "NO": "Norway", "FI": "Finland",
+        "CH": "Switzerland", "HK": "Hong Kong", "TW": "Taiwan",
+        "IE": "Ireland", "DK": "Denmark", "GR": "Greece", "PT": "Portugal",
+        "RO": "Romania", "TR": "Turkey", "TH": "Thailand", "VN": "Vietnam",
+        "MY": "Malaysia", "ID": "Indonesia", "PH": "Philippines",
+        "BD": "Bangladesh", "NG": "Nigeria", "ZW": "Zimbabwe",
+        "AE": "United Arab Emirates", "KZ": "Kazakhstan", "UZ": "Uzbekistan",
+        "LV": "Latvia", "EC": "Ecuador", "SY": "Syria", "TZ": "Tanzania",
+        "AR": "Argentina", "BE": "Belgium", "BG": "Bulgaria", "CL": "Chile",
+        "CO": "Colombia", "EG": "Egypt", "IR": "Iran", "IQ": "Iraq",
+        "KE": "Kenya", "LB": "Lebanon", "MA": "Morocco", "MM": "Myanmar",
+        "PK": "Pakistan", "PA": "Panama", "PE": "Peru", "SA": "Saudi Arabia",
+        "ZA": "South Africa", "VE": "Venezuela", "AT": "Austria",
+        "BY": "Belarus", "KH": "Cambodia", "CZ": "Czechia",
+        "DO": "Dominican Republic", "GH": "Ghana", "GT": "Guatemala",
+        "HU": "Hungary", "PY": "Paraguay", "QA": "Qatar", "SK": "Slovakia",
+        "AL": "Albania", "GE": "Georgia", "XK": "Kosovo", "MD": "Moldova",
+        "SN": "Senegal", "CY": "Cyprus", "IL": "Israel", "LT": "Lithuania",
+        "NZ": "New Zealand", "IS": "Iceland", "HR": "Croatia",
+        "SI": "Slovenia", "RS": "Serbia", "BA": "Bosnia",
+        "MK": "North Macedonia", "DZ": "Algeria", "TN": "Tunisia",
+        "ET": "Ethiopia", "UG": "Uganda", "MZ": "Mozambique",
+        "NP": "Nepal", "LK": "Sri Lanka", "AF": "Afghanistan",
+        "JO": "Jordan", "KW": "Kuwait", "BH": "Bahrain", "OM": "Oman",
+        "CR": "Costa Rica", "UY": "Uruguay", "BO": "Bolivia",
+        "HN": "Honduras", "SV": "El Salvador", "NI": "Nicaragua",
+        "JM": "Jamaica", "TT": "Trinidad", "BB": "Barbados",
+        "BS": "Bahamas", "BM": "Bermuda", "KY": "Cayman Islands",
+        "PS": "Palestine", "MV": "Maldives", "RW": "Rwanda",
+        "ZM": "Zambia", "BW": "Botswana", "NA": "Namibia",
+        "CG": "Congo", "CD": "DR Congo", "CM": "Cameroon",
+        "CI": "Ivory Coast", "ML": "Mali", "BF": "Burkina Faso",
+        "NE": "Niger", "TD": "Chad", "GA": "Gabon", "MU": "Mauritius",
+        "MG": "Madagascar", "PG": "Papua New Guinea", "FJ": "Fiji",
+        "WS": "Samoa", "TO": "Tonga",
+    }
+    return mapping.get(code, code)
 
 
 @dataclass
@@ -113,6 +187,7 @@ class ProxyRating:
     speed_count: int = 0
     last_speed: float = 0.0
     speed_fails: int = 0
+    source_ids: list = field(default_factory=list)
 
     @property
     def speed_avg(self) -> float:
@@ -182,6 +257,7 @@ class ProxyRating:
             "listen_country_code": self.listen_country_code,
             "listen_city": self.listen_city,
             "listen_isp": self.listen_isp,
+            "source_ids": self.source_ids,
         }
 
 
@@ -224,6 +300,8 @@ class HuntState:
         self.last_event: str = ""
         self.last_proxy: Optional[str] = None
         self.last_country: str = ""
+        self._source_proxies: dict[str, set] = {}
+        self._addr_sources: dict[str, list] = {}
         self.events: list[dict] = []
         self._event_seq = 0
         self._cond = asyncio.Condition()
@@ -247,6 +325,7 @@ class HuntState:
         self._db_path = DATA_DIR / "stats.db"
         self._last_history_ts = time.time()
         self._init_db()
+        self._seed_default_sources()
         try:
             conn = self._db()
             row = conn.execute("SELECT MAX(ts) as last_ts FROM history").fetchone()
@@ -367,6 +446,25 @@ class HuntState:
                 direct_city TEXT DEFAULT ''
             );
             CREATE INDEX IF NOT EXISTS idx_canary_ts ON canary_history(ts);
+            CREATE TABLE IF NOT EXISTS proxy_sources (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                url TEXT NOT NULL,
+                protocol TEXT NOT NULL DEFAULT 'mixed',
+                enabled INTEGER NOT NULL DEFAULT 1,
+                priority INTEGER NOT NULL DEFAULT 0,
+                last_fetched_at REAL NOT NULL DEFAULT 0,
+                last_fetch_status TEXT NOT NULL DEFAULT '',
+                last_fetch_count INTEGER NOT NULL DEFAULT 0,
+                last_fetch_error TEXT NOT NULL DEFAULT '',
+                total_fetched INTEGER NOT NULL DEFAULT 0,
+                total_working INTEGER NOT NULL DEFAULT 0,
+                total_dead INTEGER NOT NULL DEFAULT 0,
+                last_working INTEGER NOT NULL DEFAULT 0,
+                last_dead INTEGER NOT NULL DEFAULT 0,
+                created_at REAL NOT NULL DEFAULT 0,
+                updated_at REAL NOT NULL DEFAULT 0
+            );
         """)
         conn.commit()
         for col, default in [
@@ -381,6 +479,43 @@ class HuntState:
                 pass
         conn.commit()
         conn.close()
+
+    def _seed_default_sources(self):
+        try:
+            conn = self._db()
+            count = conn.execute("SELECT COUNT(*) as c FROM proxy_sources").fetchone()
+            if count["c"] > 0:
+                conn.close()
+                return
+            now = time.time()
+            for i, url in enumerate(DEFAULT_SOURCES):
+                parts = url.rstrip("/").split("/")
+                fname = parts[-1].replace(".txt", "") if parts else "list"
+                if "github.com" in url or "githubusercontent.com" in url:
+                    owner = parts[3] if len(parts) > 3 else ""
+                    repo = parts[4] if len(parts) > 4 else ""
+                    label = f"{owner}/{repo}" if owner and repo else fname
+                else:
+                    label = parts[-2] if len(parts) >= 2 else fname
+                name = f"{label}/{fname}"
+                slug = (label + "-" + fname).lower().replace("_", "-").replace("/", "-")
+                slug = slug.replace("--", "-").strip("-")
+                protocol = "mixed"
+                if "socks5" in fname.lower():
+                    protocol = "socks5"
+                elif "socks4" in fname.lower():
+                    protocol = "socks4"
+                elif "http" in fname.lower() or "https" in fname.lower():
+                    protocol = "http"
+                conn.execute(
+                    "INSERT OR IGNORE INTO proxy_sources (id, name, url, protocol, enabled, priority, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)",
+                    (slug, name, url, protocol, 1, i, now, now)
+                )
+            conn.commit()
+            conn.close()
+            logger.info("Seeded %d default proxy sources", len(DEFAULT_SOURCES))
+        except Exception as e:
+            logger.error("seed_default_sources: %s", e)
 
     def _emit(self, msg: str, kind: str = "info", **kwargs):
         self._event_seq += 1
@@ -728,6 +863,7 @@ class HuntState:
             self._emit(f"Validating {len(raw)} proxies...", "info")
 
             await self._validate_all(raw)
+            self._update_source_stats()
             await self._pause_event.wait()
 
             self.phase = self.PHASE_HEALTH
@@ -746,11 +882,16 @@ class HuntState:
 
     async def _download_sources(self) -> set:
         sem = asyncio.Semaphore(8)
-        self.sources_total = len(DEFAULT_SOURCES)
+        sources = self.get_proxy_sources()
+        enabled_sources = [s for s in sources if s.get("enabled")]
+        self.sources_total = len(enabled_sources)
         self.sources_done = 0
         seen = set()
+        source_proxies: dict[str, set] = {}
 
-        async def fetch(url: str):
+        async def fetch(src: dict):
+            source_id = src["id"]
+            url = src["url"]
             async with sem:
                 try:
                     proc = await asyncio.create_subprocess_exec(
@@ -760,20 +901,111 @@ class HuntState:
                     )
                     stdout, _ = await proc.communicate()
                     self.sources_done += 1
+                    now = time.time()
                     if proc.returncode == 0:
                         text = stdout.decode(errors="replace")
                         import re
+                        found = set()
                         for m in re.finditer(r'(\d{1,3}(?:\.\d{1,3}){3}):(\d{1,5})', text):
                             ip, port = m.group(1), int(m.group(2))
                             if 1 <= port <= 65535:
-                                seen.add(f"{ip}:{port}")
+                                addr = f"{ip}:{port}"
+                                found.add(addr)
+                                seen.add(addr)
+                        source_proxies[source_id] = found
+                        conn = None
+                        try:
+                            conn = self._db()
+                            conn.execute(
+                                "UPDATE proxy_sources SET last_fetched_at=?, last_fetch_status=?, last_fetch_count=?, last_fetch_error='', "
+                                "total_fetched=total_fetched+?, updated_at=? WHERE id=?",
+                                (now, "ok", len(found), len(found), now, source_id)
+                            )
+                            conn.commit()
+                        except Exception:
+                            pass
+                        finally:
+                            if conn:
+                                try: conn.close()
+                                except Exception: pass
+                        self._emit(f"Source {src['name']}: {len(found)} proxies", "info")
+                    else:
+                        source_proxies[source_id] = set()
+                        err_msg = f"HTTP {proc.returncode}"
+                        conn = None
+                        try:
+                            conn = self._db()
+                            conn.execute(
+                                "UPDATE proxy_sources SET last_fetched_at=?, last_fetch_status=?, last_fetch_count=0, last_fetch_error=?, updated_at=? WHERE id=?",
+                                (now, "error", err_msg, now, source_id)
+                            )
+                            conn.commit()
+                        except Exception:
+                            pass
+                        finally:
+                            if conn:
+                                try: conn.close()
+                                except Exception: pass
+                        self._emit(f"Source failed: {src['name']}: {err_msg}", "warn")
                 except Exception as e:
                     self.sources_done += 1
-                    self._emit(f"Source failed: {url.split('/')[-2]}: {e}", "warn")
+                    source_proxies[source_id] = set()
+                    now = time.time()
+                    err_msg = str(e)[:200]
+                    conn = None
+                    try:
+                        conn = self._db()
+                        conn.execute(
+                            "UPDATE proxy_sources SET last_fetched_at=?, last_fetch_status=?, last_fetch_count=0, last_fetch_error=?, updated_at=? WHERE id=?",
+                            (now, "error", err_msg, now, source_id)
+                        )
+                        conn.commit()
+                    except Exception:
+                        pass
+                    finally:
+                        if conn:
+                            try: conn.close()
+                            except Exception: pass
+                    self._emit(f"Source failed: {src['name']}: {e}", "warn")
 
-        tasks = [asyncio.create_task(fetch(u)) for u in DEFAULT_SOURCES]
+        tasks = [asyncio.create_task(fetch(s)) for s in enabled_sources]
         await asyncio.gather(*tasks)
+        self._source_proxies = source_proxies
+        self._addr_sources = {}
+        for sid, addrs in source_proxies.items():
+            for addr in addrs:
+                if addr not in self._addr_sources:
+                    self._addr_sources[addr] = []
+                self._addr_sources[addr].append(sid)
+                r = self.ratings.get(addr)
+                if r and sid not in r.source_ids:
+                    r.source_ids.append(sid)
         return seen
+
+    def _update_source_stats(self):
+        if not self._source_proxies:
+            return
+        try:
+            conn = self._db()
+            now = time.time()
+            for source_id, addresses in self._source_proxies.items():
+                working = 0
+                dead = 0
+                for addr in addresses:
+                    r = self.ratings.get(addr)
+                    if r and r.last_status == "ok":
+                        working += 1
+                    else:
+                        dead += 1
+                conn.execute(
+                    "UPDATE proxy_sources SET last_working=?, last_dead=?, "
+                    "total_working=total_working+?, total_dead=total_dead+?, updated_at=? WHERE id=?",
+                    (working, dead, working, dead, now, source_id)
+                )
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            logger.error("update_source_stats: %s", e)
 
     async def _validate_all(self, proxies: set):
         sem = asyncio.Semaphore(self.parallel)
@@ -1704,12 +1936,19 @@ class HuntState:
                     listen_country_code=d.get("listen_country_code", ""),
                     listen_city=d.get("listen_city", ""),
                     listen_isp=d.get("listen_isp", ""),
+                    source_ids=d.get("source_ids", []),
                 )
                 if not r.egress_country_code and r.egress_country:
                     r.egress_country_code = country_code_from_name(r.egress_country)
                 if not r.listen_country_code and r.listen_country:
                     r.listen_country_code = country_code_from_name(r.listen_country)
                 self.ratings[r.address] = r
+            self._addr_sources = {}
+            for r in self.ratings.values():
+                for sid in r.source_ids:
+                    if r.address not in self._addr_sources:
+                        self._addr_sources[r.address] = []
+                    self._addr_sources[r.address].append(sid)
             logger.info(f"Loaded {len(self.ratings)} ratings from state file")
         except Exception as e:
             logger.warning(f"State load failed: {e}")
@@ -1989,6 +2228,116 @@ class HuntState:
             self._emit("Routes reordered", "info")
         except Exception as e:
             logger.error("reorder_domain_lists: %s", e)
+
+    def get_proxy_sources(self) -> list:
+        try:
+            conn = self._db()
+            rows = conn.execute(
+                "SELECT * FROM proxy_sources ORDER BY priority ASC"
+            ).fetchall()
+            conn.close()
+            return [dict(r) for r in rows]
+        except Exception as e:
+            logger.error("get_proxy_sources: %s", e)
+            return []
+
+    def get_proxy_source(self, source_id: str) -> Optional[dict]:
+        try:
+            conn = self._db()
+            row = conn.execute("SELECT * FROM proxy_sources WHERE id=?", (source_id,)).fetchone()
+            conn.close()
+            if not row:
+                return None
+            return dict(row)
+        except Exception as e:
+            logger.error("get_proxy_source: %s", e)
+            return None
+
+    def create_proxy_source(self, data: dict) -> Optional[dict]:
+        source_id = data.get("id", "").strip()
+        name = data.get("name", "").strip()
+        url = data.get("url", "").strip()
+        if not source_id or not name or not url:
+            return None
+        now = time.time()
+        try:
+            conn = self._db()
+            max_pri = conn.execute("SELECT COALESCE(MAX(priority),-1)+1 as next FROM proxy_sources").fetchone()
+            priority = max_pri["next"] if max_pri else 0
+            conn.execute(
+                "INSERT OR IGNORE INTO proxy_sources (id, name, url, protocol, enabled, priority, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)",
+                (source_id, name, url, data.get("protocol", "mixed"),
+                 1 if data.get("enabled", True) else 0, priority, now, now)
+            )
+            conn.commit()
+            conn.close()
+            self._emit(f"Proxy source added: {name}", "info")
+            return self.get_proxy_source(source_id)
+        except Exception as e:
+            logger.error("create_proxy_source: %s", e)
+            return None
+
+    def update_proxy_source(self, source_id: str, data: dict) -> Optional[dict]:
+        now = time.time()
+        try:
+            conn = self._db()
+            existing = conn.execute("SELECT id FROM proxy_sources WHERE id=?", (source_id,)).fetchone()
+            if not existing:
+                conn.close()
+                return None
+            name = data.get("name", "").strip()
+            url = data.get("url", "").strip()
+            sets = []
+            vals = []
+            if name:
+                sets.append("name=?"); vals.append(name)
+            if url:
+                sets.append("url=?"); vals.append(url)
+            if "protocol" in data:
+                sets.append("protocol=?"); vals.append(data["protocol"])
+            if "enabled" in data:
+                sets.append("enabled=?"); vals.append(1 if data["enabled"] else 0)
+            if sets:
+                sets.append("updated_at=?"); vals.append(now)
+                vals.append(source_id)
+                conn.execute(f"UPDATE proxy_sources SET {','.join(sets)} WHERE id=?", vals)
+            conn.commit()
+            conn.close()
+            self._emit(f"Proxy source updated: {source_id}", "info")
+            return self.get_proxy_source(source_id)
+        except Exception as e:
+            logger.error("update_proxy_source: %s", e)
+            return None
+
+    def delete_proxy_source(self, source_id: str) -> bool:
+        try:
+            conn = self._db()
+            conn.execute("DELETE FROM proxy_sources WHERE id=?", (source_id,))
+            conn.commit()
+            conn.close()
+            self._emit(f"Proxy source deleted: {source_id}", "warn")
+            return True
+        except Exception as e:
+            logger.error("delete_proxy_source: %s", e)
+            return False
+
+    def toggle_proxy_source(self, source_id: str) -> Optional[dict]:
+        try:
+            conn = self._db()
+            row = conn.execute("SELECT enabled FROM proxy_sources WHERE id=?", (source_id,)).fetchone()
+            if not row:
+                conn.close()
+                return None
+            new_val = 0 if row["enabled"] else 1
+            conn.execute("UPDATE proxy_sources SET enabled=?, updated_at=? WHERE id=?", (new_val, time.time(), source_id))
+            conn.commit()
+            conn.close()
+            status = "enabled" if new_val else "disabled"
+            self._emit(f"Proxy source {source_id} {status}", "info")
+            return self.get_proxy_source(source_id)
+        except Exception as e:
+            logger.error("toggle_proxy_source: %s", e)
+            return None
 
     def _resolve_route(self, host: str) -> str:
         enabled = self._routing_get("routing_enabled", "false") == "true"
@@ -3796,22 +4145,92 @@ class HuntServer:
             status = qs.get("status", "")
             page = int(qs.get("page", 1))
             limit = int(qs.get("limit", 20))
+            mode = qs.get("mode", "")
             all_proxies = list(self.state.ratings.values())
+            if mode == "grouped":
+                sources_map = {}
+                for s in self.state.get_proxy_sources():
+                    sources_map[s["id"]] = s.get("name", s["id"])
+                groups = {}
+                if qs.get("group_by") == "source":
+                    for r in all_proxies:
+                        src_ids = self.state._addr_sources.get(r.address, [])
+                        if not src_ids:
+                            key = "_unknown"
+                            label = "Unknown source"
+                        else:
+                            key = src_ids[0]
+                            label = sources_map.get(key, key)
+                        if key not in groups:
+                            groups[key] = {"key": key, "label": label, "total": 0, "alive": 0, "dead": 0}
+                        groups[key]["total"] += 1
+                        if r.last_status == "ok" and not r.in_blacklist:
+                            groups[key]["alive"] += 1
+                        else:
+                            groups[key]["dead"] += 1
+                else:
+                    for r in all_proxies:
+                        cc = r.country_code or country_code_from_name(r.country) or "??"
+                        if cc not in groups:
+                            groups[cc] = {"key": cc, "label": f"{country_flag(cc)} {country_name_from_code(cc)}", "total": 0, "alive": 0, "dead": 0}
+                        groups[cc]["total"] += 1
+                        if r.last_status == "ok" and not r.in_blacklist:
+                            groups[cc]["alive"] += 1
+                        else:
+                            groups[cc]["dead"] += 1
+                result = []
+                for g in groups.values():
+                    g["alive_pct"] = round(g["alive"] / g["total"] * 100, 1) if g["total"] else 0
+                    if status == "alive" and g["alive"] == 0:
+                        continue
+                    elif status == "dead" and g["dead"] == 0:
+                        continue
+                    result.append(g)
+                result.sort(key=lambda g: g["alive"], reverse=True)
+                return json.dumps({"groups": result, "total": len(all_proxies)}), 200, "application/json"
+            if mode == "group-proxies":
+                group_key = qs.get("group_key", "")
+                group_by = qs.get("group_by", "country")
+                group_status = qs.get("status", "")
+                all_ratings = list(self.state.ratings.values())
+                sources_map = {}
+                for s in self.state.get_proxy_sources():
+                    sources_map[s["id"]] = s.get("name", s["id"])
+                if group_by == "source":
+                    filtered = [r for r in all_ratings if (
+                        (self.state._addr_sources.get(r.address, []) or ["_unknown"])[0] == group_key
+                    )]
+                else:
+                    filtered = [r for r in all_ratings if (r.country_code or country_code_from_name(r.country) or "??") == group_key]
+                if group_status == "alive":
+                    filtered = [r for r in filtered if r.last_status == "ok" and not r.in_blacklist]
+                elif group_status == "dead":
+                    filtered = [r for r in filtered if r.last_status == "failed"]
+                elif group_status == "blacklisted":
+                    filtered = [r for r in filtered if r.in_blacklist]
+                filtered.sort(key=lambda r: r.score, reverse=True)
+                return json.dumps({"proxies": [r.to_dict() for r in filtered]}), 200, "application/json"
+            filtered_proxies = all_proxies
             if status == "alive":
-                all_proxies = [r for r in all_proxies if r.last_status == "ok" and not r.in_blacklist]
+                filtered_proxies = [r for r in filtered_proxies if r.last_status == "ok" and not r.in_blacklist]
             elif status == "dead":
-                all_proxies = [r for r in all_proxies if r.last_status == "failed"]
+                filtered_proxies = [r for r in filtered_proxies if r.last_status == "failed"]
             elif status == "blacklisted":
-                all_proxies = [r for r in all_proxies if r.in_blacklist]
-            total = len(all_proxies)
+                filtered_proxies = [r for r in filtered_proxies if r.in_blacklist]
+            total = len(filtered_proxies)
             start = (page - 1) * limit
             end = start + limit
-            page_data = all_proxies[start:end]
+            page_data = filtered_proxies[start:end]
+            proxy_list = []
+            for r in page_data:
+                d = r.to_dict()
+                d["source_ids"] = self.state._addr_sources.get(r.address, [])
+                proxy_list.append(d)
             return json.dumps({
                 "total": total,
                 "page": page,
                 "limit": limit,
-                "proxies": [r.to_dict() for r in page_data],
+                "proxies": proxy_list,
             }), 200, "application/json"
 
         if path.startswith("/api/proxy/") and method == "GET":
@@ -4142,6 +4561,51 @@ class HuntServer:
                 result = self.state.toggle_domain_list(list_id)
                 if result:
                     return json.dumps({"ok": True, "list": result}), 200, "application/json"
+                return json.dumps({"ok": False, "error": "not found"}), 404, "application/json"
+
+        # === Proxy Sources API ===
+        if path == "/api/proxy-sources" and method == "GET":
+            sources = self.state.get_proxy_sources()
+            return json.dumps({"sources": sources}), 200, "application/json"
+
+        if path == "/api/proxy-sources" and method == "POST":
+            try:
+                data = json.loads(body or b"{}")
+            except Exception:
+                data = {}
+            result = self.state.create_proxy_source(data)
+            if result:
+                return json.dumps({"ok": True, "source": result}), 200, "application/json"
+            return json.dumps({"ok": False, "error": "id, name and url are required"}), 400, "application/json"
+
+        if path.startswith("/api/proxy-sources/") and not path.endswith("/toggle"):
+            source_id = unquote(path[len("/api/proxy-sources/"):])
+            if method == "GET":
+                result = self.state.get_proxy_source(source_id)
+                if result:
+                    return json.dumps(result), 200, "application/json"
+                return json.dumps({"error": "not found"}), 404, "application/json"
+            elif method == "POST":
+                try:
+                    data = json.loads(body or b"{}")
+                except Exception:
+                    data = {}
+                result = self.state.update_proxy_source(source_id, data)
+                if result:
+                    return json.dumps({"ok": True, "source": result}), 200, "application/json"
+                return json.dumps({"ok": False, "error": "not found"}), 404, "application/json"
+            elif method == "DELETE":
+                ok = self.state.delete_proxy_source(source_id)
+                if ok:
+                    return json.dumps({"ok": True}), 200, "application/json"
+                return json.dumps({"ok": False, "error": "not found"}), 404, "application/json"
+
+        if path.endswith("/toggle") and path.startswith("/api/proxy-sources/"):
+            source_id = unquote(path[len("/api/proxy-sources/"):-len("/toggle")])
+            if method == "POST":
+                result = self.state.toggle_proxy_source(source_id)
+                if result:
+                    return json.dumps({"ok": True, "source": result}), 200, "application/json"
                 return json.dumps({"ok": False, "error": "not found"}), 404, "application/json"
 
         # === Custom Proxies API ===

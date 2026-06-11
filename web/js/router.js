@@ -4,6 +4,7 @@ const router = {
   titles: {
     overview: ['Overview', 'Dashboard — key metrics from all systems'],
     hunt: ['Hunt', 'Pool harvesting, validation and progress'],
+    'proxy-sources': ['Sources', 'Manage proxy source lists and track harvest quality per source'],
     proxies: ['Proxies', 'Manage and monitor your proxy pool'],
     'proxy-control': ['Proxy Control', 'Monitor and control internal proxy performance and traffic'],
     'proxy-pool': ['Proxy Pool', 'Browse and select upstream proxies'],
