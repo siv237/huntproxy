@@ -1,4 +1,5 @@
 [
   { "code": "en", "name": "English", "native": "English" },
-  { "code": "ru", "name": "Russian", "native": "Русский" }
+  { "code": "ru", "name": "Russian", "native": "Русский" },
+  { "code": "zh", "name": "Chinese", "native": "中文" }
 ]

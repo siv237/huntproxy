@@ -46,7 +46,7 @@ const i18n = {
   _knownLangs: null,
 
   _isSupported(lang) {
-    if (!this._knownLangs) return ['en', 'ru'].includes(lang);
+    if (!this._knownLangs) return ['en', 'ru', 'zh'].includes(lang);
     return this._knownLangs.some(l => l.code === lang);
   },
 
@@ -62,6 +62,7 @@ const i18n = {
     this._knownLangs = [
       { code: 'en', name: 'English', native: 'English' },
       { code: 'ru', name: 'Russian', native: 'Русский' },
+      { code: 'zh', name: 'Chinese', native: '中文' },
     ];
   },
 
@@ -69,6 +70,7 @@ const i18n = {
     return this._knownLangs || [
       { code: 'en', name: 'English', native: 'English' },
       { code: 'ru', name: 'Russian', native: 'Русский' },
+      { code: 'zh', name: 'Chinese', native: '中文' },
     ];
   },
 
