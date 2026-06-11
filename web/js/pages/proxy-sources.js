@@ -30,7 +30,51 @@ router.register('proxy-sources', (container) => {
       editingId = null;
       showEditor(null);
     });
+
+    const refreshBtn = ui.el('button', 'btn btn-sm btn-secondary', { text: '↻ Refresh', style: 'margin-bottom:8px;margin-left:6px' });
+    refreshBtn.addEventListener('click', () => {
+      refreshBtn.disabled = true;
+      refreshBtn.textContent = '↻ Fetching...';
+      api.proxySourcesFetch().then(r => {
+        refreshBtn.disabled = false;
+        refreshBtn.textContent = '↻ Refresh';
+        if (r.ok) {
+          const parts = [];
+          if (r.sources) {
+            r.sources.forEach(s => {
+              const icon = s.status === 'ok' ? '✓' : '✗';
+              const color = s.status === 'ok' ? 'var(--success)' : 'var(--danger)';
+              parts.push(`<span style="color:${color}">${icon} ${ui.escHtml(s.name)}: ${s.count}</span>`);
+            });
+          }
+          const total = r.total_addresses || 0;
+          const statusHtml = parts.length
+            ? parts.join(' &nbsp;·&nbsp; ') + `<br><span style="color:var(--text-muted)">${total} unique addresses</span>`
+            : `<span style="color:var(--text-muted)">No enabled sources</span>`;
+          const statusEl = document.getElementById('fetch-status');
+          if (statusEl) {
+            statusEl.innerHTML = statusHtml;
+            statusEl.style.display = '';
+            clearTimeout(statusEl._hideTimer);
+            statusEl._hideTimer = setTimeout(() => { statusEl.style.display = 'none'; }, 8000);
+          }
+          app.toast(`Fetched ${total} addresses from ${r.sources ? r.sources.length : 0} sources`);
+        } else {
+          app.toast('Fetch error: ' + (r.error || 'unknown'), 'error');
+        }
+        load();
+      }).catch(e => {
+        refreshBtn.disabled = false;
+        refreshBtn.textContent = '↻ Refresh';
+        app.toast('Error: ' + e.message, 'error');
+      });
+    });
+
     card.appendChild(addBtn);
+    card.appendChild(refreshBtn);
+
+    const fetchStatus = ui.el('div', '', { id: 'fetch-status', style: 'display:none;padding:6px 8px;margin-bottom:8px;background:var(--surface-raised);border-radius:var(--radius-xs);font-size:11px;line-height:1.5' });
+    card.appendChild(fetchStatus);
 
     const tblWrap = ui.el('div', '', { id: 'proxy-sources-tbl', style: 'flex:1;min-height:0;overflow-y:auto' });
     tblWrap.innerHTML = '<div class="empty" style="padding:8px;font-size:11px">No proxy sources</div>';
@@ -217,6 +261,19 @@ router.register('proxy-sources', (container) => {
       nameSpan.dataset.sourceId = s.id;
       nameSpan.dataset.action = 'edit';
 
+      const linkBtn = document.createElement('a');
+      linkBtn.href = s.url || '#';
+      linkBtn.target = '_blank';
+      linkBtn.rel = 'noopener';
+      linkBtn.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;font-size:10px;color:var(--text-muted);text-decoration:none;border:1px solid var(--border);border-radius:3px;margin-left:4px;vertical-align:middle;flex-shrink:0';
+      linkBtn.textContent = '↗';
+      linkBtn.title = 'Open source URL';
+
+      const nameCell = document.createElement('span');
+      nameCell.style.cssText = 'display:inline-flex;align-items:center;gap:0';
+      nameCell.appendChild(nameSpan);
+      nameCell.appendChild(linkBtn);
+
       const editBtn = document.createElement('button');
       editBtn.className = 'btn btn-xs btn-secondary';
       editBtn.style.cssText = 'padding:1px 4px;font-size:9px';
@@ -239,7 +296,7 @@ router.register('proxy-sources', (container) => {
       toggleBtn.dataset.action = 'toggle';
 
       return [
-        nameSpan.outerHTML,
+        nameCell.outerHTML,
         protocolBadge(s.protocol),
         statusBadge(s),
         ui.ago(s.last_fetched_at),

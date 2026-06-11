@@ -41,14 +41,27 @@ STATIC_MIME = {
 logger = logging.getLogger("huntproxy.hunt")
 
 DEFAULT_SOURCES = [
-    "https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/all/socks5.txt",
-    "https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/all/socks4.txt",
-    "https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/all/http.txt",
+    "https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/socks5.txt",
+    "https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/socks4.txt",
+    "https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/http.txt",
     "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/socks5.txt",
     "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/socks4.txt",
     "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt",
     "https://raw.githubusercontent.com/roosterkid/openproxylist/main/HTTPS_RAW.txt",
     "https://raw.githubusercontent.com/hookzof/socks5_list/master/proxy.txt",
+    "https://raw.githubusercontent.com/zevtyardt/proxy-list/main/socks5.txt",
+    "https://raw.githubusercontent.com/zevtyardt/proxy-list/main/socks4.txt",
+    "https://raw.githubusercontent.com/zevtyardt/proxy-list/main/http.txt",
+    "https://raw.githubusercontent.com/mmpx12/proxy-list/master/socks5.txt",
+    "https://raw.githubusercontent.com/mmpx12/proxy-list/master/socks4.txt",
+    "https://raw.githubusercontent.com/mmpx12/proxy-list/master/http.txt",
+    "https://raw.githubusercontent.com/ShiftyTR/Proxy-List/master/socks5.txt",
+    "https://raw.githubusercontent.com/ShiftyTR/Proxy-List/master/socks4.txt",
+    "https://raw.githubusercontent.com/ShiftyTR/Proxy-List/master/http.txt",
+    "https://raw.githubusercontent.com/ALIILAPRO/Proxy/main/socks5.txt",
+    "https://raw.githubusercontent.com/ALIILAPRO/Proxy/main/http.txt",
+    "https://raw.githubusercontent.com/clarketm/proxy-list/master/proxy-list-raw.txt",
+    "https://raw.githubusercontent.com/sunny9577/proxy-scraper/master/generated/http_proxies.txt",
 ]
 
 
@@ -326,6 +339,7 @@ class HuntState:
         self._last_history_ts = time.time()
         self._init_db()
         self._seed_default_sources()
+        self._migrate_sources()
         try:
             conn = self._db()
             row = conn.execute("SELECT MAX(ts) as last_ts FROM history").fetchone()
@@ -516,6 +530,55 @@ class HuntState:
             logger.info("Seeded %d default proxy sources", len(DEFAULT_SOURCES))
         except Exception as e:
             logger.error("seed_default_sources: %s", e)
+
+    def _migrate_sources(self):
+        try:
+            conn = self._db()
+            now = time.time()
+            conn.execute(
+                "UPDATE proxy_sources SET url=REPLACE(url, '/proxies/all/', '/proxies/') "
+                "WHERE url LIKE '%monosans/proxy-list%/proxies/all/%'"
+            )
+            existing_urls = {r["url"] for r in conn.execute("SELECT url FROM proxy_sources").fetchall()}
+            existing_ids = {r["id"] for r in conn.execute("SELECT id FROM proxy_sources").fetchall()}
+            max_pri = conn.execute("SELECT COALESCE(MAX(priority),-1)+1 as next FROM proxy_sources").fetchone()["next"]
+            added = 0
+            for i, url in enumerate(DEFAULT_SOURCES):
+                if url in existing_urls:
+                    continue
+                parts = url.rstrip("/").split("/")
+                fname = parts[-1].replace(".txt", "") if parts else "list"
+                if "github.com" in url or "githubusercontent.com" in url:
+                    owner = parts[3] if len(parts) > 3 else ""
+                    repo = parts[4] if len(parts) > 4 else ""
+                    label = f"{owner}/{repo}" if owner and repo else fname
+                else:
+                    label = parts[-2] if len(parts) >= 2 else fname
+                name = f"{label}/{fname}"
+                slug = (label + "-" + fname).lower().replace("_", "-").replace("/", "-")
+                slug = slug.replace("--", "-").strip("-")
+                if slug in existing_ids:
+                    continue
+                protocol = "mixed"
+                if "socks5" in fname.lower():
+                    protocol = "socks5"
+                elif "socks4" in fname.lower():
+                    protocol = "socks4"
+                elif "http" in fname.lower() or "https" in fname.lower():
+                    protocol = "http"
+                conn.execute(
+                    "INSERT OR IGNORE INTO proxy_sources (id, name, url, protocol, enabled, priority, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)",
+                    (slug, name, url, protocol, 1, max_pri + i, now, now)
+                )
+                existing_urls.add(url)
+                existing_ids.add(slug)
+                added += 1
+            conn.commit()
+            conn.close()
+            if added:
+                logger.info("Migrated proxy sources: added %d new", added)
+        except Exception as e:
+            logger.error("migrate_sources: %s", e)
 
     def _emit(self, msg: str, kind: str = "info", **kwargs):
         self._event_seq += 1
@@ -4577,6 +4640,32 @@ class HuntServer:
             if result:
                 return json.dumps({"ok": True, "source": result}), 200, "application/json"
             return json.dumps({"ok": False, "error": "id, name and url are required"}), 400, "application/json"
+
+        if path == "/api/proxy-sources/fetch" and method == "POST":
+            if getattr(self.state, '_fetching_sources', False):
+                return json.dumps({"ok": False, "error": "fetch already in progress"}), 409, "application/json"
+            self.state._fetching_sources = True
+            try:
+                seen = await self.state._download_sources()
+                self.state._update_source_stats()
+                sources = self.state.get_proxy_sources()
+                results = []
+                for s in sources:
+                    if not s.get("enabled"):
+                        continue
+                    results.append({
+                        "id": s["id"],
+                        "name": s.get("name", s["id"]),
+                        "status": s.get("last_fetch_status", ""),
+                        "count": s.get("last_fetch_count", 0),
+                        "error": s.get("last_fetch_error", ""),
+                    })
+                return json.dumps({"ok": True, "total_addresses": len(seen), "sources": results}), 200, "application/json"
+            except Exception as e:
+                logger.error("proxy-sources/fetch: %s", e)
+                return json.dumps({"ok": False, "error": str(e)}), 500, "application/json"
+            finally:
+                self.state._fetching_sources = False
 
         if path.startswith("/api/proxy-sources/") and not path.endswith("/toggle"):
             source_id = unquote(path[len("/api/proxy-sources/"):])

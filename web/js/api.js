@@ -92,6 +92,7 @@ const api = {
   proxySourceUpdate(id, data) { return this.request(`/api/proxy-sources/${encodeURIComponent(id)}`, 'POST', data); },
   proxySourceDelete(id) { return this.request(`/api/proxy-sources/${encodeURIComponent(id)}`, 'DELETE'); },
   proxySourceToggle(id) { return this.request(`/api/proxy-sources/${encodeURIComponent(id)}/toggle`, 'POST'); },
+  proxySourcesFetch() { return this.request('/api/proxy-sources/fetch', 'POST'); },
 
   // Custom Proxies
   customProxies() { return this.request('/api/custom-proxies'); },
