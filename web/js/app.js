@@ -46,7 +46,7 @@ const app = {
     bar.innerHTML = '';
     const langs = i18n.getSupportedLangs();
     langs.forEach(l => {
-      const btn = ui.el('button', 'lang-btn' + (l.code === i18n.lang ? ' active' : ''), { text: l.native });
+      const btn = ui.el('button', 'lang-btn' + (l.code === i18n.lang ? ' active' : ''), { text: l.code.toUpperCase() });
       btn.addEventListener('click', () => {
         if (l.code === i18n.lang) return;
         i18n.setLang(l.code).then(() => {
