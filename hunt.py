@@ -4036,6 +4036,9 @@ class HuntServer:
         if path == "/legacy":
             return WEB_HTML, 200, "text/html; charset=utf-8"
 
+        if path == "/favicon.ico":
+            return self._serve_static("assets/favicon-48x48.png")
+
         if path == "/" or path.startswith("/index"):
             if WEB_DIR.exists() and (WEB_DIR / "index.html").exists():
                 return self._serve_static("index.html")
