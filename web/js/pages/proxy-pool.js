@@ -6,6 +6,7 @@ router.register('proxy-pool', (container) => {
     proxySortDir: -1,
     hideNoHttps: true,
     hideMitm: true,
+    groupByProtocol: true,
   };
 
   function setProxySort(key) {
@@ -114,7 +115,7 @@ router.register('proxy-pool', (container) => {
     header.appendChild(count);
     card.appendChild(header);
 
-    const filterRow = ui.el('div', '', { style: 'display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-shrink:0' });
+    const filterRow = ui.el('div', '', { style: 'display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-shrink:0;flex-wrap:wrap' });
     const httpsLbl = ui.el('label', '', { style: 'display:flex;align-items:center;gap:4px;cursor:pointer;font-size:11px' });
     const httpsCb = ui.el('input', '', { id: 'hide-no-https', type: 'checkbox', checked: 'checked' });
     httpsCb.addEventListener('change', () => { state.hideNoHttps = httpsCb.checked; updateSelectProxy(state.proxies); });
@@ -127,6 +128,12 @@ router.register('proxy-pool', (container) => {
     mitmLbl.appendChild(mitmCb);
     mitmLbl.appendChild(ui.el('span', '', { text: 'Hide MITM suspects' }));
     filterRow.appendChild(mitmLbl);
+    const grpLbl = ui.el('label', '', { style: 'display:flex;align-items:center;gap:4px;cursor:pointer;font-size:11px' });
+    const grpCb = ui.el('input', '', { id: 'group-by-proto', type: 'checkbox', checked: 'checked' });
+    grpCb.addEventListener('change', () => { state.groupByProtocol = grpCb.checked; updateSelectProxy(state.proxies); });
+    grpLbl.appendChild(grpCb);
+    grpLbl.appendChild(ui.el('span', '', { text: 'Group by protocol' }));
+    filterRow.appendChild(grpLbl);
     card.appendChild(filterRow);
 
     const wrap = ui.el('div', '', { id: 'select-proxy-tbl', style: 'flex:1;overflow-y:auto;min-height:0' });
@@ -278,13 +285,29 @@ router.register('proxy-pool', (container) => {
     log.innerHTML = all.map(e => `<span style="color:var(--text-muted)">${ui.fmtTime(e.ts)}</span> <span style="color:var(--accent);font-size:10px">${e.type}</span> ${e.client || '?'} → ${fmtTarget(e.target)} [${e.status || ''}]` + (e.upstream && e.upstream !== 'direct' && e.upstream !== '?' ? ` <span style="color:var(--accent)">via ${e.upstream}</span>` : '')).join('<br>');
   }
 
+  function proxyProtoGroup(p) {
+    const proto = (p.protocol || 'http').toLowerCase();
+    if (proto === 'socks5') return 'SOCKS5';
+    if (proto === 'socks4') return 'SOCKS4';
+    if (p.supports_connect) return 'HTTPS';
+    return 'HTTP';
+  }
+
+  const PROTO_GROUP_ORDER = ['HTTP', 'HTTPS', 'SOCKS4', 'SOCKS5'];
+  const PROTO_GROUP_COLORS = {
+    HTTP: 'var(--info)',
+    HTTPS: '#8b5cf6',
+    SOCKS4: 'var(--accent)',
+    SOCKS5: 'var(--success)',
+  };
+
   function updateSelectProxy(proxies) {
     const wrap = document.getElementById('select-proxy-tbl');
     const count = document.getElementById('select-count');
     if (!wrap) return;
 
     const sorted = (proxies || []).slice()
-      .map(p => { p._diff = (p.listen_country && p.egress_country && p.listen_country !== p.egress_country) ? 1 : 0; p._exit_code = p.egress_country ? ui.flag(p.egress_country.slice(0,2).toUpperCase().replace(/[^A-Z]/g,'')) : ''; return p; })
+      .map(p => { p._diff = (p.listen_country && p.egress_country && p.listen_country !== p.egress_country) ? 1 : 0; p._exit_code = p.egress_country ? ui.flag(p.egress_country.slice(0,2).toUpperCase().replace(/[^A-Z]/g,'')) : ''; p._protoGroup = proxyProtoGroup(p); return p; })
       .filter(p => (!state.hideNoHttps || p.supports_connect) && (!state.hideMitm || !p.mitm_suspect))
       .sort((a, b) => {
         const key = state.proxySortKey;
@@ -301,46 +324,111 @@ router.register('proxy-pool', (container) => {
     }
 
     const h = (label, key, width, align) => ({ label: label + (key ? ui.sortArrow(key, state.proxySortKey, state.proxySortDir) : ''), width, align, sortKey: key, onSort: key ? () => setProxySort(key) : undefined });
-    const headers = [
-      h('#', null, '24px', 'center'),
-      h('Proxy', 'address', null, 'left'),
-      h('Srv', 'country', '30px', 'center'),
-      h('Exit', '_exit', '30px', 'center'),
-      h('Lat', 'last_latency', '46px', 'right'),
-      h('KB/s', 'speed_avg', '40px', 'right'),
-      h('Succ', 'success_rate', '40px', 'right'),
-      h('Score', 'score', '40px', 'right'),
-      h('Flags', 'supports_connect', '50px', 'center'),
-      h('Ok', 'last_ok', '36px', 'right'),
-      h('', null, '40px', 'center'),
-    ];
-    const rows = sorted.map((p, i) => {
-      const sc = Math.min(100, Math.max(0, p.score || 0));
-      const flags = [];
-      if (p.supports_connect) flags.push('<span style="color:var(--success);font-weight:600">HTTPS</span>');
-      else flags.push('<span style="color:var(--text-muted)">HTTP</span>');
-      if (p.mitm_suspect) flags.push('<span style="color:var(--danger);font-weight:600">MITM!</span>');
-      const proto = p.protocol || 'http';
-      const isSel = state.selected === p.address;
-      const hasDiff = p.listen_country && p.egress_country && p.listen_country !== p.egress_country;
-      const srvFlag = ui.flag(p.listen_country_code || p.country_code) || '—';
-      const exitFlag = hasDiff ? (ui.flag(p.egress_country_code || p.country_code) || '') : '';
-      return [
-        `<span style="color:var(--text-muted)">${i+1}</span>`,
-        `<span class="addr" style="font-size:10px">${p.address}</span>`,
-        srvFlag,
-        exitFlag,
-        p.last_latency ? p.last_latency.toFixed(2) + 's' : '—',
-        (p.speed_avg || 0).toFixed(0),
-        (p.success_rate * 100).toFixed(0) + '%',
-        `<div style="display:inline-block;width:30px;height:4px;background:var(--surface-raised);border-radius:2px;vertical-align:middle;overflow:hidden"><div style="width:${sc}%;height:100%;background:linear-gradient(90deg,var(--accent),var(--info));transition:width 0.4s"></div></div>`,
-        `<span style="color:var(--text-muted);font-size:10px">${proto}</span> ${flags.join(' ')}`,
-        ui.ago(p.last_ok),
-        `<button class="btn btn-xs ${isSel ? 'btn-primary' : 'btn-secondary'}" onclick="selectProxy('${p.address}')" style="padding:1px 4px;font-size:9px">${isSel ? 'Active' : 'Select'}</button>`,
+
+    if (state.groupByProtocol) {
+      const groups = {};
+      sorted.forEach(p => {
+        const g = p._protoGroup;
+        if (!groups[g]) groups[g] = [];
+        groups[g].push(p);
+      });
+      wrap.innerHTML = '';
+      PROTO_GROUP_ORDER.forEach(g => {
+        const list = groups[g];
+        if (!list) return;
+        const hdr = ui.el('div', '', { style: `display:flex;align-items:center;gap:6px;padding:4px 8px;margin:4px 0 2px;background:var(--surface-raised);border-radius:var(--radius-xs);cursor:pointer;user-select:none` });
+        const color = PROTO_GROUP_COLORS[g] || 'var(--text-muted)';
+        const arrow = ui.el('span', '', { style: 'font-size:10px;color:var(--text-muted)', text: '▾' });
+        const label = ui.el('span', '', { style: `color:${color};font-weight:700;font-size:11px`, text: g });
+        const cnt = ui.el('span', '', { style: 'color:var(--text-muted);font-size:11px', text: `${list.length}` });
+        hdr.appendChild(arrow);
+        hdr.appendChild(label);
+        hdr.appendChild(cnt);
+
+        const headers = [
+          h('#', null, '24px', 'center'),
+          h('Proxy', 'address', null, 'left'),
+          h('Srv', 'country', '30px', 'center'),
+          h('Exit', '_exit', '30px', 'center'),
+          h('Lat', 'last_latency', '46px', 'right'),
+          h('KB/s', 'speed_avg', '40px', 'right'),
+          h('Succ', 'success_rate', '40px', 'right'),
+          h('Score', 'score', '40px', 'right'),
+          h('Ok', 'last_ok', '36px', 'right'),
+          h('', null, '40px', 'center'),
+        ];
+        const rows = list.map((p, i) => {
+          const sc = Math.min(100, Math.max(0, p.score || 0));
+          const isSel = state.selected === p.address;
+          const hasDiff = p.listen_country && p.egress_country && p.listen_country !== p.egress_country;
+          const srvFlag = ui.flag(p.listen_country_code || p.country_code) || '—';
+          const exitFlag = hasDiff ? (ui.flag(p.egress_country_code || p.country_code) || '') : '';
+          return [
+            `<span style="color:var(--text-muted)">${i+1}</span>`,
+            `<span class="addr" style="font-size:10px">${p.address}</span>`,
+            srvFlag,
+            exitFlag,
+            p.last_latency ? p.last_latency.toFixed(2) + 's' : '—',
+            (p.speed_avg || 0).toFixed(0),
+            (p.success_rate * 100).toFixed(0) + '%',
+            `<div style="display:inline-block;width:30px;height:4px;background:var(--surface-raised);border-radius:2px;vertical-align:middle;overflow:hidden"><div style="width:${sc}%;height:100%;background:linear-gradient(90deg,var(--accent),var(--info));transition:width 0.4s"></div></div>`,
+            ui.ago(p.last_ok),
+            `<button class="btn btn-xs ${isSel ? 'btn-primary' : 'btn-secondary'}" onclick="selectProxy('${p.address}')" style="padding:1px 4px;font-size:9px">${isSel ? 'Active' : 'Select'}</button>`,
+          ];
+        });
+        const tbl = ui.table(headers, rows);
+        let collapsed = false;
+        tbl.style.display = '';
+        hdr.addEventListener('click', () => {
+          collapsed = !collapsed;
+          tbl.style.display = collapsed ? 'none' : '';
+          arrow.textContent = collapsed ? '▸' : '▾';
+        });
+        wrap.appendChild(hdr);
+        wrap.appendChild(tbl);
+      });
+    } else {
+      const headers = [
+        h('#', null, '24px', 'center'),
+        h('Proxy', 'address', null, 'left'),
+        h('Srv', 'country', '30px', 'center'),
+        h('Exit', '_exit', '30px', 'center'),
+        h('Lat', 'last_latency', '46px', 'right'),
+        h('KB/s', 'speed_avg', '40px', 'right'),
+        h('Succ', 'success_rate', '40px', 'right'),
+        h('Score', 'score', '40px', 'right'),
+        h('Flags', 'supports_connect', '50px', 'center'),
+        h('Ok', 'last_ok', '36px', 'right'),
+        h('', null, '40px', 'center'),
       ];
-    });
-    wrap.innerHTML = '';
-    wrap.appendChild(ui.table(headers, rows));
+      const rows = sorted.map((p, i) => {
+        const sc = Math.min(100, Math.max(0, p.score || 0));
+        const flags = [];
+        if (p.supports_connect) flags.push('<span style="color:var(--success);font-weight:600">HTTPS</span>');
+        else flags.push('<span style="color:var(--text-muted)">HTTP</span>');
+        if (p.mitm_suspect) flags.push('<span style="color:var(--danger);font-weight:600">MITM!</span>');
+        const proto = p.protocol || 'http';
+        const isSel = state.selected === p.address;
+        const hasDiff = p.listen_country && p.egress_country && p.listen_country !== p.egress_country;
+        const srvFlag = ui.flag(p.listen_country_code || p.country_code) || '—';
+        const exitFlag = hasDiff ? (ui.flag(p.egress_country_code || p.country_code) || '') : '';
+        return [
+          `<span style="color:var(--text-muted)">${i+1}</span>`,
+          `<span class="addr" style="font-size:10px">${p.address}</span>`,
+          srvFlag,
+          exitFlag,
+          p.last_latency ? p.last_latency.toFixed(2) + 's' : '—',
+          (p.speed_avg || 0).toFixed(0),
+          (p.success_rate * 100).toFixed(0) + '%',
+          `<div style="display:inline-block;width:30px;height:4px;background:var(--surface-raised);border-radius:2px;vertical-align:middle;overflow:hidden"><div style="width:${sc}%;height:100%;background:linear-gradient(90deg,var(--accent),var(--info));transition:width 0.4s"></div></div>`,
+          `<span style="color:var(--text-muted);font-size:10px">${proto}</span> ${flags.join(' ')}`,
+          ui.ago(p.last_ok),
+          `<button class="btn btn-xs ${isSel ? 'btn-primary' : 'btn-secondary'}" onclick="selectProxy('${p.address}')" style="padding:1px 4px;font-size:9px">${isSel ? 'Active' : 'Select'}</button>`,
+        ];
+      });
+      wrap.innerHTML = '';
+      wrap.appendChild(ui.table(headers, rows));
+    }
   }
 
   // --- Polling ---

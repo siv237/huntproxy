@@ -129,7 +129,7 @@ router.register('proxy-sources', (container) => {
     const protoRow = ui.el('div', '', { style: 'margin-bottom:12px' });
     protoRow.appendChild(ui.el('div', '', { style: 'font-size:12px;color:var(--text-secondary);margin-bottom:4px', text: 'Protocol:' }));
     const protoSelect = ui.el('select', '', { id: 'src-protocol', style: 'width:100%;padding:6px 8px;font-size:13px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--bg);color:var(--text-primary)' });
-    ['mixed', 'http', 'socks4', 'socks5'].forEach(p => {
+    ['mixed', 'http', 'https', 'socks4', 'socks5'].forEach(p => {
       const opt = ui.el('option', '', { value: p, text: p.toUpperCase() });
       if (src && src.protocol === p) opt.selected = true;
       if (!src && p === 'mixed') opt.selected = true;
@@ -221,7 +221,7 @@ router.register('proxy-sources', (container) => {
   }
 
   function protocolBadge(protocol) {
-    const colors = { http: 'var(--info)', socks4: 'var(--accent)', socks5: 'var(--success)', mixed: 'var(--text-muted)' };
+    const colors = { http: 'var(--info)', https: '#8b5cf6', socks4: 'var(--accent)', socks5: 'var(--success)', mixed: 'var(--text-muted)' };
     const color = colors[protocol] || colors.mixed;
     return `<span style="color:${color};font-size:11px;font-weight:600">${(protocol || 'mixed').toUpperCase()}</span>`;
   }

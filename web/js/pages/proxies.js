@@ -29,6 +29,7 @@ router.register('proxies', (container) => {
     };
     groupTabs.appendChild(gBtn('By Country', 'country'));
     groupTabs.appendChild(gBtn('By Source', 'source'));
+    groupTabs.appendChild(gBtn('By Protocol', 'protocol'));
     toolbar.appendChild(groupTabs);
 
     const statusTabs = ui.el('div', '', { id: 'status-tabs', style: 'display:flex;gap:0;border:1px solid var(--border);border-radius:var(--radius-xs);overflow:hidden' });
@@ -128,7 +129,11 @@ router.register('proxies', (container) => {
     const statusColor = p.in_blacklist ? 'var(--danger)' : p.last_status === 'ok' ? 'var(--success)' : 'var(--danger)';
     const statusText = p.in_blacklist ? 'BL' : p.last_status === 'ok' ? 'OK' : 'FAIL';
     const proto = (p.protocol || 'http').toUpperCase();
-    const latency = p.last_latency != null ? (p.last_latency < 1 ? (p.last_latency * 1000).toFixed(0) + 'ms' : p.last_latency.toFixed(2) + 's') : '—';
+    const lat = p.last_latency != null ? (p.last_latency < 1 ? (p.last_latency * 1000).toFixed(0) + 'ms' : p.last_latency.toFixed(2) + 's') : '—';
+    const avg = p.latency_avg != null ? (p.latency_avg < 1 ? (p.latency_avg * 1000).toFixed(0) + 'ms' : p.latency_avg.toFixed(2) + 's') : '—';
+    const speed = p.speed_avg ? p.speed_avg.toFixed(0) + 'KB/s' : '—';
+    const succ = p.success_rate != null ? (p.success_rate * 100).toFixed(0) + '%' : '—';
+    const up = (p.checks_ok || 0) + '/' + (p.checks_total || 0);
     const score = Math.round(p.score || 0);
     const flag = ui.flag(p.country_code);
 
@@ -136,10 +141,16 @@ router.register('proxies', (container) => {
       `<span style="font-size:12px;font-family:monospace;color:var(--text-primary)">${ui.escHtml(p.address)}</span>`,
       `<span style="font-size:12px">${flag} ${ui.escHtml(p.country || '—')}</span>`,
       `<span style="font-size:11px;color:var(--text-muted)">${proto}</span>`,
-      `<span style="font-size:11px">${latency}</span>`,
+      `<span style="font-size:11px">${lat}</span>`,
+      `<span style="font-size:11px;color:var(--text-muted)">${avg}</span>`,
+      `<span style="font-size:11px">${speed}</span>`,
+      `<span style="font-size:11px">${succ}</span>`,
+      `<span style="font-size:11px;color:var(--text-muted)">${up}</span>`,
       `<span style="font-size:11px;font-weight:600">${score}</span>`,
       `<span style="color:${statusColor};font-weight:600;font-size:11px">${statusText}</span>`,
       `<span style="font-size:11px;color:var(--text-muted)">${ui.ago(p.last_check)}</span>`,
+      `<button class="btn btn-xs btn-secondary" data-select-addr="${ui.escHtml(p.address)}" style="padding:1px 4px;font-size:9px" title="Use as upstream">Sel</button>`,
+      `<button class="btn btn-xs btn-info" data-recheck-addr="${ui.escHtml(p.address)}" style="padding:1px 4px;font-size:9px;color:var(--info);border-color:var(--info)" title="Recheck proxy">↻</button>`,
       `<button class="btn btn-xs btn-danger" data-bl-addr="${ui.escHtml(p.address)}" style="padding:1px 4px;font-size:9px">BL</button>`,
     ];
   }
@@ -167,13 +178,19 @@ router.register('proxies', (container) => {
     const tblWrap = ui.el('div', 'table-wrap', { style: 'max-height:400px;overflow-y:auto' });
     const headers = [
       { label: 'Proxy', width: null },
-      { label: 'Country', width: '120px' },
+      { label: 'Country', width: '110px' },
       { label: 'Proto', width: '50px', align: 'center' },
-      { label: 'Latency', width: '65px', align: 'right' },
-      { label: 'Score', width: '45px', align: 'right' },
-      { label: 'Status', width: '50px', align: 'center' },
-      { label: 'Last', width: '60px', align: 'right' },
-      { label: '', width: '35px', align: 'center' },
+      { label: 'Lat', width: '50px', align: 'right' },
+      { label: 'Avg', width: '50px', align: 'right' },
+      { label: 'Speed', width: '55px', align: 'right' },
+      { label: 'Succ', width: '40px', align: 'right' },
+      { label: 'Up', width: '45px', align: 'right' },
+      { label: 'Score', width: '40px', align: 'right' },
+      { label: 'Status', width: '45px', align: 'center' },
+      { label: 'Last', width: '55px', align: 'right' },
+      { label: '', width: '28px', align: 'center' },
+      { label: '', width: '28px', align: 'center' },
+      { label: '', width: '28px', align: 'center' },
     ];
     const rows = sorted.map(p => renderProxyRow(p));
     tblWrap.appendChild(ui.table(headers, rows));
@@ -184,6 +201,34 @@ router.register('proxies', (container) => {
         e.stopPropagation();
         const addr = btn.dataset.blAddr;
         if (addr) blAdd(addr);
+      });
+    });
+
+    body.querySelectorAll('[data-select-addr]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const addr = btn.dataset.selectAddr;
+        if (addr) api.proxySelect(addr).then(() => app.toast('Selected ' + addr)).catch(er => app.toast('Error: ' + er.message, 'error'));
+      });
+    });
+
+    body.querySelectorAll('[data-recheck-addr]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const addr = btn.dataset.recheckAddr;
+        if (!addr) return;
+        btn.disabled = true;
+        btn.textContent = '...';
+        api.proxyRecheck(addr).then(() => {
+          btn.disabled = false;
+          btn.textContent = '↻';
+          app.toast('Recheck complete');
+          loadGroupProxies(key);
+        }).catch(er => {
+          btn.disabled = false;
+          btn.textContent = '↻';
+          app.toast('Error: ' + er.message, 'error');
+        });
       });
     });
   }

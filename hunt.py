@@ -55,9 +55,11 @@ DEFAULT_SOURCES = [
     "https://raw.githubusercontent.com/mmpx12/proxy-list/master/socks5.txt",
     "https://raw.githubusercontent.com/mmpx12/proxy-list/master/socks4.txt",
     "https://raw.githubusercontent.com/mmpx12/proxy-list/master/http.txt",
+    "https://raw.githubusercontent.com/mmpx12/proxy-list/master/https.txt",
     "https://raw.githubusercontent.com/ShiftyTR/Proxy-List/master/socks5.txt",
     "https://raw.githubusercontent.com/ShiftyTR/Proxy-List/master/socks4.txt",
     "https://raw.githubusercontent.com/ShiftyTR/Proxy-List/master/http.txt",
+    "https://raw.githubusercontent.com/ShiftyTR/Proxy-List/master/https.txt",
     "https://raw.githubusercontent.com/ALIILAPRO/Proxy/main/socks5.txt",
     "https://raw.githubusercontent.com/ALIILAPRO/Proxy/main/http.txt",
     "https://raw.githubusercontent.com/clarketm/proxy-list/master/proxy-list-raw.txt",
@@ -519,7 +521,9 @@ class HuntState:
                     protocol = "socks5"
                 elif "socks4" in fname.lower():
                     protocol = "socks4"
-                elif "http" in fname.lower() or "https" in fname.lower():
+                elif "https" in fname.lower():
+                    protocol = "https"
+                elif "http" in fname.lower():
                     protocol = "http"
                 conn.execute(
                     "INSERT OR IGNORE INTO proxy_sources (id, name, url, protocol, enabled, priority, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)",
@@ -564,7 +568,9 @@ class HuntState:
                     protocol = "socks5"
                 elif "socks4" in fname.lower():
                     protocol = "socks4"
-                elif "http" in fname.lower() or "https" in fname.lower():
+                elif "https" in fname.lower():
+                    protocol = "https"
+                elif "http" in fname.lower():
                     protocol = "http"
                 conn.execute(
                     "INSERT OR IGNORE INTO proxy_sources (id, name, url, protocol, enabled, priority, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)",
@@ -4231,6 +4237,23 @@ class HuntServer:
                             groups[key]["alive"] += 1
                         else:
                             groups[key]["dead"] += 1
+                elif qs.get("group_by") == "protocol":
+                    for r in all_proxies:
+                        proto = r.protocol or "http"
+                        if proto in ("socks5", "socks4"):
+                            key = proto
+                        elif r.supports_connect:
+                            key = "https"
+                        else:
+                            key = "http"
+                        labels = {"http": "HTTP", "https": "HTTPS", "socks4": "SOCKS4", "socks5": "SOCKS5"}
+                        if key not in groups:
+                            groups[key] = {"key": key, "label": labels.get(key, key.upper()), "total": 0, "alive": 0, "dead": 0}
+                        groups[key]["total"] += 1
+                        if r.last_status == "ok" and not r.in_blacklist:
+                            groups[key]["alive"] += 1
+                        else:
+                            groups[key]["dead"] += 1
                 else:
                     for r in all_proxies:
                         cc = r.country_code or country_code_from_name(r.country) or "??"
@@ -4263,6 +4286,15 @@ class HuntServer:
                     filtered = [r for r in all_ratings if (
                         (self.state._addr_sources.get(r.address, []) or ["_unknown"])[0] == group_key
                     )]
+                elif group_by == "protocol":
+                    def _proto_key(r):
+                        proto = r.protocol or "http"
+                        if proto in ("socks5", "socks4"):
+                            return proto
+                        elif r.supports_connect:
+                            return "https"
+                        return "http"
+                    filtered = [r for r in all_ratings if _proto_key(r) == group_key]
                 else:
                     filtered = [r for r in all_ratings if (r.country_code or country_code_from_name(r.country) or "??") == group_key]
                 if group_status == "alive":
