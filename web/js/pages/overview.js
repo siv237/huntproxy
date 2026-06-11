@@ -792,7 +792,33 @@ router.register('overview', (container) => {
       btnsEl.innerHTML = '';
       if (ap) {
         btnsEl.appendChild(mkBtn('»', 'Next proxy', 'var(--accent)', () => api.proxyNext().then(() => app.toast('Switched to next proxy')).catch(e => app.toast('Error: ' + e.message, 'error'))));
-        btnsEl.appendChild(mkBtn('↻', 'Recheck', 'var(--info)', () => api.proxyRecheck(ap.address).then(() => app.toast('Recheck complete')).catch(e => app.toast('Error: ' + e.message, 'error'))));
+        const recheckBtn = mkBtn('↻', 'Recheck', 'var(--info)', () => {
+          recheckBtn.disabled = true;
+          recheckBtn.style.color = 'var(--text-muted)';
+          const icon = recheckBtn.querySelector('span');
+          if (icon) icon.style.animation = 'recheckSpin 0.8s linear infinite';
+          api.proxyRecheck(ap.address).then(() => poll()).then(() => {
+            recheckBtn.disabled = false;
+            recheckBtn.style.color = 'var(--info)';
+            if (icon) icon.style.animation = '';
+          }).catch(e => {
+            recheckBtn.disabled = false;
+            recheckBtn.style.color = 'var(--info)';
+            if (icon) icon.style.animation = '';
+            app.toast('Error: ' + e.message, 'error');
+          });
+        });
+        const recheckIcon = ui.el('span', '', { style: 'display:inline-block' });
+        recheckIcon.textContent = '↻';
+        recheckBtn.textContent = '';
+        recheckBtn.appendChild(recheckIcon);
+        btnsEl.appendChild(recheckBtn);
+        if (!document.getElementById('recheck-spin-style')) {
+          const s = document.createElement('style');
+          s.id = 'recheck-spin-style';
+          s.textContent = '@keyframes recheckSpin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}';
+          document.head.appendChild(s);
+        }
       }
     }
 

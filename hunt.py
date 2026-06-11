@@ -4090,7 +4090,7 @@ class HuntServer:
                 host, port_str = address.rsplit(":", 1)
                 port = int(port_str)
                 is_socks = port in (1080, 10808, 9050, 4145)
-                ok, country, supports_connect, mitm_suspect, egress, listen, http_latency, cc = await self.state._check_proxy(address)
+                ok, country, supports_connect, mitm_suspect, egress, listen, http_latency, cc, fast_fail = await self.state._check_proxy(address)
                 speed = 0.0
                 if ok:
                     try:
