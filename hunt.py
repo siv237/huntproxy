@@ -36,6 +36,7 @@ STATIC_MIME = {
     ".jpg": "image/jpeg",
     ".jpeg": "image/jpeg",
     ".ico": "image/x-icon",
+    ".webmanifest": "application/manifest+json",
 }
 
 logger = logging.getLogger("huntproxy.hunt")
@@ -3965,7 +3966,7 @@ class HuntServer:
             if len(parts) < 2:
                 writer.close(); return
             method = parts[0].decode().upper()
-            path = parts[1].decode()
+            path = parts[1].decode().split("?", 1)[0]
         except Exception:
             writer.close(); return
 
@@ -3996,14 +3997,19 @@ class HuntServer:
         except Exception:
             pass
 
-    async def _write(self, writer, status, body, ct="application/json"):
+    async def _write(self, writer, status, body, ct="application/json", cache_control=None):
         if isinstance(body, str):
             body = body.encode()
+        if cache_control is None:
+            if ct.startswith("image/") or ct == "image/x-icon" or ct == "application/manifest+json" or ct.startswith("text/css") or ct.startswith("application/javascript"):
+                cache_control = "public, max-age=86400"
+            else:
+                cache_control = "no-store"
         resp = (
             f"HTTP/1.1 {status} OK\r\n"
             f"Content-Type: {ct}\r\n"
             f"Content-Length: {len(body)}\r\n"
-            f"Cache-Control: no-store\r\n"
+            f"Cache-Control: {cache_control}\r\n"
             f"Connection: close\r\n\r\n"
         ).encode() + body
         writer.write(resp)
