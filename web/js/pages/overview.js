@@ -321,7 +321,7 @@ router.register('overview', (container) => {
       const name = c.country || c.name || code;
       const row = ui.el('div', '', { style: 'display:flex;align-items:center;gap:8px' });
       row.appendChild(ui.el('span', 'flag', { text: ui.flag(code), style: 'font-size:14px;width:20px;text-align:center' }));
-      row.appendChild(ui.el('span', '', { style: 'font-size:12px;color:var(--text-primary);width:80px;flex-shrink:0', text: name }));
+      row.appendChild(ui.el('span', '', { style: 'font-size:12px;color:var(--text-primary);min-width:0;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:140px', text: name }));
       const barWrap = ui.el('div', '', { style: 'flex:1;height:6px;background:var(--surface-raised);border-radius:3px;overflow:hidden' });
       barWrap.appendChild(ui.el('div', '', { style: `width:${(c.count / max) * 100}%;height:100%;background:var(--accent);border-radius:3px;transition:width 0.4s ease` }));
       row.appendChild(barWrap);
@@ -392,37 +392,70 @@ router.register('overview', (container) => {
     header.appendChild(viewAllBtn);
     card.appendChild(header);
 
-    const wrap = ui.el('div', 'table-wrap');
-    wrap.id = 'top-rated-tbl-wrap';
+    const wrap = ui.el('div', '', { id: 'top-rated-tbl-wrap', style: 'flex:1;overflow-y:auto;min-height:0' });
     card.appendChild(wrap);
 
     return card;
   }
 
-  function renderTopRated(proxies) {
+  function renderTopRated(proxies, ps) {
     const wrap = document.getElementById('top-rated-tbl-wrap');
     if (!wrap) return;
 
+    const activeAddr = ps && ps.active_proxy ? ps.active_proxy.address : null;
+    const running = ps && ps.running;
+    const port = ps && ps.port ? ps.port : 17277;
+
     const headers = [
       { label: '#', width: '30px', align: 'center' },
+      { label: 'Country', width: null, align: 'left' },
       { label: 'Proxy', width: null, align: 'left' },
-      { label: 'Country', width: '80px', align: 'left' },
       { label: 'Latency', width: '60px', align: 'right' },
+      { label: 'Speed', width: '55px', align: 'right' },
       { label: 'Score', width: '50px', align: 'right' },
       { label: 'Uptime', width: '50px', align: 'center' },
       { label: 'Last Check', width: '70px', align: 'right' },
+      { label: '', width: '50px', align: 'center' },
     ];
-    const rows = (proxies || []).slice(0, 5).map((p, i) => [
-      `<span style="color:var(--text-muted);font-size:11px">${i + 1}</span>`,
-      `<span class="addr">${p.address}</span>`,
-      `<span class="flag">${ui.flag(p.country_code)}</span> <span style="font-size:11px">${p.country || ''}</span>`,
-      p.last_latency ? p.last_latency.toFixed(2) + 's' : '—',
-      (p.score || 0).toFixed(0) + '%',
-      `${p.checks_ok || 0}/${p.checks_total || 0}`,
-      ui.ago(p.last_check),
-    ]);
+    const agoShort = (ts) => {
+      if (!ts) return '—';
+      const d = Math.floor(Date.now() / 1000 - ts);
+      if (d < 0) return t('ago.now');
+      if (d < 60) return d + 's';
+      if (d < 3600) return Math.floor(d / 60) + 'm';
+      if (d < 86400) return Math.floor(d / 3600) + 'h';
+      return Math.floor(d / 86400) + 'd';
+    };
+    const rows = (proxies || []).map((p, i) => {
+      const isSel = activeAddr === p.address;
+      return [
+        `<span style="color:var(--text-muted);font-size:11px">${i + 1}</span>`,
+        `<span class="flag">${ui.flag(p.country_code)}</span> <span style="font-size:11px">${ui.escHtml(p.country || '')}</span>`,
+        `<span class="addr">${ui.escHtml(p.address)}</span>`,
+        p.last_latency ? p.last_latency.toFixed(2) + 's' : '—',
+        p.speed_avg ? p.speed_avg.toFixed(0) + 'KB/s' : '—',
+        (p.score || 0).toFixed(0) + '%',
+        `${p.checks_ok || 0}/${p.checks_total || 0}`,
+        agoShort(p.last_check),
+        `<button class="btn btn-xs ${isSel ? 'btn-primary' : 'btn-secondary'}" data-select-addr="${ui.escHtml(p.address)}" style="padding:1px 4px;font-size:9px">${isSel ? t('page.proxyPool.active') : t('page.proxyPool.select')}</button>`,
+      ];
+    });
     wrap.innerHTML = '';
     wrap.appendChild(ui.table(headers, rows));
+
+    wrap.querySelectorAll('[data-select-addr]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const addr = btn.dataset.selectAddr;
+        if (!addr) return;
+        api.proxySelect(addr).then(() => {
+          app.toast(t('page.proxyPool.selected', { addr }));
+          if (!running) {
+            return api.proxyStart(port).then(() => app.toast(t('page.overview.proxyStarted')));
+          }
+        }).catch(er => app.toast(t('common.error', { message: er.message }), 'error'));
+      });
+    });
   }
 
   // --- System Resources Card ---
@@ -1037,7 +1070,7 @@ router.register('overview', (container) => {
       if (merged.length) renderActivity(merged);
 
       // Top rated proxies
-      renderTopRated(s.top_proxies);
+      renderTopRated(s.top_proxies, ps);
 
       // System resources (mock for now, can be replaced with real data)
       if (s.resources) {

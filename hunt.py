@@ -126,7 +126,7 @@ def country_code_from_name(name: str) -> str:
 def country_name_from_code(code: str) -> str:
     mapping = {
         "US": "United States", "GB": "United Kingdom", "DE": "Germany",
-        "FR": "France", "NL": "Netherlands", "JP": "Japan", "CA": "Canada",
+                "FR": "France", "NL": "The Netherlands", "JP": "Japan", "CA": "Canada",
         "RU": "Russia", "CN": "China", "BR": "Brazil", "ES": "Spain",
         "IT": "Italy", "PL": "Poland", "UA": "Ukraine", "IN": "India",
         "AU": "Australia", "SG": "Singapore", "KR": "South Korea",
@@ -686,7 +686,7 @@ class HuntState:
             name = code
             rev = {v: k for k, v in {
                 "US": "United States", "GB": "United Kingdom", "DE": "Germany",
-                "FR": "France", "NL": "Netherlands", "JP": "Japan", "CA": "Canada",
+        "FR": "France", "NL": "The Netherlands", "JP": "Japan", "CA": "Canada",
                 "RU": "Russia", "CN": "China", "BR": "Brazil", "ES": "Spain",
                 "IT": "Italy", "PL": "Poland", "UA": "Ukraine", "IN": "India",
                 "AU": "Australia", "SG": "Singapore", "KR": "Korea", "MX": "Mexico",
@@ -1601,7 +1601,7 @@ class HuntState:
                 r.speed_fails = 0
             else:
                 r.speed_fails += 1
-            if country and not r.country:
+            if country and (not r.country or len(country) > len(r.country)):
                 r.country = country
             if country_code and not r.country_code:
                 r.country_code = country_code
@@ -2046,7 +2046,14 @@ class HuntState:
                     continue
                 parts = line.split()
                 addr = parts[0]
-                country = parts[1] if len(parts) > 1 else ""
+                lat_str = parts[-1] if len(parts) > 2 else "0"
+                try:
+                    float(lat_str)
+                except ValueError:
+                    lat_str = "0"
+                    country = " ".join(parts[1:]) if len(parts) > 1 else ""
+                else:
+                    country = " ".join(parts[1:-1]) if len(parts) > 2 else (parts[1] if len(parts) > 1 else "")
                 if addr in self.ratings or addr in self.blacklist:
                     continue
                 r = ProxyRating(
@@ -2060,7 +2067,6 @@ class HuntState:
                     last_status="ok",
                 )
                 try:
-                    lat_str = parts[2] if len(parts) > 2 else "0"
                     r.last_latency = float(lat_str)
                 except ValueError:
                     pass

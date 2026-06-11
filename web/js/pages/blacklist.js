@@ -125,7 +125,7 @@ router.register('blacklist', (container) => {
     ];
     const bodyRows = rows.map(b => [
       `<span class="addr">${b.address}</span>`,
-      b.country || '—',
+      `${ui.escHtml(b.country || '—')}`,
       `<span style="color:var(--danger)">${b.reason || '—'}</span>`,
       Math.round(b.score || 0),
       `<button class="btn btn-xs btn-secondary" onclick="blRemove('${b.address}')">${t('common.remove')}</button>`,
