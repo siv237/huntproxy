@@ -27,10 +27,11 @@
   border-bottom: 1px solid var(--border);
 }
 
-.sidebar-brand svg {
-  width: 24px;
-  height: 24px;
-  color: var(--accent);
+.sidebar-brand img {
+  width: 100%;
+  height: auto;
+  max-height: 120px;
+  object-fit: contain;
 }
 
 .sidebar-nav {
