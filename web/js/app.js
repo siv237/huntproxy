@@ -40,21 +40,24 @@ const app = {
     if (label) label.textContent = theme === 'dark' ? t('sidebar.dark') : t('sidebar.light');
   },
 
-  toggleLang() {
-    const langs = i18n.getSupportedLangs();
-    const codes = langs.map(l => l.code);
-    const idx = codes.indexOf(i18n.lang);
-    const next = codes[(idx + 1) % codes.length];
-    i18n.setLang(next).then(() => {
-      this.updateLangLabel();
-      this.applyI18n();
-      router.resolve();
-    });
-  },
-
   updateLangLabel() {
-    const label = document.getElementById('lang-label');
-    if (label) label.textContent = i18n.lang.toUpperCase();
+    const bar = document.getElementById('lang-bar');
+    if (!bar) return;
+    bar.innerHTML = '';
+    const langs = i18n.getSupportedLangs();
+    langs.forEach(l => {
+      const btn = ui.el('button', 'lang-btn' + (l.code === i18n.lang ? ' active' : ''), { text: l.native });
+      btn.addEventListener('click', () => {
+        if (l.code === i18n.lang) return;
+        i18n.setLang(l.code).then(() => {
+          bar.querySelectorAll('.lang-btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          this.applyI18n();
+          router.resolve();
+        });
+      });
+      bar.appendChild(btn);
+    });
   },
 
   applyI18n() {
