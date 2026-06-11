@@ -20,9 +20,12 @@
 }
 
 .card-title {
-  font-size: 13px;
+  font-size: clamp(11px, 1.2vw, 14px);
   font-weight: 600;
   color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .card-action {
@@ -63,7 +66,7 @@
 .stat-icon-wrap svg { width: 18px; height: 18px; }
 
 .stat-label {
-  font-size: 11px;
+  font-size: clamp(10px, 0.9vw, 12px);
   color: var(--text-secondary);
   font-weight: 500;
 }
@@ -365,14 +368,15 @@
 .qa-item {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
+  gap: 8px;
+  padding: 8px 10px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   background: var(--surface);
   cursor: pointer;
   transition: var(--transition);
   text-align: left;
+  min-width: 0;
 }
 
 .qa-item:hover {
@@ -382,8 +386,8 @@
 }
 
 .qa-icon {
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   border-radius: var(--radius-xs);
   display: flex;
   align-items: center;
@@ -393,11 +397,25 @@
   color: var(--accent);
 }
 
-.qa-icon svg { width: 16px; height: 16px; }
+.qa-icon svg { width: 14px; height: 14px; }
 
-.qa-text { flex: 1; min-width: 0; }
-.qa-title { font-size: 12px; font-weight: 600; color: var(--text-primary); }
-.qa-desc { font-size: 10px; color: var(--text-secondary); margin-top: 1px; }
+.qa-text { flex: 1; min-width: 0; overflow: hidden; }
+.qa-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.qa-desc {
+  font-size: 9px;
+  color: var(--text-secondary);
+  margin-top: 1px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 /* Charts */
 .sparkline {
