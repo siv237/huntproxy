@@ -2,11 +2,9 @@ router.register('about', (container) => {
   container.innerHTML = '';
   container.style.display = 'flex';
   container.style.flexDirection = 'column';
-  container.style.alignItems = 'center';
-  container.style.gap = '20px';
-  container.style.padding = '24px';
-  container.style.flex = '1';
+  container.style.gap = '10px';
   container.style.minHeight = '0';
+  container.style.flex = '1';
   container.style.overflow = 'auto';
 
   const logoWrap = ui.el('div', '', { style: 'text-align:center' });
@@ -25,15 +23,14 @@ router.register('about', (container) => {
   container.appendChild(title);
 
   const version = ui.el('div', '', {
-    style: 'font-size:13px;color:var(--text-secondary);margin-top:-14px',
+    style: 'font-size:13px;color:var(--text-secondary);text-align:center;margin-top:-8px',
     text: 'v1.0.0',
   });
   container.appendChild(version);
 
   const descCard = ui.card('About');
-  descCard.style.width = '100%';
   const desc = ui.el('div', '', {
-    style: 'font-size:14px;line-height:1.7;color:var(--text-secondary);overflow-wrap:break-word',
+    style: 'font-size:14px;line-height:1.7;color:var(--text-secondary)',
     html:
       '<b>huntproxy</b> — proxy discovery, validation, and pool management tool with a built-in Web UI.<br><br>' +
       '<b>How it works:</b><br>' +
@@ -55,9 +52,8 @@ router.register('about', (container) => {
   container.appendChild(descCard);
 
   const techCard = ui.card('Technology');
-  techCard.style.width = '100%';
   const tech = ui.el('div', '', {
-    style: 'font-size:13px;line-height:1.7;color:var(--text-secondary);overflow-wrap:break-word',
+    style: 'font-size:13px;line-height:1.7;color:var(--text-secondary)',
     html:
       '<b>Stack:</b> Python 3, asyncio, SQLite<br>' +
       '<b>Web UI:</b> Vanilla JS, CSS custom properties, Chart.js<br>' +
