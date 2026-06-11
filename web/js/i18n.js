@@ -46,7 +46,7 @@ const i18n = {
   _knownLangs: null,
 
   _isSupported(lang) {
-    if (!this._knownLangs) return ['en', 'fr', 'ru', 'zh'].includes(lang);
+    if (!this._knownLangs) return ['en', 'de', 'es', 'fr', 'ru', 'zh'].includes(lang);
     return this._knownLangs.some(l => l.code === lang);
   },
 
@@ -61,6 +61,8 @@ const i18n = {
     } catch (e) {}
     this._knownLangs = [
       { code: 'en', name: 'English', native: 'English' },
+      { code: 'de', name: 'German', native: 'Deutsch' },
+      { code: 'es', name: 'Spanish', native: 'Español' },
       { code: 'fr', name: 'French', native: 'Français' },
       { code: 'ru', name: 'Russian', native: 'Русский' },
       { code: 'zh', name: 'Chinese', native: '中文' },
@@ -70,6 +72,8 @@ const i18n = {
   getSupportedLangs() {
     return this._knownLangs || [
       { code: 'en', name: 'English', native: 'English' },
+      { code: 'de', name: 'German', native: 'Deutsch' },
+      { code: 'es', name: 'Spanish', native: 'Español' },
       { code: 'fr', name: 'French', native: 'Français' },
       { code: 'ru', name: 'Russian', native: 'Русский' },
       { code: 'zh', name: 'Chinese', native: '中文' },

@@ -1,5 +1,7 @@
 [
   { "code": "en", "name": "English", "native": "English" },
+  { "code": "de", "name": "German", "native": "Deutsch" },
+  { "code": "es", "name": "Spanish", "native": "Español" },
   { "code": "fr", "name": "French", "native": "Français" },
   { "code": "ru", "name": "Russian", "native": "Русский" },
   { "code": "zh", "name": "Chinese", "native": "中文" }
