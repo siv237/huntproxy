@@ -5,6 +5,7 @@ router.register('proxy-pool', (container) => {
     proxySortKey: 'score',
     proxySortDir: -1,
     hideNoHttps: true,
+    hideNoSsl: false,
     hideMitm: true,
     groupByProtocol: true,
   };
@@ -122,6 +123,12 @@ router.register('proxy-pool', (container) => {
     httpsLbl.appendChild(httpsCb);
     httpsLbl.appendChild(ui.el('span', '', { text: t('page.proxyPool.hideNoHttps') }));
     filterRow.appendChild(httpsLbl);
+    const sslLbl = ui.el('label', '', { style: 'display:flex;align-items:center;gap:4px;cursor:pointer;font-size:11px' });
+    const sslCb = ui.el('input', '', { id: 'hide-no-ssl', type: 'checkbox' });
+    sslCb.addEventListener('change', () => { state.hideNoSsl = sslCb.checked; updateSelectProxy(state.proxies); });
+    sslLbl.appendChild(sslCb);
+    sslLbl.appendChild(ui.el('span', '', { text: 'SSL only' }));
+    filterRow.appendChild(sslLbl);
     const mitmLbl = ui.el('label', '', { style: 'display:flex;align-items:center;gap:4px;cursor:pointer;font-size:11px' });
     const mitmCb = ui.el('input', '', { id: 'hide-mitm', type: 'checkbox', checked: 'checked' });
     mitmCb.addEventListener('change', () => { state.hideMitm = mitmCb.checked; updateSelectProxy(state.proxies); });
@@ -217,6 +224,7 @@ router.register('proxy-pool', (container) => {
       badges.appendChild(ui.badge((ui.flag(ap.listen_country_code || ap.country_code) || '') + ' ' + (ap.egress_country || ap.country || t('page.proxyPool.unknown')), 'blue'));
     }
     badges.appendChild(ui.badge(ap.protocol || 'http', 'gray'));
+    if (ap.ssl_supported) badges.appendChild(ui.badge('SSL', 'cyan'));
     body.appendChild(badges);
 
     const geo = ui.el('div', '', { style: 'font-size:10px;color:var(--text-secondary);line-height:1.5;margin-bottom:6px' });
@@ -308,7 +316,7 @@ router.register('proxy-pool', (container) => {
 
     const sorted = (proxies || []).slice()
       .map(p => { p._diff = (p.listen_country && p.egress_country && p.listen_country !== p.egress_country) ? 1 : 0; p._exit_code = p.egress_country ? ui.flag(p.egress_country.slice(0,2).toUpperCase().replace(/[^A-Z]/g,'')) : ''; p._protoGroup = proxyProtoGroup(p); return p; })
-      .filter(p => (!state.hideNoHttps || p.supports_connect) && (!state.hideMitm || !p.mitm_suspect))
+      .filter(p => (!state.hideNoHttps || p.supports_connect) && (!state.hideNoSsl || p.ssl_supported) && (!state.hideMitm || !p.mitm_suspect))
       .sort((a, b) => {
         const key = state.proxySortKey;
         const dir = state.proxySortDir;
@@ -319,6 +327,7 @@ router.register('proxy-pool', (container) => {
     if (count) {
       const tags = [];
       if (state.hideNoHttps) tags.push('HTTPS');
+      if (state.hideNoSsl) tags.push('SSL');
       if (state.hideMitm) tags.push('no-MITM');
       count.textContent = sorted.length + (tags.length ? ' ' + tags.join('+') : ' alive');
     }
@@ -350,6 +359,7 @@ router.register('proxy-pool', (container) => {
           h('Proxy', 'address', null, 'left'),
           h('Srv', 'country', '30px', 'center'),
           h('Exit', '_exit', '30px', 'center'),
+          h('SSL', 'ssl_supported', '28px', 'center'),
           h('Lat', 'last_latency', '46px', 'right'),
           h('KB/s', 'speed_avg', '40px', 'right'),
           h('Succ', 'success_rate', '40px', 'right'),
@@ -368,6 +378,7 @@ router.register('proxy-pool', (container) => {
             `<span class="addr" style="font-size:10px">${p.address}</span>`,
             srvFlag,
             exitFlag,
+            p.ssl_supported ? '<span style="color:#06b6d4;font-weight:600;font-size:10px">✓</span>' : '<span style="color:var(--text-muted)">—</span>',
             p.last_latency ? p.last_latency.toFixed(2) + 's' : '—',
             (p.speed_avg || 0).toFixed(0),
             (p.success_rate * 100).toFixed(0) + '%',
@@ -393,6 +404,7 @@ router.register('proxy-pool', (container) => {
         h('Proxy', 'address', null, 'left'),
         h('Srv', 'country', '30px', 'center'),
         h('Exit', '_exit', '30px', 'center'),
+        h('SSL', 'ssl_supported', '28px', 'center'),
         h('Lat', 'last_latency', '46px', 'right'),
         h('KB/s', 'speed_avg', '40px', 'right'),
         h('Succ', 'success_rate', '40px', 'right'),
@@ -406,6 +418,7 @@ router.register('proxy-pool', (container) => {
         const flags = [];
         if (p.supports_connect) flags.push('<span style="color:var(--success);font-weight:600">HTTPS</span>');
         else flags.push('<span style="color:var(--text-muted)">HTTP</span>');
+        if (p.ssl_supported) flags.push('<span style="color:#06b6d4;font-weight:600">SSL</span>');
         if (p.mitm_suspect) flags.push('<span style="color:var(--danger);font-weight:600">MITM!</span>');
         const proto = p.protocol || 'http';
         const isSel = state.selected === p.address;
@@ -417,6 +430,7 @@ router.register('proxy-pool', (container) => {
           `<span class="addr" style="font-size:10px">${p.address}</span>`,
           srvFlag,
           exitFlag,
+          p.ssl_supported ? '<span style="color:#06b6d4;font-weight:600;font-size:10px">✓</span>' : '<span style="color:var(--text-muted)">—</span>',
           p.last_latency ? p.last_latency.toFixed(2) + 's' : '—',
           (p.speed_avg || 0).toFixed(0),
           (p.success_rate * 100).toFixed(0) + '%',

@@ -204,6 +204,7 @@ class ProxyRating:
     last_speed: float = 0.0
     speed_fails: int = 0
     source_ids: list = field(default_factory=list)
+    ssl_supported: bool = False
 
     @property
     def speed_avg(self) -> float:
@@ -274,6 +275,7 @@ class ProxyRating:
             "listen_city": self.listen_city,
             "listen_isp": self.listen_isp,
             "source_ids": self.source_ids,
+            "ssl_supported": self.ssl_supported,
         }
 
 
@@ -1098,8 +1100,18 @@ class HuntState:
                     if self._internet_suspect:
                         await self._pause_event.wait()
                         continue
-                    ok, country, supports_connect, mitm_suspect, egress, listen, http_latency, cc, fast_fail = await self._check_proxy(addr)
-                    if fast_fail and not ok:
+                    http_task = asyncio.create_task(self._check_proxy(addr))
+                    ssl_task = asyncio.create_task(self._check_ssl(addr))
+                    results = await asyncio.gather(http_task, ssl_task, return_exceptions=True)
+                    if isinstance(results[0], Exception):
+                        ok, country, supports_connect, mitm_suspect, egress, listen, http_latency, cc, fast_fail = False, "", False, False, {}, {}, 0.0, "", False
+                    else:
+                        ok, country, supports_connect, mitm_suspect, egress, listen, http_latency, cc, fast_fail = results[0]
+                    if isinstance(results[1], Exception):
+                        ssl_ok, ssl_country, ssl_cc, ssl_egress, ssl_latency = False, "", "", {}, 0.0
+                    else:
+                        ssl_ok, ssl_country, ssl_cc, ssl_egress, ssl_latency = results[1]
+                    if fast_fail and not ok and not ssl_ok:
                         async with lock:
                             self._fail_streak += 1
                             self._check_streak += 1
@@ -1109,12 +1121,25 @@ class HuntState:
                             await self._pause_event.wait()
                             continue
                         return
+                    if not ok and ssl_ok:
+                        ok = True
+                        country = ssl_country
+                        cc = ssl_cc
+                        egress = ssl_egress
+                        http_latency = ssl_latency
+                    elif ok and not ssl_ok:
+                        pass
+                    elif ok and ssl_ok:
+                        if not egress and ssl_egress:
+                            egress = ssl_egress
                     speed = 0.0
                     if ok:
                         host, port_str = addr.rsplit(":", 1)
+                        use_ssl = ssl_ok and not (port_str.isdigit() and int(port_str) in (1080, 10808, 9050, 4145))
                         try:
                             speed = await self._measure_speed(host, int(port_str),
-                                                               port_str.isdigit() and int(port_str) in (1080, 10808, 9050, 4145))
+                                                               port_str.isdigit() and int(port_str) in (1080, 10808, 9050, 4145),
+                                                               use_ssl=use_ssl)
                         except Exception:
                             speed = 0.0
                     async with lock:
@@ -1133,7 +1158,7 @@ class HuntState:
                             fail_count += 1
                             self.failed = fail_count
                             self._fail_streak += 1
-                        self._update_rating(addr, ok, country, http_latency, supports_connect, mitm_suspect, egress, listen, speed, country_code=cc)
+                        self._update_rating(addr, ok, country, http_latency, supports_connect, mitm_suspect, egress, listen, speed, country_code=cc, ssl_supported=ssl_ok)
                         if self.checked % 25 == 0 or ok:
                             pct = int(100 * self.checked / max(1, self.checking_total))
                             self._emit(
@@ -1305,24 +1330,103 @@ class HuntState:
             except Exception:
                 pass
 
+    def _make_ssl_ctx(self):
+        import ssl as _ssl
+        ctx = _ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = _ssl.CERT_NONE
+        return ctx
+
+    async def _check_ssl(self, addr: str) -> tuple:
+        host, port_str = addr.rsplit(":", 1)
+        try:
+            port = int(port_str)
+        except ValueError:
+            return False, "", "", {}, 0.0
+        ctx = self._make_ssl_ctx()
+        t0 = time.monotonic()
+        try:
+            reader, writer = await asyncio.wait_for(
+                asyncio.open_connection(host, port, ssl=ctx, server_hostname=host),
+                timeout=self.timeout,
+            )
+        except Exception:
+            return False, "", "", {}, 0.0
+        try:
+            req = (
+                "GET http://ip-api.com/json/ HTTP/1.0\r\n"
+                "Host: ip-api.com\r\n"
+                "User-Agent: huntproxy\r\n"
+                "Connection: close\r\n"
+                "\r\n"
+            )
+            writer.write(req.encode())
+            await asyncio.wait_for(writer.drain(), timeout=self.timeout)
+            buf = b""
+            while True:
+                try:
+                    chunk = await asyncio.wait_for(reader.read(4096), timeout=self.timeout)
+                except asyncio.TimeoutError:
+                    break
+                if not chunk:
+                    break
+                buf += chunk
+                if buf.count(b"}") >= 1 and len(buf) > 200:
+                    break
+        except Exception:
+            return False, "", "", {}, 0.0
+        finally:
+            try:
+                writer.close()
+                await writer.wait_closed()
+            except Exception:
+                pass
+        sep = buf.find(b"\r\n\r\n")
+        if sep == -1:
+            sep = buf.find(b"\n\n")
+        if sep == -1:
+            return False, "", "", {}, 0.0
+        try:
+            data = json.loads(buf[sep:].strip())
+        except Exception:
+            return False, "", "", {}, 0.0
+        if "country" not in data and "query" not in data:
+            return False, "", "", {}, 0.0
+        ssl_latency = time.monotonic() - t0
+        country = data.get("country", "")
+        country_code = data.get("countryCode", "")
+        egress = {
+            "egress_ip": data.get("query", ""),
+            "egress_city": data.get("city", ""),
+            "egress_isp": data.get("isp", ""),
+            "egress_country": data.get("country", ""),
+        }
+        return True, country, country_code, egress, ssl_latency
+
     SPEED_SERVERS = [
         ("speedtest.tele2.net", "/512KB.zip", 524288),
         ("ipv4.download.thinkbroadband.com", "/512KB.zip", 524288),
         ("testdebit.info", "/1M.iso", 1048576),
     ]
 
-    async def _measure_speed(self, host: str, port: int, is_socks: bool = False) -> float:
+    async def _measure_speed(self, host: str, port: int, is_socks: bool = False, use_ssl: bool = False) -> float:
         for srv_host, srv_path, expected_size in self.SPEED_SERVERS:
-            speed = await self._speed_single(host, port, is_socks, srv_host, srv_path, expected_size)
+            speed = await self._speed_single(host, port, is_socks, srv_host, srv_path, expected_size, use_ssl)
             if speed > 0:
                 return speed
         return 0.0
 
     async def _speed_single(self, host: str, port: int, is_socks: bool,
-                             srv_host: str, srv_path: str, expected_size: int) -> float:
+                             srv_host: str, srv_path: str, expected_size: int,
+                             use_ssl: bool = False) -> float:
+        conn_kwargs = {}
+        if use_ssl:
+            ctx = self._make_ssl_ctx()
+            conn_kwargs["ssl"] = ctx
+            conn_kwargs["server_hostname"] = host
         try:
             r, w = await asyncio.wait_for(
-                asyncio.open_connection(host, port), timeout=self.timeout)
+                asyncio.open_connection(host, port, **conn_kwargs), timeout=self.timeout)
         except Exception:
             return 0.0
         try:
@@ -1568,7 +1672,8 @@ class HuntState:
     def _update_rating(self, addr: str, ok: bool, country: str, latency: float,
                         supports_connect: bool = False, mitm_suspect: bool = False,
                         egress: dict = None, listen: dict = None,
-                        speed: float = 0.0, country_code: str = ""):
+                        speed: float = 0.0, country_code: str = "",
+                        ssl_supported: bool = False):
         r = self.ratings.get(addr)
         if not r:
             r = ProxyRating(
@@ -1608,6 +1713,7 @@ class HuntState:
             elif country and not r.country_code:
                 r.country_code = country_code_from_name(country)
             r.supports_connect = supports_connect
+            r.ssl_supported = ssl_supported
             if mitm_suspect:
                 r.mitm_suspect = True
             if egress:
@@ -1870,8 +1976,18 @@ class HuntState:
                     if self._internet_suspect:
                         await self._pause_event.wait()
                         continue
-                    ok, country, supports_connect, mitm_suspect, egress, listen, http_latency, cc, fast_fail = await self._check_proxy(r.address)
-                    if fast_fail and not ok:
+                    http_task = asyncio.create_task(self._check_proxy(r.address))
+                    ssl_task = asyncio.create_task(self._check_ssl(r.address))
+                    results = await asyncio.gather(http_task, ssl_task, return_exceptions=True)
+                    if isinstance(results[0], Exception):
+                        ok, country, supports_connect, mitm_suspect, egress, listen, http_latency, cc, fast_fail = False, "", False, False, {}, {}, 0.0, "", False
+                    else:
+                        ok, country, supports_connect, mitm_suspect, egress, listen, http_latency, cc, fast_fail = results[0]
+                    if isinstance(results[1], Exception):
+                        ssl_ok, ssl_country, ssl_cc, ssl_egress, ssl_latency = False, "", "", {}, 0.0
+                    else:
+                        ssl_ok, ssl_country, ssl_cc, ssl_egress, ssl_latency = results[1]
+                    if fast_fail and not ok and not ssl_ok:
                         async with lock:
                             self._fail_streak += 1
                             self._check_streak += 1
@@ -1881,12 +1997,23 @@ class HuntState:
                             await self._pause_event.wait()
                             continue
                         return
+                    if not ok and ssl_ok:
+                        ok = True
+                        country = ssl_country
+                        cc = ssl_cc
+                        egress = ssl_egress
+                        http_latency = ssl_latency
+                    elif ok and ssl_ok:
+                        if not egress and ssl_egress:
+                            egress = ssl_egress
                     speed = 0.0
                     if ok:
                         host, port_str = r.address.rsplit(":", 1)
+                        use_ssl = ssl_ok and not (port_str.isdigit() and int(port_str) in (1080, 10808, 9050, 4145))
                         try:
                             speed = await self._measure_speed(host, int(port_str),
-                                                               port_str.isdigit() and int(port_str) in (1080, 10808, 9050, 4145))
+                                                               port_str.isdigit() and int(port_str) in (1080, 10808, 9050, 4145),
+                                                               use_ssl=use_ssl)
                         except Exception:
                             speed = 0.0
                     async with lock:
@@ -1903,7 +2030,7 @@ class HuntState:
                             fail_count += 1
                             self.failed = fail_count
                             self._fail_streak += 1
-                        self._update_rating(r.address, ok, country, http_latency, supports_connect, mitm_suspect, egress, listen, speed, country_code=cc)
+                        self._update_rating(r.address, ok, country, http_latency, supports_connect, mitm_suspect, egress, listen, speed, country_code=cc, ssl_supported=ssl_ok)
                         if self._check_streak >= 10 and self._fail_streak / self._check_streak > 0.7:
                             await self._auto_pause_if_internet_down()
                     return
@@ -2007,6 +2134,7 @@ class HuntState:
                     listen_city=d.get("listen_city", ""),
                     listen_isp=d.get("listen_isp", ""),
                     source_ids=d.get("source_ids", []),
+                    ssl_supported=d.get("ssl_supported", False),
                 )
                 if not r.egress_country_code and r.egress_country:
                     r.egress_country_code = country_code_from_name(r.egress_country)
@@ -4175,14 +4303,34 @@ class HuntServer:
                 host, port_str = address.rsplit(":", 1)
                 port = int(port_str)
                 is_socks = port in (1080, 10808, 9050, 4145)
-                ok, country, supports_connect, mitm_suspect, egress, listen, http_latency, cc, fast_fail = await self.state._check_proxy(address)
+                http_task = asyncio.create_task(self.state._check_proxy(address))
+                ssl_task = asyncio.create_task(self.state._check_ssl(address))
+                results = await asyncio.gather(http_task, ssl_task, return_exceptions=True)
+                if isinstance(results[0], Exception):
+                    ok, country, supports_connect, mitm_suspect, egress, listen, http_latency, cc, fast_fail = False, "", False, False, {}, {}, 0.0, "", False
+                else:
+                    ok, country, supports_connect, mitm_suspect, egress, listen, http_latency, cc, fast_fail = results[0]
+                if isinstance(results[1], Exception):
+                    ssl_ok, ssl_country, ssl_cc, ssl_egress, ssl_latency = False, "", "", {}, 0.0
+                else:
+                    ssl_ok, ssl_country, ssl_cc, ssl_egress, ssl_latency = results[1]
+                if not ok and ssl_ok:
+                    ok = True
+                    country = ssl_country
+                    cc = ssl_cc
+                    egress = ssl_egress
+                    http_latency = ssl_latency
+                elif ok and ssl_ok:
+                    if not egress and ssl_egress:
+                        egress = ssl_egress
                 speed = 0.0
                 if ok:
+                    use_ssl = ssl_ok and not is_socks
                     try:
-                        speed = await self.state._measure_speed(host, port, is_socks)
+                        speed = await self.state._measure_speed(host, port, is_socks, use_ssl=use_ssl)
                     except Exception:
                         speed = 0.0
-                self.state._update_rating(address, ok, country, http_latency, supports_connect, mitm_suspect, egress, listen, speed, country_code=cc)
+                self.state._update_rating(address, ok, country, http_latency, supports_connect, mitm_suspect, egress, listen, speed, country_code=cc, ssl_supported=ssl_ok)
                 self.state._save_state()
                 self.state._save_working_file()
                 return json.dumps({"ok": ok, "address": address}), 200, "application/json"

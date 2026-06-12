@@ -230,6 +230,7 @@ router.register('overview', (container) => {
     const addrRow = ui.el('div', '', { style: 'display:flex;align-items:center;gap:0.4em;flex-wrap:wrap;margin-bottom:0.4em' });
     addrRow.appendChild(ui.el('span', '', { style: 'font-family:monospace;font-weight:700;color:var(--accent);font-size:12px', text: det.address }));
     addrRow.appendChild(ui.el('span', '', { style: 'color:var(--accent);font-weight:600;font-size:11px', text: mode }));
+    if (det.ssl_supported) addrRow.appendChild(ui.el('span', '', { style: 'color:#06b6d4;font-weight:600;font-size:10px;border:1px solid #06b6d4;border-radius:3px;padding:0 3px', text: 'SSL' }));
     addrRow.appendChild(ui.el('span', '', { style: `color:${ok ? 'var(--success)' : 'var(--danger)'};font-size:14px`, text: ok ? '●' : '○' }));
     wrap.appendChild(addrRow);
 
@@ -410,6 +411,7 @@ router.register('overview', (container) => {
       { label: '#', width: '30px', align: 'center' },
       { label: 'Country', width: null, align: 'left' },
       { label: 'Proxy', width: null, align: 'left' },
+      { label: 'SSL', width: '30px', align: 'center' },
       { label: 'Latency', width: '60px', align: 'right' },
       { label: 'Speed', width: '55px', align: 'right' },
       { label: 'Score', width: '50px', align: 'right' },
@@ -432,6 +434,7 @@ router.register('overview', (container) => {
         `<span style="color:var(--text-muted);font-size:11px">${i + 1}</span>`,
         `<span class="flag">${ui.flag(p.country_code)}</span> <span style="font-size:11px">${ui.escHtml(p.country || '')}</span>`,
         `<span class="addr">${ui.escHtml(p.address)}</span>`,
+        p.ssl_supported ? '<span style="color:#06b6d4;font-weight:600;font-size:10px">SSL</span>' : '<span style="color:var(--text-muted)">—</span>',
         p.last_latency ? p.last_latency.toFixed(2) + 's' : '—',
         p.speed_avg ? p.speed_avg.toFixed(0) + 'KB/s' : '—',
         (p.score || 0).toFixed(0) + '%',
@@ -866,6 +869,7 @@ router.register('overview', (container) => {
     const ok = ap.last_status === 'ok';
     const metaRow = ui.el('div', '', { style: 'display:flex;align-items:center;gap:0.4em;flex-wrap:wrap;margin-bottom:0.3em' });
     metaRow.appendChild(ui.el('span', '', { style: 'color:var(--accent);font-weight:600;font-size:11px', text: mode }));
+    if (ap.ssl_supported) metaRow.appendChild(ui.el('span', '', { style: 'color:#06b6d4;font-weight:600;font-size:10px;border:1px solid #06b6d4;border-radius:3px;padding:0 3px', text: 'SSL' }));
     metaRow.appendChild(ui.el('span', '', { style: `color:${ok ? 'var(--success)' : 'var(--danger)'};font-size:14px`, text: ok ? '●' : '○' }));
     body.appendChild(metaRow);
 
