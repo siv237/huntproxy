@@ -3188,8 +3188,13 @@ class ProxyRunner:
             if r and not r.in_blacklist:
                 phost, pport_str = r.address.rsplit(":", 1)
                 try:
+                    conn_kwargs = {}
+                    if r.ssl_supported:
+                        ctx = self.state._make_ssl_ctx()
+                        conn_kwargs["ssl"] = ctx
+                        conn_kwargs["server_hostname"] = phost
                     reader, writer = await asyncio.wait_for(
-                        asyncio.open_connection(phost, int(pport_str)), timeout=10)
+                        asyncio.open_connection(phost, int(pport_str), **conn_kwargs), timeout=10)
                 except Exception:
                     return None
                 if r.protocol == "socks4":
@@ -3204,9 +3209,15 @@ class ProxyRunner:
                     return None
                 return reader, writer, r.address
             phost, pport_str = addr.rsplit(":", 1)
+            r2 = self.state.ratings.get(addr)
             try:
+                conn_kwargs = {}
+                if r2 and r2.ssl_supported:
+                    ctx = self.state._make_ssl_ctx()
+                    conn_kwargs["ssl"] = ctx
+                    conn_kwargs["server_hostname"] = phost
                 reader, writer = await asyncio.wait_for(
-                    asyncio.open_connection(phost, int(pport_str)), timeout=10)
+                    asyncio.open_connection(phost, int(pport_str), **conn_kwargs), timeout=10)
             except Exception:
                 return None
             return reader, writer, addr
@@ -3221,8 +3232,13 @@ class ProxyRunner:
                 p = pool[attempt]
                 phost, pport_str = p.address.rsplit(":", 1)
                 try:
+                    conn_kwargs = {}
+                    if p.ssl_supported:
+                        ctx = self.state._make_ssl_ctx()
+                        conn_kwargs["ssl"] = ctx
+                        conn_kwargs["server_hostname"] = phost
                     reader, writer = await asyncio.wait_for(
-                        asyncio.open_connection(phost, int(pport_str)), timeout=10)
+                        asyncio.open_connection(phost, int(pport_str), **conn_kwargs), timeout=10)
                 except Exception:
                     continue
                 ok = False
