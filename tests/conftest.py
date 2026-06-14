@@ -30,44 +30,50 @@ def state(tmp_data_dir, empty_config):
 
 @pytest.fixture
 def api_server(tmp_data_dir, empty_config):
-    """Start a real HuntServer on a random port and return its base URL."""
+    """Start a real HuntServer on a random port in a background thread."""
+    import threading
+
     state = hunt.HuntState(empty_config)
     server = hunt.HuntServer(state, "127.0.0.1", 0)
-    task = None
+    ready_event = threading.Event()
 
     async def run():
         server._server = await asyncio.start_server(server._handle, "127.0.0.1", 0)
         addr = server._server.sockets[0].getsockname()
         server.port = addr[1]
+        ready_event.set()
         async with server._server:
             await server._server.serve_forever()
 
-    async def start():
-        nonlocal task
-        task = asyncio.create_task(run())
-        # Wait until the server is actually bound
-        for _ in range(50):
-            await asyncio.sleep(0.01)
-            if getattr(server, "port", 0):
-                break
-        return f"http://127.0.0.1:{server.port}"
+    def thread_main():
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            loop.run_until_complete(run())
+        except asyncio.CancelledError:
+            pass
+        finally:
+            loop.close()
+
+    thread = threading.Thread(target=thread_main, daemon=True)
+    thread.start()
+    ready_event.wait(timeout=10)
+    if not ready_event.is_set():
+        raise RuntimeError("API server failed to start")
+
+    base_url = f"http://127.0.0.1:{server.port}"
+    yield base_url, state
 
     async def stop():
         if server._server:
             server._server.close()
             await server._server.wait_closed()
-        if task:
-            task.cancel()
-            try:
-                await task
-            except asyncio.CancelledError:
-                pass
 
-    loop = asyncio.new_event_loop()
-    base_url = loop.run_until_complete(start())
-    yield base_url, state
-    loop.run_until_complete(stop())
-    loop.close()
+    if server._server:
+        loop = server._server.get_loop()
+        asyncio.run_coroutine_threadsafe(stop(), loop)
+    thread.join(timeout=5)
+
 
 
 @pytest.fixture

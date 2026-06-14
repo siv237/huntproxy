@@ -101,12 +101,12 @@ class TestApiSettings:
         resp = await http_client("GET", "/api/settings")
         status, data = json_body(resp)
         assert status == 200
-        assert "country_filter" in data
+        assert "proxies" in data
 
     @pytest.mark.asyncio
     async def test_settings_country_filter_post(self, http_client, api_server):
         _, state = api_server
-        resp = await http_client("POST", "/api/settings/country_filter?value=US")
+        resp = await http_client("POST", "/api/settings/country_filter?code=US")
         status, data = json_body(resp)
         assert status == 200
         assert data.get("ok") is True

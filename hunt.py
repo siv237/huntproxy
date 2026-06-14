@@ -1054,6 +1054,16 @@ class HuntState:
             self.phase = self.PHASE_DONE
             logger.exception("Hunt failed")
 
+    def _parse_source_text(self, text: str) -> set:
+        """Extract proxy addresses (ip:port) from raw source text."""
+        import re
+        found = set()
+        for m in re.finditer(r'(\d{1,3}(?:\.\d{1,3}){3}):(\d{1,5})', text):
+            ip, port = m.group(1), int(m.group(2))
+            if 1 <= port <= 65535:
+                found.add(f"{ip}:{port}")
+        return found
+
     async def _download_sources(self) -> set:
         sem = asyncio.Semaphore(8)
         sources = self.get_proxy_sources()
@@ -1078,14 +1088,8 @@ class HuntState:
                     now = time.time()
                     if proc.returncode == 0:
                         text = stdout.decode(errors="replace")
-                        import re
-                        found = set()
-                        for m in re.finditer(r'(\d{1,3}(?:\.\d{1,3}){3}):(\d{1,5})', text):
-                            ip, port = m.group(1), int(m.group(2))
-                            if 1 <= port <= 65535:
-                                addr = f"{ip}:{port}"
-                                found.add(addr)
-                                seen.add(addr)
+                        found = self._parse_source_text(text)
+                        seen.update(found)
                         source_proxies[source_id] = found
                         conn = None
                         try:
