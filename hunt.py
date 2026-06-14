@@ -259,6 +259,8 @@ class ProxyRating:
             "country_code": self.country_code,
             "protocol": self.protocol,
             "latency_avg": round(self.latency_avg, 3),
+            "latency_sum": round(self.latency_sum, 3),
+            "latency_count": self.latency_count,
             "last_latency": round(self.last_latency, 3),
             "checks_total": self.checks_total,
             "checks_ok": self.checks_ok,
@@ -1661,8 +1663,8 @@ class HuntState:
 
     SPEED_SERVERS = [
         ("speedtest.tele2.net", "/512KB.zip", 524288),
-        ("ipv4.download.thinkbroadband.com", "/512KB.zip", 524288),
-        ("testdebit.info", "/1M.iso", 1048576),
+        ("speedtest.tele2.net", "/1MB.zip", 1048576),
+        ("cachefly.cachefly.net", "/1mb.test", 1048576),
     ]
 
     async def _measure_speed(self, host: str, port: int, is_socks: bool = False, use_ssl: bool = False) -> float:
@@ -2523,14 +2525,25 @@ class HuntState:
             else:
                 return
             for d in proxies:
+                checks_ok = d.get("checks_ok", 0)
+                stored_avg = d.get("latency_avg", 0)
+                last_latency = d.get("last_latency", 0)
+                latency_sum = d.get("latency_sum", stored_avg * checks_ok)
+                latency_count = d.get("latency_count", checks_ok)
+                # repair corrupt or legacy state where latency average was lost
+                if latency_count:
+                    if abs(latency_sum / latency_count - stored_avg) > 0.001:
+                        latency_sum = stored_avg * latency_count
+                    if stored_avg == 0 and last_latency > 0:
+                        latency_sum = last_latency * latency_count
                 r = ProxyRating(
                     address=d["address"],
                     country=d.get("country", ""),
                     country_code=d.get("country_code", ""),
                     protocol=d.get("protocol", "http"),
-                    latency_sum=d.get("latency_avg", 0) * d.get("checks_ok", 0),
-                    latency_count=d.get("checks_ok", 0),
-                    last_latency=d.get("last_latency", 0),
+                    latency_sum=latency_sum,
+                    latency_count=latency_count,
+                    last_latency=last_latency,
                     checks_total=d.get("checks_total", 0),
                     checks_ok=d.get("checks_ok", 0),
                     last_check=d.get("last_check", 0),
@@ -2606,6 +2619,11 @@ class HuntState:
                     country = " ".join(parts[1:-1]) if len(parts) > 2 else (parts[1] if len(parts) > 1 else "")
                 if addr in self.ratings or addr in self.blacklist:
                     continue
+                last_latency = 0.0
+                try:
+                    last_latency = float(lat_str)
+                except ValueError:
+                    pass
                 r = ProxyRating(
                     address=addr,
                     country=country,
@@ -2615,11 +2633,10 @@ class HuntState:
                     checks_total=1,
                     checks_ok=1,
                     last_status="ok",
+                    last_latency=last_latency,
+                    latency_sum=last_latency,
+                    latency_count=1,
                 )
-                try:
-                    r.last_latency = float(lat_str)
-                except ValueError:
-                    pass
                 if addr.rsplit(":", 1)[-1] in ("1080", "10808", "9050"):
                     r.protocol = "socks5"
                 elif addr.rsplit(":", 1)[-1] == "4145":
