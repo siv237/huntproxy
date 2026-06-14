@@ -46,6 +46,22 @@ proxies:
   us_only: true
   timeout: 10
 
+ip_blacklists:
+  enabled: true
+  fetch_interval: 3600        # seconds between IP blacklist refreshes
+  default_sources:
+    # Note: Tor exit list is often slow/blocked. Add manually if needed:
+    # - name: "Tor Exit Nodes"
+    #   url: "https://check.torproject.org/torbulkexitlist"
+    - name: "Emerging Threats Compromised"
+      url: "https://rules.emergingthreats.net/blockrules/compromised-ips.txt"
+    - name: "FireHOL Level 1"
+      url: "https://raw.githubusercontent.com/firehol/blocklist-ipsets/master/firehol_level1.netset"
+    - name: "IPsum Threat Feed"
+      url: "https://raw.githubusercontent.com/stamparm/ipsum/master/ipsum.txt"
+    - name: "Blocklist.de All"
+      url: "https://lists.blocklist.de/lists/all.txt"
+
 logging:
   level: "INFO"
   file: "./data/huntproxy.log"

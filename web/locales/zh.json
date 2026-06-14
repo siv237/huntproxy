@@ -7,6 +7,7 @@
     "proxyControl": "代理控制",
     "proxyPool": "代理池",
     "blacklist": "黑名单",
+    "ipBlacklists": "IP 黑名单",
     "analytics": "分析",
     "logs": "日志",
     "settings": "设置",

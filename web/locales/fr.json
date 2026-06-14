@@ -7,6 +7,7 @@
     "proxyControl": "Contrôle Proxy",
     "proxyPool": "Pool de Proxys",
     "blacklist": "Liste noire",
+    "ipBlacklists": "IP Blacklists",
     "analytics": "Analyses",
     "logs": "Journaux",
     "settings": "Paramètres",

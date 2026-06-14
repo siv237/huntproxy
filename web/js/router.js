@@ -9,6 +9,7 @@ const router = {
     'proxy-control': ['page.proxyControl.title', 'page.proxyControl.subtitle'],
     'proxy-pool': ['page.proxyPool.title', 'page.proxyPool.subtitle'],
     blacklist: ['page.blacklist.title', 'page.blacklist.subtitle'],
+    'ip-blacklists': ['page.ipBlacklists.title', 'page.ipBlacklists.subtitle'],
     analytics: ['page.analytics.title', 'page.analytics.subtitle'],
     logs: ['page.logs.title', 'page.logs.subtitle'],
     settings: ['page.settings.title', 'page.settings.subtitle'],

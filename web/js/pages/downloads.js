@@ -14,6 +14,7 @@ router.register('downloads', (container) => {
     const files = [
       { name: 'working.txt', desc: t('page.downloads.workingTxt'), icon: '📄' },
       { name: 'blacklist.txt', desc: t('page.downloads.blacklistTxt'), icon: '🚫' },
+      { name: 'ip_blacklist.txt', desc: t('page.downloads.ipBlacklistTxt'), icon: '🛡️' },
       { name: 'ratings.json', desc: t('page.downloads.ratingsJson'), icon: '📊' },
       { name: 'config.yaml', desc: t('page.downloads.configYaml'), icon: '⚙️' },
     ];

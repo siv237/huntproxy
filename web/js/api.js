@@ -94,6 +94,20 @@ const api = {
   proxySourceToggle(id) { return this.request(`/api/proxy-sources/${encodeURIComponent(id)}/toggle`, 'POST'); },
   proxySourcesFetch() { return this.request('/api/proxy-sources/fetch', 'POST'); },
 
+  // IP Blacklist Sources
+  ipBlacklistSources() { return this.request('/api/ip-blacklists'); },
+  ipBlacklistGet(id) { return this.request(`/api/ip-blacklists/${encodeURIComponent(id)}`); },
+  ipBlacklistCreate(data) { return this.request('/api/ip-blacklists', 'POST', data); },
+  ipBlacklistUpdate(id, data) { return this.request(`/api/ip-blacklists/${encodeURIComponent(id)}`, 'POST', data); },
+  ipBlacklistDelete(id) { return this.request(`/api/ip-blacklists/${encodeURIComponent(id)}`, 'DELETE'); },
+  ipBlacklistToggle(id) { return this.request(`/api/ip-blacklists/${encodeURIComponent(id)}/toggle`, 'POST'); },
+  ipBlacklistFetch() { return this.request('/api/ip-blacklists/fetch', 'POST'); },
+  ipBlacklistEntries(params = {}) {
+    const q = new URLSearchParams(params).toString();
+    return this.request(`/api/ip-blacklist/entries?${q}`);
+  },
+  ipBlacklistMatches() { return this.request('/api/ip-blacklist/matches'); },
+
   // Custom Proxies
   customProxies() { return this.request('/api/custom-proxies'); },
   customProxyGet(id) { return this.request(`/api/custom-proxies/${encodeURIComponent(id)}`); },
