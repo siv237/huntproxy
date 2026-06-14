@@ -330,6 +330,15 @@ class HuntState:
         self._check_streak: int = 0
         self._canary_task: Optional[asyncio.Task] = None
 
+        # Service state for restoration after restart
+        self._hunt_running: bool = False
+        self._proxy_running: bool = False
+        self._proxy_port: int = 17277
+        self._socks5_running: bool = False
+        self._socks5_port: int = 17278
+        self._proxy_direct_mode: bool = False
+        self._proxy_active_addr: Optional[str] = None
+
         # Hunt progress counters
         self.sources_total: int = 0
         self.sources_done: int = 0
@@ -963,11 +972,13 @@ class HuntState:
         self._fail_streak = 0
         self._check_streak = 0
         self._pause_event.set()
+        self._hunt_running = True
         try:
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             self.task = loop.create_task(self._hunt_cycle())
             return True
         except RuntimeError:
+            self._hunt_running = False
             return False
 
     def stop_hunt(self):
@@ -980,6 +991,7 @@ class HuntState:
         self._manual_pause = False
         self._pause_event.set()
         self.phase = self.PHASE_IDLE
+        self._hunt_running = False
         self._save_state()
         self._save_working_file()
         self._emit("Hunt stopped by user", "warn")
@@ -2524,6 +2536,12 @@ class HuntState:
                 self._proxy_direct_mode = pr.get("direct_mode", False)
                 self._proxy_active_addr = pr.get("active_proxy_addr")
                 self._socks5_port = pr.get("socks5_port", 17278)
+                services = data.get("services", {})
+                self._hunt_running = services.get("hunt_running", False)
+                self._proxy_running = services.get("proxy_running", False)
+                self._proxy_port = services.get("proxy_port", 17277)
+                self._socks5_running = services.get("socks5_running", False)
+                self._socks5_port = services.get("socks5_port", 17278)
             elif isinstance(data, list):
                 proxies = data
             else:
@@ -2596,6 +2614,13 @@ class HuntState:
             "proxy_runner": {
                 "direct_mode": getattr(self, '_proxy_direct_mode', False),
                 "active_proxy_addr": getattr(self, '_proxy_active_addr', None),
+                "socks5_port": getattr(self, '_socks5_port', 17278),
+            },
+            "services": {
+                "hunt_running": getattr(self, '_hunt_running', False),
+                "proxy_running": getattr(self, '_proxy_running', False),
+                "proxy_port": getattr(self, '_proxy_port', 17277),
+                "socks5_running": getattr(self, '_socks5_running', False),
                 "socks5_port": getattr(self, '_socks5_port', 17278),
             }
         }
@@ -3602,11 +3627,14 @@ class ProxyRunner:
             return
         self.port = port
         self.running = True
+        self.state._proxy_running = True
+        self.state._proxy_port = port
         self._task = asyncio.create_task(self._run())
         self.state._emit(f"Proxy server starting on {port}...", "info")
 
     async def stop(self):
         self.running = False
+        self.state._proxy_running = False
         if self._server:
             self._server.close()
             await self._server.wait_closed()
@@ -4147,11 +4175,14 @@ class Socks5Runner:
             return
         self.port = port
         self.running = True
+        self.state._socks5_running = True
+        self.state._socks5_port = port
         self._task = asyncio.create_task(self._run())
         self.state._emit(f"SOCKS5 proxy server starting on {port}...", "info")
 
     async def stop(self):
         self.running = False
+        self.state._socks5_running = False
         if self._server:
             self._server.close()
             await self._server.wait_closed()
@@ -5695,6 +5726,26 @@ async def amain(config: dict):
     state = HuntState(config)
     server = HuntServer(state, host, port)
     state.proxy_runner = server.proxy
+
+    # Restore services that were running before restart
+    restored = []
+    if getattr(state, '_hunt_running', False):
+        if state.start_hunt():
+            restored.append("hunt")
+    if getattr(state, '_proxy_running', False):
+        proxy_port = getattr(state, '_proxy_port', 17277)
+        await server.proxy.start(proxy_port)
+        restored.append(f"proxy:{proxy_port}")
+    if getattr(state, '_socks5_running', False):
+        socks5_port = getattr(state, '_socks5_port', 17278)
+        await server.socks5.start(socks5_port)
+        restored.append(f"socks5:{socks5_port}")
+    if getattr(state, '_proxy_direct_mode', False):
+        server.proxy.direct_mode = True
+    if getattr(state, '_proxy_active_addr', None):
+        server.proxy.select(state._proxy_active_addr)
+    if restored:
+        state._emit(f"Restored services after restart: {', '.join(restored)}", "info")
 
     # Start periodic history recording (every 60s)
     asyncio.create_task(state._history_loop())
