@@ -703,7 +703,7 @@ class HuntState:
         except Exception:
             pass
         try:
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             loop.call_soon_threadsafe(self._notify)
         except Exception:
             pass
@@ -2022,9 +2022,9 @@ class HuntState:
                 r.listen_isp = listen.get("isp") or r.listen_isp
         else:
             r.last_status = "failed"
+        self.ratings[addr] = r
         if r.egress_ip:
             self._apply_ip_blacklist_to_proxy(addr, r.egress_ip)
-        self.ratings[addr] = r
 
     async def _auto_pause_if_internet_down(self):
         self._internet_suspect = True

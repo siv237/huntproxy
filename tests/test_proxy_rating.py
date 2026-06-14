@@ -1,0 +1,56 @@
+import pytest
+import time
+import hunt
+
+
+class TestProxyRating:
+    def test_score_is_zero_for_untested(self):
+        r = hunt.ProxyRating(address="1.2.3.4:8080")
+        assert r.score == 0.0
+
+    def test_score_is_zero_for_failed(self):
+        r = hunt.ProxyRating(address="1.2.3.4:8080", checks_total=1, checks_ok=0, last_status="failed")
+        assert r.score == 0.0
+
+    def test_score_is_zero_for_blacklisted(self):
+        r = hunt.ProxyRating(address="1.2.3.4:8080", checks_total=1, checks_ok=1, last_status="ok")
+        r.blacklist_reason = "manual"
+        r.in_blacklist = True
+        assert r.score == 0.0
+
+    def test_score_is_zero_for_ip_blacklisted(self):
+        r = hunt.ProxyRating(address="1.2.3.4:8080", checks_total=1, checks_ok=1, last_status="ok")
+        r.ip_blacklist_reason = "exit IP blacklisted"
+        assert r.score == 0.0
+
+    def test_score_is_positive_for_ok(self):
+        r = hunt.ProxyRating(address="1.2.3.4:8080", checks_total=1, checks_ok=1, last_status="ok")
+        r.latency_sum = 0.5
+        r.latency_count = 1
+        assert r.score > 0.0
+
+    def test_latency_average(self):
+        r = hunt.ProxyRating(address="1.2.3.4:8080")
+        r.latency_sum = 1.5
+        r.latency_count = 3
+        assert r.latency_avg == 0.5
+
+    def test_success_rate(self):
+        r = hunt.ProxyRating(address="1.2.3.4:8080", checks_total=4, checks_ok=3)
+        assert r.success_rate == 0.75
+
+    def test_to_dict_includes_latency_sum_and_count(self):
+        r = hunt.ProxyRating(address="1.2.3.4:8080", checks_total=1, checks_ok=1, last_status="ok")
+        r.latency_sum = 0.6
+        r.latency_count = 1
+        d = r.to_dict()
+        assert d["latency_sum"] == 0.6
+        assert d["latency_count"] == 1
+        assert d["in_blacklist"] is False
+
+    def test_to_dict_marks_ip_blacklisted_as_blacklisted(self):
+        r = hunt.ProxyRating(address="1.2.3.4:8080", checks_total=1, checks_ok=1, last_status="ok")
+        r.ip_blacklist_reason = "bad exit IP"
+        d = r.to_dict()
+        assert d["in_blacklist"] is True
+        assert d["ip_blacklist_reason"] == "bad exit IP"
