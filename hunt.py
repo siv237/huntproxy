@@ -1331,11 +1331,24 @@ class HuntState:
                 pass
 
     def _make_ssl_ctx(self):
+        if getattr(self, "_ssl_ctx", None) is not None:
+            return self._ssl_ctx
         import ssl as _ssl
         ctx = _ssl.create_default_context()
         ctx.check_hostname = False
         ctx.verify_mode = _ssl.CERT_NONE
+        self._ssl_ctx = ctx
         return ctx
+
+    def _ssl_ctx_verified(self):
+        try:
+            import ssl as _ssl
+            ctx = _ssl.create_default_context()
+            ctx.check_hostname = True
+            ctx.verify_mode = _ssl.CERT_REQUIRED
+            return ctx
+        except Exception:
+            return self._make_ssl_ctx()
 
     async def _check_ssl(self, addr: str) -> tuple:
         host, port_str = addr.rsplit(":", 1)
@@ -1352,27 +1365,75 @@ class HuntState:
             )
         except Exception:
             return False, "", "", {}, 0.0
+
+        buf = b""
         try:
-            req = (
-                "GET http://ip-api.com/json/ HTTP/1.0\r\n"
-                "Host: ip-api.com\r\n"
-                "User-Agent: huntproxy\r\n"
-                "Connection: close\r\n"
-                "\r\n"
-            )
+            req = f"CONNECT ip-api.com:80 HTTP/1.1\r\nHost: ip-api.com:80\r\n\r\n"
             writer.write(req.encode())
             await asyncio.wait_for(writer.drain(), timeout=self.timeout)
-            buf = b""
-            while True:
-                try:
-                    chunk = await asyncio.wait_for(reader.read(4096), timeout=self.timeout)
-                except asyncio.TimeoutError:
-                    break
-                if not chunk:
-                    break
-                buf += chunk
-                if buf.count(b"}") >= 1 and len(buf) > 200:
-                    break
+            try:
+                resp = await asyncio.wait_for(reader.readuntil(b"\r\n\r\n"), timeout=self.timeout)
+                if b"200" in resp.split(b"\r\n")[0]:
+                    req = (
+                        "GET /json/ HTTP/1.0\r\n"
+                        "Host: ip-api.com\r\n"
+                        "User-Agent: huntproxy\r\n"
+                        "Connection: close\r\n"
+                        "\r\n"
+                    )
+                    writer.write(req.encode())
+                    await asyncio.wait_for(writer.drain(), timeout=self.timeout)
+                    while True:
+                        try:
+                            chunk = await asyncio.wait_for(reader.read(4096), timeout=self.timeout)
+                        except asyncio.TimeoutError:
+                            break
+                        if not chunk:
+                            break
+                        buf += chunk
+                        if buf.count(b"}") >= 1 and len(buf) > 200:
+                            break
+                else:
+                    req = (
+                        "GET http://ip-api.com/json/ HTTP/1.0\r\n"
+                        "Host: ip-api.com\r\n"
+                        "User-Agent: huntproxy\r\n"
+                        "Connection: close\r\n"
+                        "\r\n"
+                    )
+                    writer.write(req.encode())
+                    await asyncio.wait_for(writer.drain(), timeout=self.timeout)
+                    while True:
+                        try:
+                            chunk = await asyncio.wait_for(reader.read(4096), timeout=self.timeout)
+                        except asyncio.TimeoutError:
+                            break
+                        if not chunk:
+                            break
+                        buf += chunk
+                        if buf.count(b"}") >= 1 and len(buf) > 200:
+                            break
+            except (asyncio.IncompleteReadError, asyncio.TimeoutError):
+                req = (
+                    "GET http://ip-api.com/json/ HTTP/1.0\r\n"
+                    "Host: ip-api.com\r\n"
+                    "User-Agent: huntproxy\r\n"
+                    "Connection: close\r\n"
+                    "\r\n"
+                )
+                writer.write(req.encode())
+                await asyncio.wait_for(writer.drain(), timeout=self.timeout)
+                buf = b""
+                while True:
+                    try:
+                        chunk = await asyncio.wait_for(reader.read(4096), timeout=self.timeout)
+                    except asyncio.TimeoutError:
+                        break
+                    if not chunk:
+                        break
+                    buf += chunk
+                    if buf.count(b"}") >= 1 and len(buf) > 200:
+                        break
         except Exception:
             return False, "", "", {}, 0.0
         finally:
@@ -1438,15 +1499,35 @@ class HuntState:
                 if not ok:
                     return 0.0
             t0 = time.monotonic()
-            req = (
-                f"GET http://{srv_host}{srv_path} HTTP/1.0\r\n"
-                f"Host: {srv_host}\r\n"
-                "Connection: close\r\n"
-                "\r\n"
-            )
-            w.write(req.encode())
-            await asyncio.wait_for(w.drain(), timeout=10)
+            if use_ssl and not is_socks:
+                req = f"CONNECT {srv_host}:80 HTTP/1.1\r\nHost: {srv_host}:80\r\n\r\n"
+                w.write(req.encode())
+                await asyncio.wait_for(w.drain(), timeout=self.timeout)
+                try:
+                    resp = await asyncio.wait_for(r.readuntil(b"\r\n\r\n"), timeout=15)
+                    if b"200" not in resp.split(b"\r\n")[0]:
+                        return 0.0
+                except (asyncio.IncompleteReadError, asyncio.TimeoutError):
+                    return 0.0
+                req = (
+                    f"GET {srv_path} HTTP/1.0\r\n"
+                    f"Host: {srv_host}\r\n"
+                    "Connection: close\r\n"
+                    "\r\n"
+                )
+                w.write(req.encode())
+                await asyncio.wait_for(w.drain(), timeout=10)
+            else:
+                req = (
+                    f"GET http://{srv_host}{srv_path} HTTP/1.0\r\n"
+                    f"Host: {srv_host}\r\n"
+                    "Connection: close\r\n"
+                    "\r\n"
+                )
+                w.write(req.encode())
+                await asyncio.wait_for(w.drain(), timeout=10)
             total = 0
+            http_ok = True
             while True:
                 try:
                     chunk = await asyncio.wait_for(r.read(65536), timeout=30)
@@ -1454,11 +1535,24 @@ class HuntState:
                     break
                 if not chunk:
                     break
+                if http_ok and total == 0:
+                    end = chunk.find(b"\r\n\r\n")
+                    if end != -1:
+                        head = chunk[:end]
+                        status_line = head.split(b"\r\n", 1)[0]
+                        parts = status_line.split(b" ", 2)
+                        try:
+                            code = int(parts[1]) if len(parts) >= 2 else 0
+                        except Exception:
+                            code = 0
+                        if not (200 <= code < 400):
+                            http_ok = False
+                        chunk = chunk[end + 4:]
                 total += len(chunk)
                 if total >= expected_size:
                     break
             elapsed = time.monotonic() - t0
-            if elapsed > 0 and total >= expected_size * 0.8:
+            if elapsed > 0 and http_ok and total >= expected_size * 0.8:
                 return total / elapsed / 1024.0
             return 0.0
         except Exception:
@@ -2686,25 +2780,35 @@ class HuntState:
         now = time.time()
         try:
             conn = self._db()
-            existing = conn.execute("SELECT id FROM custom_proxies WHERE id=?", (proxy_id,)).fetchone()
+            existing = conn.execute("SELECT * FROM custom_proxies WHERE id=?", (proxy_id,)).fetchone()
             if not existing:
                 conn.close()
                 return None
-            name = data.get("name", "").strip()
-            host = data.get("host", "").strip()
-            port = int(data.get("port", 0))
-            protocol = data.get("protocol", "socks5")
-            username = data.get("username", "")
-            password = data.get("password", "")
-            test_url = data.get("test_url", "")
-            enabled = 1 if data.get("enabled", True) else 0
-            if password == "****":
-                old = conn.execute("SELECT password FROM custom_proxies WHERE id=?", (proxy_id,)).fetchone()
-                password = old["password"] if old else ""
+            sets, vals = [], []
+            if "name" in data:
+                sets.append("name=?"); vals.append(str(data["name"]).strip())
+            if "protocol" in data:
+                sets.append("protocol=?"); vals.append(data["protocol"])
+            if "host" in data:
+                sets.append("host=?"); vals.append(str(data["host"]).strip())
+            if "port" in data:
+                sets.append("port=?"); vals.append(int(data["port"]))
+            if "username" in data:
+                sets.append("username=?"); vals.append(data["username"])
+            if "password" in data:
+                pw = data["password"]
+                if pw == "****":
+                    pw = existing["password"]
+                sets.append("password=?"); vals.append(pw)
+            if "test_url" in data:
+                sets.append("test_url=?"); vals.append(data["test_url"])
+            if "enabled" in data:
+                sets.append("enabled=?"); vals.append(1 if data["enabled"] else 0)
+            sets.append("updated_at=?"); vals.append(now)
+            vals.append(proxy_id)
             conn.execute(
-                "UPDATE custom_proxies SET name=?, protocol=?, host=?, port=?, username=?, password=?, "
-                "test_url=?, enabled=?, updated_at=? WHERE id=?",
-                (name, protocol, host, port, username, password, test_url, enabled, now, proxy_id)
+                f"UPDATE custom_proxies SET {','.join(sets)} WHERE id=?",
+                vals,
             )
             conn.commit()
             conn.close()
@@ -2773,7 +2877,15 @@ class HuntState:
                 except: pass
                 self._update_proxy_check(proxy_id, "fail", -1)
                 return {"status": "fail", "http_code": 0, "latency_ms": -1, "error": "handshake failed"}
-            req = f"GET {url} HTTP/1.1\r\nHost: {url.split('//',1)[-1].split('/',1)[0]}\r\nConnection: close\r\n\r\n"
+            host_hdr = url.split('//', 1)[-1].split('/', 1)[0]
+            path = '/' + url.split('/', 3)[-1] if url.count('/') >= 3 else '/'
+            if protocol == "socks5" and url.lower().startswith("https://"):
+                try: writer.close()
+                except: pass
+                latency = int((time.monotonic() - start) * 1000)
+                self._update_proxy_check(proxy_id, "ok", latency)
+                return {"status": "ok", "http_code": 0, "latency_ms": latency, "error": ""}
+            req = f"GET {path} HTTP/1.1\r\nHost: {host_hdr}\r\nConnection: close\r\n\r\n"
             writer.write(req.encode())
             await writer.drain()
             resp_data = b""
@@ -2829,8 +2941,17 @@ class HuntState:
                 auth_resp = await asyncio.wait_for(reader.readexactly(2), timeout=8)
                 if auth_resp[1] != 0:
                     return False
-            target_host = url.split("//", 1)[-1].split("/", 1)[0].split(":")[0]
-            target_port = 80
+            raw_url = url.split("//", 1)[-1].split("/", 1)[0]
+            if ":" in raw_url:
+                host_parts = raw_url.split(":")
+                target_host = host_parts[0]
+                try:
+                    target_port = int(host_parts[1])
+                except ValueError:
+                    target_port = 443 if url.lower().startswith("https://") else 80
+            else:
+                target_host = raw_url
+                target_port = 443 if url.lower().startswith("https://") else 80
             is_ip = all(c.isdigit() or c == "." for c in target_host)
             if is_ip:
                 req = bytes([5, 1, 0, 1]) + socket.inet_aton(target_host)
@@ -2911,6 +3032,11 @@ class HuntState:
                 except: pass
                 return {"status": "fail", "http_code": 0, "latency_ms": -1, "error": "handshake failed"}
             target = url.split("//", 1)[-1].split("/", 1)[0]
+            if protocol == "socks5" and url.lower().startswith("https://"):
+                try: writer.close()
+                except: pass
+                latency = int((time.monotonic() - start) * 1000)
+                return {"status": "ok", "http_code": 0, "latency_ms": latency, "error": ""}
             req = f"GET {url} HTTP/1.1\r\nHost: {target.split(':')[0]}\r\nConnection: close\r\n\r\n"
             writer.write(req.encode()); await writer.drain()
             resp_data = b""
@@ -3270,8 +3396,13 @@ class ProxyRunner:
                 return None
             phost, pport_str = r.address.rsplit(":", 1)
             try:
+                conn_kwargs = {}
+                if r.ssl_supported:
+                    ctx = self.state._make_ssl_ctx()
+                    conn_kwargs["ssl"] = ctx
+                    conn_kwargs["server_hostname"] = phost
                 reader, writer = await asyncio.wait_for(
-                    asyncio.open_connection(phost, int(pport_str)), timeout=10)
+                    asyncio.open_connection(phost, int(pport_str), **conn_kwargs), timeout=10)
             except Exception:
                 return None
             if r.protocol == "socks4":
@@ -3295,8 +3426,13 @@ class ProxyRunner:
             p = pool[attempt]
             phost, pport_str = p.address.rsplit(":", 1)
             try:
+                conn_kwargs = {}
+                if p.ssl_supported:
+                    ctx = self.state._make_ssl_ctx()
+                    conn_kwargs["ssl"] = ctx
+                    conn_kwargs["server_hostname"] = phost
                 reader, writer = await asyncio.wait_for(
-                    asyncio.open_connection(phost, int(pport_str)), timeout=10)
+                    asyncio.open_connection(phost, int(pport_str), **conn_kwargs), timeout=10)
             except Exception:
                 continue
             ok = False
