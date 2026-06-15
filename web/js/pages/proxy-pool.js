@@ -7,7 +7,7 @@ router.register('proxy-pool', (container) => {
     hideNoHttps: true,
     hideNoSsl: false,
     hideMitm: true,
-    hideBlacklisted: true,
+    hideBlacklisted: false,
     groupByProtocol: true,
   };
 
@@ -233,7 +233,7 @@ router.register('proxy-pool', (container) => {
     badges.appendChild(ui.badge(ap.protocol || 'http', 'gray'));
     if (ap.ssl_supported) badges.appendChild(ui.badge('SSL', 'cyan'));
     if (ap.in_blacklist) {
-      const hits = ap.ip_blacklist_hits > 1 ? `×${ap.ip_blacklist_hits}` : '';
+      const hits = ap.ip_blacklist_hits > 0 ? `×${ap.ip_blacklist_hits}` : '';
       badges.appendChild(ui.badge(`BL${hits}`, 'red'));
     }
     body.appendChild(badges);
@@ -348,7 +348,7 @@ router.register('proxy-pool', (container) => {
 
     function blacklistBadge(p) {
       if (!p.in_blacklist) return '';
-      const hits = p.ip_blacklist_hits > 1 ? `×${p.ip_blacklist_hits}` : '';
+      const hits = p.ip_blacklist_hits > 0 ? `×${p.ip_blacklist_hits}` : '';
       return `<span style="display:inline-flex;align-items:center;justify-content:center;min-width:16px;padding:1px 4px;border-radius:var(--radius-xs);background:var(--danger-bg);color:var(--danger);font-weight:700;font-size:9px;margin-left:4px">BL${hits}</span>`;
     }
 
@@ -382,6 +382,7 @@ router.register('proxy-pool', (container) => {
           h('KB/s', 'speed_avg', '40px', 'right'),
           h('Succ', 'success_rate', '40px', 'right'),
           h('Score', 'score', '40px', 'right'),
+          h('BL', 'ip_blacklist_hits', '28px', 'center'),
           h('Ok', 'last_ok', '36px', 'right'),
           h('', null, '40px', 'center'),
         ];
@@ -393,7 +394,7 @@ router.register('proxy-pool', (container) => {
           const exitFlag = hasDiff ? (ui.flag(p.egress_country_code || p.country_code) || '') : '';
           return [
             `<span style="color:var(--text-muted)">${i+1}</span>`,
-            `<span class="addr" style="font-size:10px">${p.address}</span>${blacklistBadge(p)}`,
+            `<span class="addr" style="font-size:10px">${p.address}</span>`,
             srvFlag,
             exitFlag,
             p.ssl_supported ? '<span style="color:#06b6d4;font-weight:600;font-size:10px">✓</span>' : '<span style="color:var(--text-muted)">—</span>',
@@ -401,6 +402,7 @@ router.register('proxy-pool', (container) => {
             (p.speed_avg || 0).toFixed(0),
             (p.success_rate * 100).toFixed(0) + '%',
             `<div style="display:inline-block;width:30px;height:4px;background:var(--surface-raised);border-radius:2px;vertical-align:middle;overflow:hidden"><div style="width:${sc}%;height:100%;background:linear-gradient(90deg,var(--accent),var(--info));transition:width 0.4s"></div></div>`,
+            blacklistBadge(p),
             ui.ago(p.last_ok),
             `<button class="btn btn-xs ${isSel ? 'btn-primary' : 'btn-secondary'}" onclick="selectProxy('${p.address}')" style="padding:1px 4px;font-size:9px">${isSel ? t('page.proxyPool.active') : t('page.proxyPool.select')}</button>`,
           ];
@@ -427,6 +429,7 @@ router.register('proxy-pool', (container) => {
         h('KB/s', 'speed_avg', '40px', 'right'),
         h('Succ', 'success_rate', '40px', 'right'),
         h('Score', 'score', '40px', 'right'),
+        h('BL', 'ip_blacklist_hits', '28px', 'center'),
         h('Flags', 'supports_connect', '50px', 'center'),
         h('Ok', 'last_ok', '36px', 'right'),
         h('', null, '40px', 'center'),
@@ -445,7 +448,7 @@ router.register('proxy-pool', (container) => {
         const exitFlag = hasDiff ? (ui.flag(p.egress_country_code || p.country_code) || '') : '';
         return [
           `<span style="color:var(--text-muted)">${i+1}</span>`,
-          `<span class="addr" style="font-size:10px">${p.address}</span>${blacklistBadge(p)}`,
+          `<span class="addr" style="font-size:10px">${p.address}</span>`,
           srvFlag,
           exitFlag,
           p.ssl_supported ? '<span style="color:#06b6d4;font-weight:600;font-size:10px">✓</span>' : '<span style="color:var(--text-muted)">—</span>',
@@ -453,6 +456,7 @@ router.register('proxy-pool', (container) => {
           (p.speed_avg || 0).toFixed(0),
           (p.success_rate * 100).toFixed(0) + '%',
           `<div style="display:inline-block;width:30px;height:4px;background:var(--surface-raised);border-radius:2px;vertical-align:middle;overflow:hidden"><div style="width:${sc}%;height:100%;background:linear-gradient(90deg,var(--accent),var(--info));transition:width 0.4s"></div></div>`,
+          blacklistBadge(p),
           `<span style="color:var(--text-muted);font-size:10px">${proto}</span> ${flags.join(' ')}`,
           ui.ago(p.last_ok),
           `<button class="btn btn-xs ${isSel ? 'btn-primary' : 'btn-secondary'}" onclick="selectProxy('${p.address}')" style="padding:1px 4px;font-size:9px">${isSel ? t('page.proxyPool.active') : t('page.proxyPool.select')}</button>`,
