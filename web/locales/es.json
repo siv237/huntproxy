@@ -194,6 +194,7 @@
       "dead": "muerto",
       "fetched": "obtenido",
       "cumulative": "Acumulado",
+      "currentAddresses": "direcciones actuales",
       "saveChanges": "Guardar Cambios",
       "addSource": "Añadir Fuente",
       "sourceUpdated": "Fuente actualizada",

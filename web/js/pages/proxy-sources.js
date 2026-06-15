@@ -151,6 +151,9 @@ router.register('proxy-sources', (container) => {
             (${t('page.proxySources.fetched')} ${src.last_fetch_count})
           </div>
           <div style="margin-top:2px">
+            <span style="color:var(--text-muted)">${t('page.proxySources.currentAddresses')}: ${src.current_entries ?? src.last_fetch_count ?? '0'}</span>
+          </div>
+          <div style="margin-top:2px">
             <span style="color:var(--text-muted)">${t('page.proxySources.cumulative')}: ${src.total_working} ${t('page.proxySources.working')} / ${src.total_dead} ${t('page.proxySources.dead')} / ${src.total_fetched} ${t('page.proxySources.fetched')}</span>
           </div>
         </div>`;
@@ -248,6 +251,7 @@ router.register('proxy-sources', (container) => {
       { label: 'Status', width: '40px', align: 'center' },
       { label: 'Last', width: '60px' },
       { label: 'Quality', width: '50px', align: 'center' },
+      { label: 'Addresses', width: '60px', align: 'center' },
       { label: 'Working', width: '50px', align: 'center' },
       { label: 'Dead', width: '50px', align: 'center' },
       { label: 'On/Off', width: '40px', align: 'center' },
@@ -301,6 +305,7 @@ router.register('proxy-sources', (container) => {
         statusBadge(s),
         ui.ago(s.last_fetched_at),
         qualityBadge(s.last_working, s.last_dead),
+        `<span style="color:var(--text-secondary)">${s.current_entries ?? s.last_fetch_count ?? '0'}</span>`,
         `<span style="color:var(--success)">${s.last_working}</span>`,
         `<span style="color:var(--danger)">${s.last_dead}</span>`,
         toggleBtn.outerHTML,

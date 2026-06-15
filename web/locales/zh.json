@@ -194,6 +194,7 @@
       "dead": "离线",
       "fetched": "已获取",
       "cumulative": "累计",
+      "currentAddresses": "当前地址",
       "saveChanges": "保存更改",
       "addSource": "添加来源",
       "sourceUpdated": "来源已更新",

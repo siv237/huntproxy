@@ -261,7 +261,7 @@ router.register('ip-blacklists', (container) => {
         nameCell.outerHTML,
         statusBadge(s),
         ui.ago(s.last_fetched_at),
-        s.last_fetch_count || '0',
+        s.current_entries ?? s.last_fetch_count ?? '0',
         toggleBtn.outerHTML,
         editBtn.outerHTML + delBtn.outerHTML,
       ];

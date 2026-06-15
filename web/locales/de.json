@@ -194,6 +194,7 @@
       "dead": "tot",
       "fetched": "abgerufen",
       "cumulative": "Kumulativ",
+      "currentAddresses": "aktuelle Adressen",
       "saveChanges": "Änderungen speichern",
       "addSource": "Quelle hinzufügen",
       "sourceUpdated": "Quelle aktualisiert",

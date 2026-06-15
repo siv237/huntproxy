@@ -76,3 +76,87 @@ class TestProxySourceDb:
         updated = state.update_proxy_source(sid, {"name": "Renamed Source"})
         assert updated is not None
         assert updated["name"] == "Renamed Source"
+
+
+class TestProxySourceEntries:
+    def test_replace_proxy_source_entries(self, state):
+        text = "1.2.3.4:8080\n5.6.7.8:3128\n"
+        found = state._parse_source_text(text)
+        state._replace_proxy_source_entries("src1", found)
+        conn = state._db()
+        rows = conn.execute("SELECT address FROM proxy_source_entries WHERE source_id='src1'").fetchall()
+        conn.close()
+        assert {r["address"] for r in rows} == {"1.2.3.4:8080", "5.6.7.8:3128"}
+
+    def test_replace_only_affects_one_source(self, state):
+        state._replace_proxy_source_entries("src1", {"1.2.3.4:8080"})
+        state._replace_proxy_source_entries("src2", {"1.2.3.4:8080", "5.6.7.8:3128"})
+        state._replace_proxy_source_entries("src1", {"5.6.7.8:3128"})
+        conn = state._db()
+        rows = conn.execute("SELECT source_id, address FROM proxy_source_entries").fetchall()
+        conn.close()
+        pairs = {(r["source_id"], r["address"]) for r in rows}
+        assert ("src1", "5.6.7.8:3128") in pairs
+        assert ("src2", "1.2.3.4:8080") in pairs
+        assert ("src2", "5.6.7.8:3128") in pairs
+        assert ("src1", "1.2.3.4:8080") not in pairs
+
+    def test_load_all_proxy_source_entries(self, state):
+        state._replace_proxy_source_entries("src1", {"1.2.3.4:8080"})
+        state._load_all_proxy_source_entries()
+        assert state._source_proxies.get("src1") == {"1.2.3.4:8080"}
+        assert state._addr_sources.get("1.2.3.4:8080") == ["src1"]
+
+    def test_delete_proxy_source_removes_entries(self, state):
+        data = {"id": "src-del", "name": "Delete Source", "url": "https://example.com/proxies.txt", "enabled": True}
+        created = state.create_proxy_source(data)
+        assert created is not None
+        state._replace_proxy_source_entries("src-del", {"1.2.3.4:8080"})
+        state._load_all_proxy_source_entries()
+        assert state._source_proxies.get("src-del") == {"1.2.3.4:8080"}
+        state.delete_proxy_source("src-del")
+        conn = state._db()
+        count = conn.execute("SELECT COUNT(*) as c FROM proxy_source_entries WHERE source_id='src-del'").fetchone()["c"]
+        conn.close()
+        assert count == 0
+        assert state._source_proxies.get("src-del") is None
+
+    def test_toggle_disable_clears_proxy_source_entries(self, state):
+        data = {"id": "src-toggle", "name": "Toggle Source", "url": "https://example.com/proxies.txt", "enabled": True}
+        created = state.create_proxy_source(data)
+        assert created is not None
+        state._replace_proxy_source_entries("src-toggle", {"1.2.3.4:8080"})
+        state._load_all_proxy_source_entries()
+        assert "1.2.3.4:8080" in state._source_proxies.get("src-toggle", set())
+        state.toggle_proxy_source("src-toggle")
+        assert state._source_proxies.get("src-toggle") is None
+        conn = state._db()
+        count = conn.execute("SELECT COUNT(*) as c FROM proxy_source_entries WHERE source_id='src-toggle'").fetchone()["c"]
+        conn.close()
+        assert count == 0
+
+    def test_update_disable_clears_proxy_source_entries(self, state):
+        data = {"id": "src-update", "name": "Update Source", "url": "https://example.com/proxies.txt", "enabled": True}
+        created = state.create_proxy_source(data)
+        assert created is not None
+        state._replace_proxy_source_entries("src-update", {"1.2.3.4:8080"})
+        state._load_all_proxy_source_entries()
+        assert "1.2.3.4:8080" in state._source_proxies.get("src-update", set())
+        state.update_proxy_source("src-update", {"enabled": False})
+        assert state._source_proxies.get("src-update") is None
+        conn = state._db()
+        count = conn.execute("SELECT COUNT(*) as c FROM proxy_source_entries WHERE source_id='src-update'").fetchone()["c"]
+        conn.close()
+        assert count == 0
+
+    def test_current_entries_in_api(self, state):
+        data = {"id": "src-cur", "name": "Current Source", "url": "https://example.com/proxies.txt", "enabled": True}
+        created = state.create_proxy_source(data)
+        assert created is not None
+        state._replace_proxy_source_entries("src-cur", {"1.2.3.4:8080", "5.6.7.8:3128"})
+        source = state.get_proxy_source("src-cur")
+        assert source["current_entries"] == 2
+        sources = state.get_proxy_sources()
+        found = next((s for s in sources if s["id"] == "src-cur"), None)
+        assert found is not None
+        assert found["current_entries"] == 2

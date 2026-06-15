@@ -395,6 +395,7 @@ class HuntState:
         self._load_blacklist()
         self._load_ip_blacklist()
         self._load_state()
+        self._load_all_proxy_source_entries()
         self._load_working_file()
 
     @property
@@ -524,6 +525,14 @@ class HuntState:
                 created_at REAL NOT NULL DEFAULT 0,
                 updated_at REAL NOT NULL DEFAULT 0
             );
+            CREATE TABLE IF NOT EXISTS proxy_source_entries (
+                source_id TEXT NOT NULL,
+                address TEXT NOT NULL,
+                created_at REAL NOT NULL DEFAULT 0,
+                PRIMARY KEY (source_id, address)
+            );
+            CREATE INDEX IF NOT EXISTS idx_proxy_source_entries_source ON proxy_source_entries(source_id);
+            CREATE INDEX IF NOT EXISTS idx_proxy_source_entries_address ON proxy_source_entries(address);
             CREATE TABLE IF NOT EXISTS ip_blacklist_sources (
                 id TEXT PRIMARY KEY,
                 name TEXT NOT NULL,
@@ -538,6 +547,16 @@ class HuntState:
                 created_at REAL NOT NULL DEFAULT 0,
                 updated_at REAL NOT NULL DEFAULT 0
             );
+            CREATE TABLE IF NOT EXISTS ip_blacklist_entries (
+                entry TEXT NOT NULL,
+                source_id TEXT NOT NULL,
+                source_name TEXT NOT NULL,
+                reason TEXT NOT NULL DEFAULT '',
+                created_at REAL NOT NULL DEFAULT 0,
+                PRIMARY KEY (entry, source_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_ip_bl_entry ON ip_blacklist_entries(entry);
+            CREATE INDEX IF NOT EXISTS idx_ip_bl_source ON ip_blacklist_entries(source_id);
         """)
         conn.commit()
         for col, default in [
@@ -690,6 +709,8 @@ class HuntState:
                 added += 1
             conn.commit()
             conn.close()
+            # Drop stored entries for disabled/removed default sources.
+            self._delete_ip_blacklist_source_entries('tor-exit-nodes')
             if added:
                 logger.info("Migrated IP blacklist sources: added %d new", added)
         except Exception as e:
@@ -1101,7 +1122,7 @@ class HuntState:
                     if proc.returncode == 0:
                         text = stdout.decode(errors="replace")
                         found = self._parse_source_text(text)
-                        seen.update(found)
+                        self._replace_proxy_source_entries(source_id, found)
                         source_proxies[source_id] = found
                         conn = None
                         try:
@@ -1120,7 +1141,6 @@ class HuntState:
                                 except Exception: pass
                         self._emit(f"Source {src['name']}: {len(found)} proxies", "info")
                     else:
-                        source_proxies[source_id] = set()
                         err_msg = f"HTTP {proc.returncode}"
                         conn = None
                         try:
@@ -1139,7 +1159,6 @@ class HuntState:
                         self._emit(f"Source failed: {src['name']}: {err_msg}", "warn")
                 except Exception as e:
                     self.sources_done += 1
-                    source_proxies[source_id] = set()
                     now = time.time()
                     err_msg = str(e)[:200]
                     conn = None
@@ -1160,27 +1179,30 @@ class HuntState:
 
         tasks = [asyncio.create_task(fetch(s)) for s in enabled_sources]
         await asyncio.gather(*tasks)
-        self._source_proxies = source_proxies
-        self._addr_sources = {}
-        for sid, addrs in source_proxies.items():
+        self._load_all_proxy_source_entries()
+        # Build the candidate set from all enabled sources currently in the DB.
+        # This keeps addresses from sources that failed to fetch this cycle.
+        seen: set[str] = set()
+        for sid, addrs in self._source_proxies.items():
+            seen.update(addrs)
             for addr in addrs:
-                if addr not in self._addr_sources:
-                    self._addr_sources[addr] = []
-                self._addr_sources[addr].append(sid)
                 r = self.ratings.get(addr)
                 if r and sid not in r.source_ids:
                     r.source_ids.append(sid)
         return seen
 
     async def _download_ip_blacklists(self) -> dict:
-        """Download enabled IP blacklist sources, parse and store in memory.
+        """Download enabled IP blacklist sources, parse and store in SQLite.
 
         Returns a dict {source_id: count} with number of entries per source.
+        Failed sources keep their previously stored entries.
         """
         sem = asyncio.Semaphore(8)
         sources = self.get_ip_blacklist_sources()
         enabled_sources = [s for s in sources if s.get("enabled")]
-        # Clear old entries so disabled/removed sources disappear on refresh.
+        # In-memory structures will be rebuilt from the DB after the refresh,
+        # so disabled/removed sources are dropped, but failed sources keep
+        # their previous entries.
         self.ip_blacklist_entries.clear()
         self.ip_blacklist_exact.clear()
         self.ip_blacklist_networks.clear()
@@ -1202,7 +1224,7 @@ class HuntState:
                     now = time.time()
                     if proc.returncode == 0:
                         text = stdout.decode(errors="replace")
-                        count = self._parse_ip_blacklist(text, source_id, source_name)
+                        count = self._parse_ip_blacklist(text, source_id, source_name, persist=True)
                         results[source_id] = count
                         conn = None
                         try:
@@ -1257,6 +1279,7 @@ class HuntState:
 
         tasks = [asyncio.create_task(fetch(s)) for s in enabled_sources]
         await asyncio.gather(*tasks)
+        self._load_ip_blacklist_from_db(accumulate=False)
         self._save_ip_blacklist()
         self._refresh_ip_blacklist_hits()
         return results
@@ -1291,6 +1314,70 @@ class HuntState:
             conn.close()
         except Exception as e:
             logger.error("update_source_stats: %s", e)
+
+    def _replace_proxy_source_entries(self, source_id: str, addresses: set[str]):
+        """Replace persisted proxy addresses for a single source."""
+        now = time.time()
+        conn = self._db()
+        try:
+            conn.execute("DELETE FROM proxy_source_entries WHERE source_id=?", (source_id,))
+            if addresses:
+                conn.executemany(
+                    "INSERT OR REPLACE INTO proxy_source_entries (source_id, address, created_at) VALUES (?,?,?)",
+                    [(source_id, addr, now) for addr in addresses]
+                )
+            conn.commit()
+        except Exception as e:
+            logger.error("replace_proxy_source_entries %s: %s", source_id, e)
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+    def _delete_proxy_source_entries(self, source_id: str):
+        """Remove persisted proxy addresses for a disabled/deleted source."""
+        conn = self._db()
+        try:
+            conn.execute("DELETE FROM proxy_source_entries WHERE source_id=?", (source_id,))
+            conn.commit()
+        except Exception as e:
+            logger.error("delete_proxy_source_entries %s: %s", source_id, e)
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+    def _load_all_proxy_source_entries(self):
+        """Load all persisted proxy addresses from SQLite into memory."""
+        self._source_proxies = {}
+        self._addr_sources = {}
+        conn = self._db()
+        try:
+            rows = conn.execute("SELECT source_id, address FROM proxy_source_entries").fetchall()
+            for row in rows:
+                sid = row["source_id"]
+                addr = row["address"]
+                if sid not in self._source_proxies:
+                    self._source_proxies[sid] = set()
+                self._source_proxies[sid].add(addr)
+                if addr not in self._addr_sources:
+                    self._addr_sources[addr] = []
+                self._addr_sources[addr].append(sid)
+            for addr, sids in self._addr_sources.items():
+                r = self.ratings.get(addr)
+                if r:
+                    for sid in sids:
+                        if sid not in r.source_ids:
+                            r.source_ids.append(sid)
+        except Exception as e:
+            logger.error("load_all_proxy_source_entries: %s", e)
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
     async def _validate_all(self, proxies: set):
         sem = asyncio.Semaphore(self.parallel)
@@ -2419,7 +2506,7 @@ class HuntState:
             for addr, reason in sorted(self.blacklist.items()):
                 f.write(f"{addr}  {reason}\n")
 
-    def _parse_ip_blacklist(self, text: str, source_id: str, source_name: str = "", accumulate: bool = True) -> int:
+    def _parse_ip_blacklist(self, text: str, source_id: str, source_name: str = "", accumulate: bool = True, persist: bool = False) -> int:
         """Parse IP blacklist text. Returns number of entries added.
 
         Supported formats:
@@ -2430,6 +2517,7 @@ class HuntState:
         Comments (#, ;, //) and empty lines are ignored.
         """
         added = 0
+        parsed: list[tuple[str, str]] = []
         if not accumulate:
             self.ip_blacklist_entries.clear()
             self.ip_blacklist_exact.clear()
@@ -2450,10 +2538,12 @@ class HuntState:
                     network = ipaddress.summarize_address_range(start_ip, end_ip)
                     for net in network:
                         key = str(net)
+                        reason = f"range from {source_name}"
                         if key not in self.ip_blacklist_entries:
-                            self.ip_blacklist_entries[key] = {"source_id": source_id, "source_name": source_name, "reason": f"range from {source_name}"}
+                            self.ip_blacklist_entries[key] = {"source_id": source_id, "source_name": source_name, "reason": reason}
                             self.ip_blacklist_networks.append(net)
                             added += 1
+                        parsed.append((key, reason))
                 except Exception:
                     continue
             else:
@@ -2461,15 +2551,19 @@ class HuntState:
                     net = ipaddress.ip_network(token, strict=False)
                     is_host = net.prefixlen == (32 if isinstance(net, ipaddress.IPv4Network) else 128)
                     key = str(net.network_address) if is_host else str(net)
+                    reason = f"blacklist from {source_name}"
                     if key not in self.ip_blacklist_entries:
-                        self.ip_blacklist_entries[key] = {"source_id": source_id, "source_name": source_name, "reason": f"blacklist from {source_name}"}
+                        self.ip_blacklist_entries[key] = {"source_id": source_id, "source_name": source_name, "reason": reason}
                         if is_host:
                             self.ip_blacklist_exact.add(str(net.network_address))
                         else:
                             self.ip_blacklist_networks.append(net)
                         added += 1
+                    parsed.append((key, reason))
                 except Exception:
                     continue
+        if persist and parsed:
+            self._replace_ip_blacklist_source(source_id, source_name, parsed)
         return added
 
     def _is_ip_blacklisted(self, ip: str) -> tuple[bool, str]:
@@ -2506,14 +2600,94 @@ class HuntState:
                 r.ip_blacklist_reason = ""
 
     def _load_ip_blacklist(self):
-        """Load downloaded IP blacklist entries from disk into memory."""
+        """Load downloaded IP blacklist entries from SQLite into memory.
+        Falls back to the legacy flat file if the DB table is empty.
+        """
+        try:
+            conn = self._db()
+            count = conn.execute("SELECT COUNT(*) as c FROM ip_blacklist_entries").fetchone()["c"]
+            conn.close()
+            if count > 0:
+                self._load_ip_blacklist_from_db(accumulate=False)
+                return
+        except Exception as e:
+            logger.error("load_ip_blacklist db check: %s", e)
+        # Legacy flat-file fallback
         if not self.ip_blacklist_file.exists():
             return
         try:
             text = self.ip_blacklist_file.read_text()
-            self._parse_ip_blacklist(text, "disk", accumulate=False)
+            self._parse_ip_blacklist(text, "disk", source_name="disk", accumulate=False)
         except Exception as e:
             logger.error("load_ip_blacklist: %s", e)
+
+    def _load_ip_blacklist_from_db(self, accumulate: bool = False):
+        """Load all persisted IP blacklist entries from SQLite into memory."""
+        if not accumulate:
+            self.ip_blacklist_entries.clear()
+            self.ip_blacklist_exact.clear()
+            self.ip_blacklist_networks.clear()
+        conn = self._db()
+        try:
+            rows = conn.execute(
+                "SELECT entry, source_id, source_name, reason FROM ip_blacklist_entries"
+            ).fetchall()
+            for row in rows:
+                entry = row["entry"]
+                if entry in self.ip_blacklist_entries:
+                    continue
+                meta = {"source_id": row["source_id"], "source_name": row["source_name"], "reason": row["reason"]}
+                self.ip_blacklist_entries[entry] = meta
+                try:
+                    net = ipaddress.ip_network(entry, strict=False)
+                    is_host = net.prefixlen == (32 if isinstance(net, ipaddress.IPv4Network) else 128)
+                    if is_host:
+                        self.ip_blacklist_exact.add(str(net.network_address))
+                    else:
+                        self.ip_blacklist_networks.append(net)
+                except Exception:
+                    pass
+        except Exception as e:
+            logger.error("load_ip_blacklist_from_db: %s", e)
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+    def _replace_ip_blacklist_source(self, source_id: str, source_name: str, entries: list[tuple[str, str]]):
+        """Replace persisted entries for a single source. Other sources are untouched."""
+        now = time.time()
+        conn = self._db()
+        try:
+            conn.execute("DELETE FROM ip_blacklist_entries WHERE source_id=?", (source_id,))
+            if entries:
+                conn.executemany(
+                    "INSERT OR REPLACE INTO ip_blacklist_entries (entry, source_id, source_name, reason, created_at) VALUES (?,?,?,?,?)",
+                    [(entry, source_id, source_name, reason, now) for entry, reason in entries]
+                )
+            conn.commit()
+        except Exception as e:
+            logger.error("replace_ip_blacklist_source %s: %s", source_id, e)
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+    def _delete_ip_blacklist_source_entries(self, source_id: str):
+        """Remove persisted entries for a source that was disabled/deleted."""
+        conn = self._db()
+        try:
+            conn.execute("DELETE FROM ip_blacklist_entries WHERE source_id=?", (source_id,))
+            conn.commit()
+        except Exception as e:
+            logger.error("delete_ip_blacklist_source_entries %s: %s", source_id, e)
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
     def _save_ip_blacklist(self):
         """Write downloaded IP blacklist entries to data/ip_blacklist.txt."""
@@ -2907,8 +3081,18 @@ class HuntState:
             rows = conn.execute(
                 "SELECT * FROM proxy_sources ORDER BY priority ASC"
             ).fetchall()
+            counts = {}
+            for r in conn.execute(
+                "SELECT source_id, COUNT(*) as c FROM proxy_source_entries GROUP BY source_id"
+            ).fetchall():
+                counts[r["source_id"]] = r["c"]
             conn.close()
-            return [dict(r) for r in rows]
+            result = []
+            for r in rows:
+                d = dict(r)
+                d["current_entries"] = counts.get(r["id"], 0)
+                result.append(d)
+            return result
         except Exception as e:
             logger.error("get_proxy_sources: %s", e)
             return []
@@ -2917,10 +3101,18 @@ class HuntState:
         try:
             conn = self._db()
             row = conn.execute("SELECT * FROM proxy_sources WHERE id=?", (source_id,)).fetchone()
+            count = 0
+            if row:
+                r = conn.execute(
+                    "SELECT COUNT(*) as c FROM proxy_source_entries WHERE source_id=?", (source_id,)
+                ).fetchone()
+                count = r["c"] if r else 0
             conn.close()
             if not row:
                 return None
-            return dict(row)
+            d = dict(row)
+            d["current_entries"] = count
+            return d
         except Exception as e:
             logger.error("get_proxy_source: %s", e)
             return None
@@ -2967,14 +3159,20 @@ class HuntState:
                 sets.append("url=?"); vals.append(url)
             if "protocol" in data:
                 sets.append("protocol=?"); vals.append(data["protocol"])
+            became_disabled = False
             if "enabled" in data:
                 sets.append("enabled=?"); vals.append(1 if data["enabled"] else 0)
+                if not data["enabled"]:
+                    became_disabled = True
             if sets:
                 sets.append("updated_at=?"); vals.append(now)
                 vals.append(source_id)
                 conn.execute(f"UPDATE proxy_sources SET {','.join(sets)} WHERE id=?", vals)
             conn.commit()
             conn.close()
+            if became_disabled:
+                self._delete_proxy_source_entries(source_id)
+                self._load_all_proxy_source_entries()
             self._emit(f"Proxy source updated: {source_id}", "info")
             return self.get_proxy_source(source_id)
         except Exception as e:
@@ -2987,6 +3185,8 @@ class HuntState:
             conn.execute("DELETE FROM proxy_sources WHERE id=?", (source_id,))
             conn.commit()
             conn.close()
+            self._delete_proxy_source_entries(source_id)
+            self._load_all_proxy_source_entries()
             self._emit(f"Proxy source deleted: {source_id}", "warn")
             return True
         except Exception as e:
@@ -3004,6 +3204,9 @@ class HuntState:
             conn.execute("UPDATE proxy_sources SET enabled=?, updated_at=? WHERE id=?", (new_val, time.time(), source_id))
             conn.commit()
             conn.close()
+            if new_val == 0:
+                self._delete_proxy_source_entries(source_id)
+                self._load_all_proxy_source_entries()
             status = "enabled" if new_val else "disabled"
             self._emit(f"Proxy source {source_id} {status}", "info")
             return self.get_proxy_source(source_id)
@@ -3021,8 +3224,18 @@ class HuntState:
             rows = conn.execute(
                 "SELECT * FROM ip_blacklist_sources ORDER BY priority ASC"
             ).fetchall()
+            counts = {}
+            for r in conn.execute(
+                "SELECT source_id, COUNT(*) as c FROM ip_blacklist_entries GROUP BY source_id"
+            ).fetchall():
+                counts[r["source_id"]] = r["c"]
             conn.close()
-            return [dict(r) for r in rows]
+            result = []
+            for r in rows:
+                d = dict(r)
+                d["current_entries"] = counts.get(r["id"], 0)
+                result.append(d)
+            return result
         except Exception as e:
             logger.error("get_ip_blacklist_sources: %s", e)
             return []
@@ -3031,10 +3244,18 @@ class HuntState:
         try:
             conn = self._db()
             row = conn.execute("SELECT * FROM ip_blacklist_sources WHERE id=?", (source_id,)).fetchone()
+            count = 0
+            if row:
+                r = conn.execute(
+                    "SELECT COUNT(*) as c FROM ip_blacklist_entries WHERE source_id=?", (source_id,)
+                ).fetchone()
+                count = r["c"] if r else 0
             conn.close()
             if not row:
                 return None
-            return dict(row)
+            d = dict(row)
+            d["current_entries"] = count
+            return d
         except Exception as e:
             logger.error("get_ip_blacklist_source: %s", e)
             return None
@@ -3078,14 +3299,21 @@ class HuntState:
                 sets.append("name=?"); vals.append(name)
             if url:
                 sets.append("url=?"); vals.append(url)
+            became_disabled = False
             if "enabled" in data:
                 sets.append("enabled=?"); vals.append(1 if data["enabled"] else 0)
+                if not data["enabled"]:
+                    became_disabled = True
             if sets:
                 sets.append("updated_at=?"); vals.append(now)
                 vals.append(source_id)
                 conn.execute(f"UPDATE ip_blacklist_sources SET {','.join(sets)} WHERE id=?", vals)
             conn.commit()
             conn.close()
+            if became_disabled:
+                self._delete_ip_blacklist_source_entries(source_id)
+                self._load_ip_blacklist_from_db(accumulate=False)
+                self._save_ip_blacklist()
             self._emit(f"IP blacklist source updated: {source_id}", "info")
             return self.get_ip_blacklist_source(source_id)
         except Exception as e:
@@ -3098,6 +3326,9 @@ class HuntState:
             conn.execute("DELETE FROM ip_blacklist_sources WHERE id=?", (source_id,))
             conn.commit()
             conn.close()
+            self._delete_ip_blacklist_source_entries(source_id)
+            self._load_ip_blacklist_from_db(accumulate=False)
+            self._save_ip_blacklist()
             self._emit(f"IP blacklist source deleted: {source_id}", "warn")
             return True
         except Exception as e:
@@ -3115,6 +3346,10 @@ class HuntState:
             conn.execute("UPDATE ip_blacklist_sources SET enabled=?, updated_at=? WHERE id=?", (new_val, time.time(), source_id))
             conn.commit()
             conn.close()
+            if new_val == 0:
+                self._delete_ip_blacklist_source_entries(source_id)
+                self._load_ip_blacklist_from_db(accumulate=False)
+                self._save_ip_blacklist()
             status = "enabled" if new_val else "disabled"
             self._emit(f"IP blacklist source {source_id} {status}", "info")
             return self.get_ip_blacklist_source(source_id)

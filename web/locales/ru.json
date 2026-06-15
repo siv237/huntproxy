@@ -194,6 +194,7 @@
       "dead": "мёртвых",
       "fetched": "загружено",
       "cumulative": "Накопительно",
+      "currentAddresses": "адресов в базе",
       "saveChanges": "Сохранить изменения",
       "addSource": "Добавить источник",
       "sourceUpdated": "Источник обновлён",

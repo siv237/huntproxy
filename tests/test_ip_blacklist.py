@@ -70,3 +70,74 @@ class TestIpBlacklist:
         state.ip_blacklist_exact.clear()
         state._apply_ip_blacklist_to_proxy("1.2.3.4:8080", "8.8.8.8")
         assert r.ip_blacklist_reason == ""
+
+    def test_persist_ip_blacklist_source(self, state):
+        text = "1.2.3.4\n5.6.7.8\n"
+        count = state._parse_ip_blacklist(text, "src1", "Source 1", persist=True)
+        assert count == 2
+        conn = state._db()
+        rows = conn.execute("SELECT entry FROM ip_blacklist_entries WHERE source_id='src1'").fetchall()
+        conn.close()
+        assert {r["entry"] for r in rows} == {"1.2.3.4", "5.6.7.8"}
+
+    def test_ip_blacklist_reloads_from_db(self, state):
+        state._parse_ip_blacklist("1.2.3.4\n", "src1", "Source 1", persist=True)
+        state.ip_blacklist_entries.clear()
+        state.ip_blacklist_exact.clear()
+        state.ip_blacklist_networks.clear()
+        state._load_ip_blacklist_from_db(accumulate=False)
+        assert state._is_ip_blacklisted("1.2.3.4")[0] is True
+
+    def test_replace_source_updates_only_that_source(self, state):
+        state._parse_ip_blacklist("1.2.3.4\n", "src1", "Source 1", persist=True)
+        state._parse_ip_blacklist("1.2.3.4\n5.6.7.8\n", "src2", "Source 2", persist=True)
+        conn = state._db()
+        rows = conn.execute("SELECT source_id, entry FROM ip_blacklist_entries").fetchall()
+        conn.close()
+        pairs = {(r["source_id"], r["entry"]) for r in rows}
+        assert ("src1", "1.2.3.4") in pairs
+        assert ("src2", "1.2.3.4") in pairs
+        assert ("src2", "5.6.7.8") in pairs
+        # Replace src1 with a different entry; src2 should remain untouched.
+        state._replace_ip_blacklist_source("src1", "Source 1", [("5.6.7.8", "reason")])
+        conn = state._db()
+        rows = conn.execute("SELECT source_id, entry FROM ip_blacklist_entries").fetchall()
+        conn.close()
+        pairs = {(r["source_id"], r["entry"]) for r in rows}
+        assert ("src1", "5.6.7.8") in pairs
+        assert ("src2", "1.2.3.4") in pairs
+        assert ("src2", "5.6.7.8") in pairs
+        assert ("src1", "1.2.3.4") not in pairs
+
+    def test_delete_ip_blacklist_source_removes_entries(self, state):
+        state.create_ip_blacklist_source({"id": "src-api", "name": "API Source", "url": "http://example.com/bl.txt"})
+        state._parse_ip_blacklist("1.2.3.4\n", "src-api", "API Source", persist=True)
+        assert state._is_ip_blacklisted("1.2.3.4")[0] is True
+        state.delete_ip_blacklist_source("src-api")
+        assert state._is_ip_blacklisted("1.2.3.4")[0] is False
+        conn = state._db()
+        count = conn.execute("SELECT COUNT(*) as c FROM ip_blacklist_entries WHERE source_id='src-api'").fetchone()["c"]
+        conn.close()
+        assert count == 0
+
+    def test_toggle_disable_clears_ip_blacklist_entries(self, state):
+        state.create_ip_blacklist_source({"id": "src-toggle", "name": "Toggle Source", "url": "http://example.com/bl.txt"})
+        state._parse_ip_blacklist("1.2.3.4\n", "src-toggle", "Toggle Source", persist=True)
+        assert state._is_ip_blacklisted("1.2.3.4")[0] is True
+        state.toggle_ip_blacklist_source("src-toggle")
+        assert state._is_ip_blacklisted("1.2.3.4")[0] is False
+        # Re-enabling the source leaves it empty until the next fetch.
+        result = state.toggle_ip_blacklist_source("src-toggle")
+        assert result is not None
+        assert result["enabled"] == 1
+
+    def test_update_disable_clears_ip_blacklist_entries(self, state):
+        state.create_ip_blacklist_source({"id": "src-update", "name": "Update Source", "url": "http://example.com/bl.txt"})
+        state._parse_ip_blacklist("1.2.3.4\n", "src-update", "Update Source", persist=True)
+        assert state._is_ip_blacklisted("1.2.3.4")[0] is True
+        state.update_ip_blacklist_source("src-update", {"enabled": False})
+        assert state._is_ip_blacklisted("1.2.3.4")[0] is False
+        conn = state._db()
+        count = conn.execute("SELECT COUNT(*) as c FROM ip_blacklist_entries WHERE source_id='src-update'").fetchone()["c"]
+        conn.close()
+        assert count == 0
