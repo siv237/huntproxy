@@ -293,7 +293,7 @@
       "selectUpstreamProxy": "Выбор апстрим-прокси",
       "hideNoHttps": "Скрыть без HTTPS",
       "hideMitm": "Скрыть MITM-подозрительных",
-      "hideBlacklisted": "Скрыть блеклист",
+      "hideBlacklisted": "Скрыть IP-блэклист",
       "groupByProtocol": "Группировать по протоколу",
       "clientLog": "Журнал клиентов",
       "proxyNotStarted": "прокси не запущен",
