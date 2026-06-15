@@ -103,6 +103,22 @@ class TestStateLoading:
         assert r2.speed_sum == 200.0
         assert r2.speed_count == 2
 
+    def test_save_state_roundtrip_sqlite_primary(self, state, tmp_data_dir):
+        r = hunt.ProxyRating(address="1.2.3.4:8080", last_status="ok", checks_total=2, checks_ok=2)
+        r.latency_sum = 1.2
+        r.latency_count = 2
+        state.ratings["1.2.3.4:8080"] = r
+        state.blacklist_add("9.9.9.9:8080", "bad actor")
+        state._save_state()
+        (tmp_data_dir / "ratings.json").unlink()
+        state2 = hunt.HuntState({"ip_blacklists": {"enabled": False}})
+        state2._load_state()
+        assert "1.2.3.4:8080" in state2.ratings
+        assert state2.ratings["1.2.3.4:8080"].latency_sum == 1.2
+        assert state2.ratings["1.2.3.4:8080"].latency_count == 2
+        assert "9.9.9.9:8080" in state2.blacklist
+        assert state2.blacklist["9.9.9.9:8080"] == "bad actor"
+
 
 class TestWorkingFileLoading:
     def test_load_working_file_sets_latency_stats(self, state, tmp_data_dir):

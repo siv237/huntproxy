@@ -378,6 +378,7 @@ class HuntState:
 
         self.started_at = time.time()
         self._db_path = DATA_DIR / "stats.db"
+        self._state_db_path = DATA_DIR / "state.db"
         self._last_history_ts = time.time()
         self._init_db()
         self._seed_default_sources()
@@ -385,14 +386,13 @@ class HuntState:
         self._seed_default_ip_blacklist_sources()
         self._migrate_ip_blacklist_sources()
         try:
-            conn = self._db()
+            conn = self._stats_db()
             row = conn.execute("SELECT MAX(ts) as last_ts FROM history").fetchone()
             conn.close()
             if row and row["last_ts"]:
                 self._last_history_ts = row["last_ts"]
         except Exception:
             pass
-        self._load_blacklist()
         self._load_ip_blacklist()
         self._load_state()
         self._load_all_proxy_source_entries()
@@ -410,14 +410,40 @@ class HuntState:
     def state_file(self) -> Path:
         return DATA_DIR / "ratings.json"
 
-    def _db(self) -> sqlite3.Connection:
+    def _stats_db(self) -> sqlite3.Connection:
         conn = sqlite3.connect(str(self._db_path))
         conn.row_factory = sqlite3.Row
+        try:
+            conn.execute("PRAGMA journal_mode=WAL")
+        except Exception:
+            pass
+        return conn
+
+    def _db(self) -> sqlite3.Connection:
+        conn = sqlite3.connect(str(self._state_db_path))
+        conn.row_factory = sqlite3.Row
+        try:
+            conn.execute("PRAGMA journal_mode=WAL")
+        except Exception:
+            pass
         return conn
 
     def _init_db(self):
-        conn = self._db()
+        self._init_stats_db()
+        self._init_state_db()
+
+    def _init_stats_db(self):
+        conn = self._stats_db()
         conn.executescript("""
+            -- Remove business tables that were incorrectly created in stats.db
+            DROP TABLE IF EXISTS domain_lists;
+            DROP TABLE IF EXISTS domain_entries;
+            DROP TABLE IF EXISTS routing_config;
+            DROP TABLE IF EXISTS custom_proxies;
+            DROP TABLE IF EXISTS proxy_sources;
+            DROP TABLE IF EXISTS proxy_source_entries;
+            DROP TABLE IF EXISTS ip_blacklist_sources;
+            DROP TABLE IF EXISTS ip_blacklist_entries;
             CREATE TABLE IF NOT EXISTS history (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 ts REAL NOT NULL,
@@ -455,6 +481,37 @@ class HuntState:
                 msg TEXT DEFAULT ''
             );
             CREATE INDEX IF NOT EXISTS idx_events_ts ON events(ts);
+            CREATE TABLE IF NOT EXISTS canary_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ts REAL NOT NULL,
+                alive INTEGER NOT NULL,
+                alive_count INTEGER NOT NULL DEFAULT 0,
+                total_count INTEGER NOT NULL DEFAULT 0,
+                host_results TEXT NOT NULL DEFAULT '',
+                direct_ip TEXT DEFAULT '',
+                direct_country TEXT DEFAULT '',
+                direct_isp TEXT DEFAULT '',
+                direct_city TEXT DEFAULT ''
+            );
+            CREATE INDEX IF NOT EXISTS idx_canary_ts ON canary_history(ts);
+        """)
+        conn.commit()
+        for col, default in [
+            ("traffic_success_rate", "REAL DEFAULT 0"),
+            ("bandwidth_in", "INTEGER DEFAULT 0"),
+            ("bandwidth_out", "INTEGER DEFAULT 0"),
+            ("avg_latency", "REAL DEFAULT 0"),
+        ]:
+            try:
+                conn.execute(f"ALTER TABLE history ADD COLUMN {col} {default}")
+            except Exception:
+                pass
+        conn.commit()
+        conn.close()
+
+    def _init_state_db(self):
+        conn = self._db()
+        conn.executescript("""
             CREATE TABLE IF NOT EXISTS domain_lists (
                 id TEXT PRIMARY KEY,
                 name TEXT NOT NULL,
@@ -493,19 +550,6 @@ class HuntState:
                 created_at REAL NOT NULL DEFAULT 0,
                 updated_at REAL NOT NULL DEFAULT 0
             );
-            CREATE TABLE IF NOT EXISTS canary_history (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                ts REAL NOT NULL,
-                alive INTEGER NOT NULL,
-                alive_count INTEGER NOT NULL DEFAULT 0,
-                total_count INTEGER NOT NULL DEFAULT 0,
-                host_results TEXT NOT NULL DEFAULT '',
-                direct_ip TEXT DEFAULT '',
-                direct_country TEXT DEFAULT '',
-                direct_isp TEXT DEFAULT '',
-                direct_city TEXT DEFAULT ''
-            );
-            CREATE INDEX IF NOT EXISTS idx_canary_ts ON canary_history(ts);
             CREATE TABLE IF NOT EXISTS proxy_sources (
                 id TEXT PRIMARY KEY,
                 name TEXT NOT NULL,
@@ -557,18 +601,19 @@ class HuntState:
             );
             CREATE INDEX IF NOT EXISTS idx_ip_bl_entry ON ip_blacklist_entries(entry);
             CREATE INDEX IF NOT EXISTS idx_ip_bl_source ON ip_blacklist_entries(source_id);
+            CREATE TABLE IF NOT EXISTS ratings (
+                address TEXT PRIMARY KEY,
+                data TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS blacklist (
+                address TEXT PRIMARY KEY,
+                reason TEXT NOT NULL DEFAULT ''
+            );
+            CREATE TABLE IF NOT EXISTS runtime_state (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            );
         """)
-        conn.commit()
-        for col, default in [
-            ("traffic_success_rate", "REAL DEFAULT 0"),
-            ("bandwidth_in", "INTEGER DEFAULT 0"),
-            ("bandwidth_out", "INTEGER DEFAULT 0"),
-            ("avg_latency", "REAL DEFAULT 0"),
-        ]:
-            try:
-                conn.execute(f"ALTER TABLE history ADD COLUMN {col} {default}")
-            except Exception:
-                pass
         conn.commit()
         conn.close()
 
@@ -726,7 +771,7 @@ class HuntState:
             self.events = self.events[-300:]
         self.last_event = msg
         try:
-            conn = self._db()
+            conn = self._stats_db()
             conn.execute("INSERT INTO events (ts, seq, type, msg) VALUES (?,?,?,?)", (ts, self._event_seq, kind, msg))
             conn.commit()
             conn.close()
@@ -853,7 +898,7 @@ class HuntState:
                 })
         else:
             try:
-                conn = self._db()
+                conn = self._stats_db()
                 rows = conn.execute("SELECT ts, seq, type, msg FROM events ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
                 conn.close()
                 for r in rows:
@@ -873,7 +918,7 @@ class HuntState:
         except Exception:
             cutoff = 0
         try:
-            conn = self._db()
+            conn = self._stats_db()
             rows = conn.execute(
                 "SELECT ts, alive, dead, total, requests, connections_ok, connections_failed, success_rate, traffic_success_rate, bandwidth_in, bandwidth_out, avg_latency FROM history WHERE ts > ? ORDER BY ts",
                 (cutoff,)
@@ -949,7 +994,7 @@ class HuntState:
         bw_out = 0
         avg_lat = 0.0
         try:
-            conn = self._db()
+            conn = self._stats_db()
             row = conn.execute(
                 "SELECT COUNT(*) as total, "
                 "SUM(CASE WHEN status='ok' THEN 1 ELSE 0 END) as ok, "
@@ -972,7 +1017,7 @@ class HuntState:
         traffic_sr = (ok_req / max(1, total_req)) * 100 if total_req else 0
 
         try:
-            conn = self._db()
+            conn = self._stats_db()
             conn.execute(
                 "INSERT INTO history (ts, alive, dead, total, requests, connections_ok, connections_failed, success_rate, traffic_success_rate, bandwidth_in, bandwidth_out, avg_latency) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
                 (now, alive, dead, len(self.ratings), total_req, ok_req, total_req - ok_req, pool_sr, traffic_sr, bw_in, bw_out, avg_lat)
@@ -2275,7 +2320,7 @@ class HuntState:
                 pass
 
         try:
-            conn = self._db()
+            conn = self._stats_db()
             conn.execute(
                 "INSERT INTO canary_history (ts, alive, alive_count, total_count, host_results, direct_ip, direct_country, direct_isp, direct_city) VALUES (?,?,?,?,?,?,?,?,?)",
                 (time.time(), 1 if alive else 0, alive_count, total,
@@ -2330,7 +2375,7 @@ class HuntState:
 
     def get_canary_history(self, hours: int = 24) -> list:
         try:
-            conn = self._db()
+            conn = self._stats_db()
             since = time.time() - hours * 3600
             rows = conn.execute(
                 "SELECT ts, alive, alive_count, total_count, host_results, direct_ip, direct_country, direct_isp, direct_city "
@@ -2358,7 +2403,7 @@ class HuntState:
             except Exception:
                 pass
             try:
-                conn = self._db()
+                conn = self._stats_db()
                 cutoff_traffic = time.time() - 7 * 86400
                 cutoff_events = time.time() - 30 * 86400
                 conn.execute("DELETE FROM traffic_log WHERE ts < ?", (cutoff_traffic,))
@@ -2487,7 +2532,7 @@ class HuntState:
         self._save_working_file()
         self._emit(f"Removed from blacklist: {address}", "info")
 
-    def _load_blacklist(self):
+    def _load_blacklist_file(self):
         bf = self.blacklist_file
         if bf.exists():
             try:
@@ -2699,6 +2744,114 @@ class HuntState:
                 f.write(f"{entry}  {reason}\n")
 
     def _load_state(self):
+        # SQLite is the primary state store; legacy files are fallback-only.
+        try:
+            conn = self._db()
+            # ratings
+            self.ratings.clear()
+            for row in conn.execute("SELECT address, data FROM ratings"):
+                try:
+                    d = json.loads(row["data"])
+                except Exception:
+                    continue
+                checks_ok = d.get("checks_ok", 0)
+                stored_avg = d.get("latency_avg", 0)
+                last_latency = d.get("last_latency", 0)
+                latency_sum = d.get("latency_sum", stored_avg * checks_ok)
+                latency_count = d.get("latency_count", checks_ok)
+                if latency_count:
+                    if abs(latency_sum / latency_count - stored_avg) > 0.001:
+                        latency_sum = stored_avg * latency_count
+                    if stored_avg == 0 and last_latency > 0:
+                        latency_sum = last_latency * latency_count
+                r = ProxyRating(
+                    address=d["address"],
+                    country=d.get("country", ""),
+                    country_code=d.get("country_code", ""),
+                    protocol=d.get("protocol", "http"),
+                    latency_sum=latency_sum,
+                    latency_count=latency_count,
+                    last_latency=last_latency,
+                    checks_total=d.get("checks_total", 0),
+                    checks_ok=checks_ok,
+                    last_check=d.get("last_check", 0),
+                    last_ok=d.get("last_ok", 0),
+                    last_status=d.get("last_status", "untested"),
+                    first_seen=d.get("first_seen", 0),
+                    supports_connect=d.get("supports_connect", False),
+                    mitm_suspect=d.get("mitm_suspect", False),
+                    last_speed=d.get("last_speed", 0.0),
+                    speed_sum=d.get("speed_sum", 0),
+                    speed_count=d.get("speed_count", 0),
+                    speed_fails=d.get("speed_fails", 0),
+                    egress_http_ip=d.get("egress_http_ip", ""),
+                    egress_http_country=d.get("egress_http_country", ""),
+                    egress_ip=d.get("egress_ip", ""),
+                    egress_city=d.get("egress_city", ""),
+                    egress_isp=d.get("egress_isp", ""),
+                    egress_country=d.get("egress_country", ""),
+                    egress_country_code=d.get("egress_country_code", ""),
+                    listen_country=d.get("listen_country", ""),
+                    listen_country_code=d.get("listen_country_code", ""),
+                    listen_city=d.get("listen_city", ""),
+                    listen_isp=d.get("listen_isp", ""),
+                    source_ids=d.get("source_ids", []),
+                    ssl_supported=d.get("ssl_supported", False),
+                    ip_blacklist_reason=d.get("ip_blacklist_reason", ""),
+                    in_blacklist=d.get("in_blacklist", False),
+                    blacklist_reason=d.get("blacklist_reason", ""),
+                )
+                if not r.egress_country_code and r.egress_country:
+                    r.egress_country_code = country_code_from_name(r.egress_country)
+                if not r.listen_country_code and r.listen_country:
+                    r.listen_country_code = country_code_from_name(r.listen_country)
+                self.ratings[r.address] = r
+            # blacklist
+            self.blacklist.clear()
+            rows = list(conn.execute("SELECT address, reason FROM blacklist"))
+            if rows:
+                for row in rows:
+                    self.blacklist[row["address"]] = row["reason"] or ""
+            else:
+                self._load_blacklist_file()
+            # runtime state
+            for row in conn.execute("SELECT key, value FROM runtime_state"):
+                key = row["key"]
+                val = row["value"]
+                if key == "proxy_runner":
+                    try:
+                        pr = json.loads(val)
+                        self._proxy_direct_mode = pr.get("direct_mode", False)
+                        self._proxy_active_addr = pr.get("active_proxy_addr")
+                        self._socks5_port = pr.get("socks5_port", 17278)
+                    except Exception:
+                        pass
+                elif key == "services":
+                    try:
+                        services = json.loads(val)
+                        self._hunt_running = services.get("hunt_running", False)
+                        self._proxy_running = services.get("proxy_running", False)
+                        self._proxy_port = services.get("proxy_port", 17277)
+                        self._socks5_running = services.get("socks5_running", False)
+                        self._socks5_port = services.get("socks5_port", 17278)
+                    except Exception:
+                        pass
+                elif key == "country_filter":
+                    self.country_filter = val
+            conn.close()
+            self._addr_sources = {}
+            for r in self.ratings.values():
+                for sid in r.source_ids:
+                    if r.address not in self._addr_sources:
+                        self._addr_sources[r.address] = []
+                    self._addr_sources[r.address].append(sid)
+            if self.ratings:
+                logger.info(f"Loaded {len(self.ratings)} ratings from SQLite")
+                return
+        except Exception as e:
+            logger.warning(f"SQLite state load failed: {e}")
+
+        # Fallback to legacy ratings.json
         sf = self.state_file
         if not sf.exists():
             return
@@ -2726,7 +2879,6 @@ class HuntState:
                 last_latency = d.get("last_latency", 0)
                 latency_sum = d.get("latency_sum", stored_avg * checks_ok)
                 latency_count = d.get("latency_count", checks_ok)
-                # repair corrupt or legacy state where latency average was lost
                 if latency_count:
                     if abs(latency_sum / latency_count - stored_avg) > 0.001:
                         latency_sum = stored_avg * latency_count
@@ -2783,23 +2935,70 @@ class HuntState:
             logger.warning(f"State load failed: {e}")
 
     def _save_state(self):
-        data = {
-            "proxies": [r.to_dict() for r in self.ratings.values()],
-            "proxy_runner": {
-                "direct_mode": getattr(self, '_proxy_direct_mode', False),
-                "active_proxy_addr": getattr(self, '_proxy_active_addr', None),
-                "socks5_port": getattr(self, '_socks5_port', 17278),
-            },
-            "services": {
-                "hunt_running": getattr(self, '_hunt_running', False),
-                "proxy_running": getattr(self, '_proxy_running', False),
-                "proxy_port": getattr(self, '_proxy_port', 17277),
-                "socks5_running": getattr(self, '_socks5_running', False),
-                "socks5_port": getattr(self, '_socks5_port', 17278),
+        try:
+            conn = self._db()
+            # ratings
+            conn.execute("DELETE FROM ratings")
+            for r in self.ratings.values():
+                conn.execute(
+                    "INSERT INTO ratings (address, data) VALUES (?, ?)",
+                    (r.address, json.dumps(r.to_dict())),
+                )
+            # blacklist
+            conn.execute("DELETE FROM blacklist")
+            for addr, reason in self.blacklist.items():
+                conn.execute(
+                    "INSERT INTO blacklist (address, reason) VALUES (?, ?)",
+                    (addr, reason or ""),
+                )
+            # runtime state
+            conn.execute("DELETE FROM runtime_state")
+            runtime = [
+                ("proxy_runner", json.dumps({
+                    "direct_mode": getattr(self, '_proxy_direct_mode', False),
+                    "active_proxy_addr": getattr(self, '_proxy_active_addr', None),
+                    "socks5_port": getattr(self, '_socks5_port', 17278),
+                })),
+                ("services", json.dumps({
+                    "hunt_running": getattr(self, '_hunt_running', False),
+                    "proxy_running": getattr(self, '_proxy_running', False),
+                    "proxy_port": getattr(self, '_proxy_port', 17277),
+                    "socks5_running": getattr(self, '_socks5_running', False),
+                    "socks5_port": getattr(self, '_socks5_port', 17278),
+                })),
+                ("country_filter", self.country_filter or ""),
+            ]
+            for key, value in runtime:
+                conn.execute(
+                    "INSERT INTO runtime_state (key, value) VALUES (?, ?)",
+                    (key, value),
+                )
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            logger.warning(f"SQLite state save failed: {e}")
+        # Keep legacy files as human-readable exports
+        try:
+            data = {
+                "proxies": [r.to_dict() for r in self.ratings.values()],
+                "proxy_runner": {
+                    "direct_mode": getattr(self, '_proxy_direct_mode', False),
+                    "active_proxy_addr": getattr(self, '_proxy_active_addr', None),
+                    "socks5_port": getattr(self, '_socks5_port', 17278),
+                },
+                "services": {
+                    "hunt_running": getattr(self, '_hunt_running', False),
+                    "proxy_running": getattr(self, '_proxy_running', False),
+                    "proxy_port": getattr(self, '_proxy_port', 17277),
+                    "socks5_running": getattr(self, '_socks5_running', False),
+                    "socks5_port": getattr(self, '_socks5_port', 17278),
+                }
             }
-        }
-        with open(self.state_file, "w") as f:
-            json.dump(data, f, indent=2)
+            with open(self.state_file, "w") as f:
+                json.dump(data, f, indent=2)
+            self._save_blacklist()
+        except Exception as e:
+            logger.warning(f"Legacy state export failed: {e}")
 
     def _load_working_file(self):
         if not self.working_file.exists():
