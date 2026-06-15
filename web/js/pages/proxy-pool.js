@@ -213,7 +213,7 @@ router.register('proxy-pool', (container) => {
     }
 
     const top = ui.el('div', '', { style: 'font-family:monospace;font-size:13px;font-weight:700;color:var(--accent);margin-bottom:4px;word-break:break-all' });
-    top.textContent = ap.address;
+    top.textContent = proxyUrl(ap);
     body.innerHTML = '';
     body.appendChild(top);
 
@@ -308,11 +308,21 @@ router.register('proxy-pool', (container) => {
     const proto = (p.protocol || 'http').toLowerCase();
     if (proto === 'socks5') return 'SOCKS5';
     if (proto === 'socks4') return 'SOCKS4';
+    if (proto === 'tor' || p.address.includes('.onion')) return 'TOR';
     if (p.supports_connect) return 'HTTPS';
     return 'HTTP';
   }
 
-  const PROTO_GROUP_ORDER = ['HTTP', 'HTTPS', 'SOCKS4', 'SOCKS5'];
+  function proxyUrl(p) {
+    const proto = (p.protocol || 'http').toLowerCase();
+    if (proto === 'socks5') return `socks5://${p.address}`;
+    if (proto === 'socks4') return `socks4://${p.address}`;
+    if (proto === 'tor' || p.address.includes('.onion')) return `tor://${p.address}`;
+    if (p.supports_connect) return `https://${p.address}`;
+    return `http://${p.address}`;
+  }
+
+  const PROTO_GROUP_ORDER = ['HTTP', 'HTTPS', 'SOCKS4', 'SOCKS5', 'TOR'];
   const PROTO_GROUP_COLORS = {
     HTTP: 'var(--info)',
     HTTPS: '#8b5cf6',
@@ -394,7 +404,7 @@ router.register('proxy-pool', (container) => {
           const exitFlag = hasDiff ? (ui.flag(p.egress_country_code || p.country_code) || '') : '';
           return [
             `<span style="color:var(--text-muted)">${i+1}</span>`,
-            `<span class="addr" style="font-size:10px">${p.address}</span>`,
+            `<span class="addr" style="font-size:10px">${proxyUrl(p)}</span>`,
             srvFlag,
             exitFlag,
             p.ssl_supported ? '<span style="color:#06b6d4;font-weight:600;font-size:10px">✓</span>' : '<span style="color:var(--text-muted)">—</span>',
@@ -448,7 +458,7 @@ router.register('proxy-pool', (container) => {
         const exitFlag = hasDiff ? (ui.flag(p.egress_country_code || p.country_code) || '') : '';
         return [
           `<span style="color:var(--text-muted)">${i+1}</span>`,
-          `<span class="addr" style="font-size:10px">${p.address}</span>`,
+          `<span class="addr" style="font-size:10px">${proxyUrl(p)}</span>`,
           srvFlag,
           exitFlag,
           p.ssl_supported ? '<span style="color:#06b6d4;font-weight:600;font-size:10px">✓</span>' : '<span style="color:var(--text-muted)">—</span>',
