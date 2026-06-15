@@ -1,5 +1,6 @@
 import json
 import hunt
+import sqlite3
 
 
 class TestStateLoading:
@@ -148,3 +149,27 @@ class TestWorkingFileLoading:
         r = state.ratings["1.2.3.4:8080"]
         assert r.last_latency == 0.0
         assert r.latency_count == 1
+
+
+class TestDbRecovery:
+    def test_stats_db_recovers_after_file_deletion(self, state, tmp_data_dir):
+        r = hunt.ProxyRating(address="1.2.3.4:8080", last_status="ok", checks_total=1, checks_ok=1)
+        state.ratings["1.2.3.4:8080"] = r
+        (tmp_data_dir / "stats.db").unlink()
+        state._push_history()
+        conn = sqlite3.connect(str(tmp_data_dir / "stats.db"))
+        rows = conn.execute("SELECT alive FROM history").fetchall()
+        conn.close()
+        assert len(rows) == 1
+
+    def test_state_db_recovers_after_file_deletion(self, state, tmp_data_dir):
+        r = hunt.ProxyRating(address="1.2.3.4:8080", last_status="ok", checks_total=1, checks_ok=1)
+        state.ratings["1.2.3.4:8080"] = r
+        (tmp_data_dir / "state.db").unlink()
+        state._save_state()
+        conn = sqlite3.connect(str(tmp_data_dir / "state.db"))
+        tables = [t[0] for t in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")]
+        conn.close()
+        assert "ratings" in tables
+        assert "blacklist" in tables
+        assert "runtime_state" in tables

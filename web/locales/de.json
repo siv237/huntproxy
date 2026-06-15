@@ -293,6 +293,7 @@
       "selectUpstreamProxy": "Vorgeschalteten Proxy auswählen",
       "hideNoHttps": "Ohne HTTPS ausblenden",
       "hideMitm": "MITM-Verdächtige ausblenden",
+      "hideBlacklisted": "Blacklisted ausblenden",
       "groupByProtocol": "Nach Protokoll gruppieren",
       "clientLog": "Client-Protokoll",
       "proxyNotStarted": "Proxy nicht gestartet",

@@ -69,7 +69,9 @@ class TestUpdateRating:
         r = state.ratings["1.2.3.4:8080"]
         assert r.ip_blacklist_reason != ""
         assert r.is_blacklisted is True
-        assert r.score == 0.0
+        assert r.ip_blacklist_hits == 1
+        # IP-blacklist is no longer a hard sentence; score is reduced but positive.
+        assert r.score > 0.0
 
     def test_update_rating_accumulates_multiple_checks(self):
         state = hunt.HuntState({"ip_blacklists": {"enabled": False}})

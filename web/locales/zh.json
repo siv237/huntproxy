@@ -293,6 +293,7 @@
       "selectUpstreamProxy": "选择上游代理",
       "hideNoHttps": "隐藏非HTTPS",
       "hideMitm": "隐藏MITM嫌疑",
+      "hideBlacklisted": "隐藏黑名单",
       "groupByProtocol": "按协议分组",
       "clientLog": "客户端日志",
       "proxyNotStarted": "代理未启动",

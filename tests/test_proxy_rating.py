@@ -18,10 +18,21 @@ class TestProxyRating:
         r.in_blacklist = True
         assert r.score == 0.0
 
-    def test_score_is_zero_for_ip_blacklisted(self):
+    def test_score_is_reduced_for_ip_blacklisted(self):
         r = hunt.ProxyRating(address="1.2.3.4:8080", checks_total=1, checks_ok=1, last_status="ok")
         r.ip_blacklist_reason = "exit IP blacklisted"
-        assert r.score == 0.0
+        r.ip_blacklist_hits = 1
+        assert r.score > 0.0
+        assert r.score < 100.0
+
+    def test_score_decreases_with_more_ip_blacklist_hits(self):
+        r = hunt.ProxyRating(address="1.2.3.4:8080", checks_total=1, checks_ok=1, last_status="ok")
+        r.ip_blacklist_reason = "exit IP blacklisted"
+        r.ip_blacklist_hits = 1
+        score_one = r.score
+        r.ip_blacklist_hits = 3
+        score_three = r.score
+        assert score_one > score_three > 0.0
 
     def test_score_is_positive_for_ok(self):
         r = hunt.ProxyRating(address="1.2.3.4:8080", checks_total=1, checks_ok=1, last_status="ok")

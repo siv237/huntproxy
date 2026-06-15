@@ -40,8 +40,8 @@ class TestIpBlacklist:
     def test_reason_includes_source_name(self, state):
         text = "1.2.3.4\n"
         state._parse_ip_blacklist(text, "test", "Test Source")
-        _, reason = state._is_ip_blacklisted("1.2.3.4")
-        assert "Test Source" in reason
+        _, sources = state._is_ip_blacklisted("1.2.3.4")
+        assert any("Test Source" in s.get("source_name", "") for s in sources)
 
     def test_ipv6_support(self, state):
         text = "2001:db8::/32\n"
@@ -58,6 +58,18 @@ class TestIpBlacklist:
         state._apply_ip_blacklist_to_proxy("1.2.3.4:8080", "8.8.8.8")
         assert r.ip_blacklist_reason == "blacklist from Test Source"
         assert r.is_blacklisted is True
+
+    def test_multiple_sources_increase_ip_blacklist_hits(self, state):
+        state._parse_ip_blacklist("8.8.8.8\n", "src1", "Source 1")
+        state._parse_ip_blacklist("8.8.8.8\n", "src2", "Source 2")
+        r = hunt.ProxyRating(address="1.2.3.4:8080", last_status="ok", checks_total=1, checks_ok=1)
+        r.egress_ip = "8.8.8.8"
+        state.ratings["1.2.3.4:8080"] = r
+        state._apply_ip_blacklist_to_proxy("1.2.3.4:8080", "8.8.8.8")
+        assert r.ip_blacklist_hits == 2
+        assert len(r.ip_blacklist_sources) == 2
+        assert "Source 1" in r.ip_blacklist_reason
+        assert "Source 2" in r.ip_blacklist_reason
 
     def test_apply_ip_blacklist_to_proxy_clears_when_removed(self, state):
         text = "8.8.8.8\n"
