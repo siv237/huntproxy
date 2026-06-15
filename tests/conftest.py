@@ -3,14 +3,21 @@ import tempfile
 import asyncio
 from pathlib import Path
 import sys
+import importlib
 import hunt
+import hunt.constants
+import hunt.state
+import hunt.server
 
 
 @pytest.fixture
 def tmp_data_dir(monkeypatch):
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
-        monkeypatch.setattr(hunt, "DATA_DIR", tmp_path)
+        # DATA_DIR is re-bound in several modules by the split; patch all of them.
+        _main_module = importlib.import_module("hunt.main")
+        for module in (hunt, hunt.constants, hunt.state, hunt.server, _main_module):
+            monkeypatch.setattr(module, "DATA_DIR", tmp_path)
         yield tmp_path
 
 

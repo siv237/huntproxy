@@ -17,7 +17,14 @@ This script ensures the local `.venv` exists, installs `pytest` and `pytest-asyn
 
 ## Project structure
 
-- `hunt.py` — main application (asyncio controller + HTTP/Web UI server + proxy runners). All backend logic lives here.
+- `hunt.py` — thin backward-compatible entry point; it re-exports the public API from the `hunt` package and runs `main()`.
+- `hunt/` — functional backend package split from the former `hunt.py` monolith:
+  - `state.py` — `HuntState` class, composed from focused mixins.
+  - `db.py`, `events.py`, `snapshot.py`, `health.py`, `checking.py`, `blacklist.py`, `ip_blacklist.py`, `proxy_sources.py`, `ip_blacklist_sources.py`, `routing.py`, `custom_proxies.py` — mixin modules that make up `HuntState`.
+  - `models.py` — `ProxyRating` dataclass.
+  - `proxy_runner.py` / `socks5_runner.py` — local proxy servers.
+  - `server.py` — `HuntServer` and HTTP routing.
+  - `constants.py`, `geo.py`, `logging_config.py`, `main.py` — shared helpers and entry logic.
 - `web/` — static frontend (`index.html`, `css/`, `js/`, `locales/`).
 - `tests/` — pytest suite. Fixtures are in `tests/conftest.py`.
 - `data/` — runtime state, logs, and downloaded lists.

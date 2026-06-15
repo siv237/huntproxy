@@ -15,7 +15,7 @@ install() {
   need_root
   info "Installing to $INSTALL_DIR"
   mkdir -p "$INSTALL_DIR/data"
-  cp -r "$SCRIPT_DIR"/{hunt.py,hunt.sh,daemon.sh,config.yaml,requirements.txt} "$INSTALL_DIR/"
+  cp -r "$SCRIPT_DIR"/{hunt.py,hunt,hunt.sh,daemon.sh,config.yaml,requirements.txt} "$INSTALL_DIR/"
 
   ln -sf "$INSTALL_DIR/hunt.sh" "$BIN_DIR/huntproxy"
   ln -sf "$SCRIPT_DIR/setup_iptables.sh" "$BIN_DIR/huntproxy-iptables"

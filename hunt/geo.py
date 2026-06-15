@@ -1,0 +1,101 @@
+"""Functional split of the huntproxy backend."""
+
+
+
+def country_flag(code: str) -> str:
+    if not code or len(code) != 2:
+        return "🏳"
+    base = 0x1F1E6 - ord('A')
+    return chr(base + ord(code[0])) + chr(base + ord(code[1]))
+
+def country_code_from_name(name: str) -> str:
+    mapping = {
+        "United States": "US", "United Kingdom": "GB", "Germany": "DE",
+        "France": "FR", "Netherlands": "NL", "The Netherlands": "NL",
+        "Japan": "JP", "Canada": "CA", "Russia": "RU", "China": "CN",
+        "Brazil": "BR", "Spain": "ES", "Italy": "IT", "Poland": "PL",
+        "Ukraine": "UA", "India": "IN", "Australia": "AU", "Singapore": "SG",
+        "Korea": "KR", "South Korea": "KR", "Mexico": "MX", "Sweden": "SE",
+        "Norway": "NO", "Finland": "FI", "Switzerland": "CH",
+        "Hong Kong": "HK", "Taiwan": "TW", "Ireland": "IE", "Denmark": "DK",
+        "Greece": "GR", "Portugal": "PT", "Romania": "RO", "Turkey": "TR",
+        "Türkiye": "TR", "Thailand": "TH", "Vietnam": "VN", "Malaysia": "MY",
+        "Indonesia": "ID", "Philippines": "PH", "Bangladesh": "BD",
+        "Nigeria": "NG", "Zimbabwe": "ZW", "United Arab Emirates": "AE",
+        "Kazakhstan": "KZ", "Uzbekistan": "UZ", "Latvia": "LV",
+        "Ecuador": "EC", "Syria": "SY", "Tanzania": "TZ",
+        "Argentina": "AR", "Belgium": "BE", "Bulgaria": "BG",
+        "Chile": "CL", "Colombia": "CO", "Egypt": "EG", "Iran": "IR",
+        "Iraq": "IQ", "Kenya": "KE", "Lebanon": "LB", "Morocco": "MA",
+        "Myanmar": "MM", "Pakistan": "PK", "Panama": "PA", "Peru": "PE",
+        "Saudi Arabia": "SA", "South Africa": "ZA", "Venezuela": "VE",
+        "Austria": "AT", "Belarus": "BY", "Cambodia": "KH", "Czechia": "CZ",
+        "Dominican Republic": "DO", "Ghana": "GH", "Guatemala": "GT",
+        "Hungary": "HU", "Paraguay": "PY", "Qatar": "QA", "Slovakia": "SK",
+        "Albania": "AL", "Georgia": "GE", "Kosovo": "XK", "Moldova": "MD",
+        "Senegal": "SN", "Cyprus": "CY", "Israel": "IL", "Lithuania": "LT",
+        "New Zealand": "NZ", "Iceland": "IS", "Croatia": "HR",
+        "Slovenia": "SI", "Serbia": "RS", "Bosnia": "BA",
+        "North Macedonia": "MK", "Algeria": "DZ", "Tunisia": "TN",
+        "Ethiopia": "ET", "Uganda": "UG", "Mozambique": "MZ",
+        "Nepal": "NP", "Sri Lanka": "LK", "Afghanistan": "AF",
+        "Jordan": "JO", "Kuwait": "KW", "Bahrain": "BH", "Oman": "OM",
+        "Costa Rica": "CR", "Uruguay": "UY", "Bolivia": "BO",
+        "Honduras": "HN", "El Salvador": "SV", "Nicaragua": "NI",
+        "Jamaica": "JM", "Trinidad": "TT", "Barbados": "BB",
+        "Bahamas": "BS", "Bermuda": "BM", "Cayman Islands": "KY",
+        "Palestine": "PS", "Maldives": "MV", "Rwanda": "RW",
+        "Zambia": "ZM", "Botswana": "BW", "Namibia": "NA",
+        "Congo": "CG", "DR Congo": "CD", "Cameroon": "CM",
+        "Ivory Coast": "CI", "Côte d'Ivoire": "CI", "Senegal": "SN",
+        "Mali": "ML", "Burkina Faso": "BF", "Niger": "NE",
+        "Chad": "TD", "Gabon": "GA", "Mauritius": "MU",
+        "Madagascar": "MG", "Papua New Guinea": "PG",
+        "Fiji": "FJ", "Samoa": "WS", "Tonga": "TO",
+    }
+    return mapping.get(name, "")
+
+def country_name_from_code(code: str) -> str:
+    mapping = {
+        "US": "United States", "GB": "United Kingdom", "DE": "Germany",
+                "FR": "France", "NL": "The Netherlands", "JP": "Japan", "CA": "Canada",
+        "RU": "Russia", "CN": "China", "BR": "Brazil", "ES": "Spain",
+        "IT": "Italy", "PL": "Poland", "UA": "Ukraine", "IN": "India",
+        "AU": "Australia", "SG": "Singapore", "KR": "South Korea",
+        "MX": "Mexico", "SE": "Sweden", "NO": "Norway", "FI": "Finland",
+        "CH": "Switzerland", "HK": "Hong Kong", "TW": "Taiwan",
+        "IE": "Ireland", "DK": "Denmark", "GR": "Greece", "PT": "Portugal",
+        "RO": "Romania", "TR": "Turkey", "TH": "Thailand", "VN": "Vietnam",
+        "MY": "Malaysia", "ID": "Indonesia", "PH": "Philippines",
+        "BD": "Bangladesh", "NG": "Nigeria", "ZW": "Zimbabwe",
+        "AE": "United Arab Emirates", "KZ": "Kazakhstan", "UZ": "Uzbekistan",
+        "LV": "Latvia", "EC": "Ecuador", "SY": "Syria", "TZ": "Tanzania",
+        "AR": "Argentina", "BE": "Belgium", "BG": "Bulgaria", "CL": "Chile",
+        "CO": "Colombia", "EG": "Egypt", "IR": "Iran", "IQ": "Iraq",
+        "KE": "Kenya", "LB": "Lebanon", "MA": "Morocco", "MM": "Myanmar",
+        "PK": "Pakistan", "PA": "Panama", "PE": "Peru", "SA": "Saudi Arabia",
+        "ZA": "South Africa", "VE": "Venezuela", "AT": "Austria",
+        "BY": "Belarus", "KH": "Cambodia", "CZ": "Czechia",
+        "DO": "Dominican Republic", "GH": "Ghana", "GT": "Guatemala",
+        "HU": "Hungary", "PY": "Paraguay", "QA": "Qatar", "SK": "Slovakia",
+        "AL": "Albania", "GE": "Georgia", "XK": "Kosovo", "MD": "Moldova",
+        "SN": "Senegal", "CY": "Cyprus", "IL": "Israel", "LT": "Lithuania",
+        "NZ": "New Zealand", "IS": "Iceland", "HR": "Croatia",
+        "SI": "Slovenia", "RS": "Serbia", "BA": "Bosnia",
+        "MK": "North Macedonia", "DZ": "Algeria", "TN": "Tunisia",
+        "ET": "Ethiopia", "UG": "Uganda", "MZ": "Mozambique",
+        "NP": "Nepal", "LK": "Sri Lanka", "AF": "Afghanistan",
+        "JO": "Jordan", "KW": "Kuwait", "BH": "Bahrain", "OM": "Oman",
+        "CR": "Costa Rica", "UY": "Uruguay", "BO": "Bolivia",
+        "HN": "Honduras", "SV": "El Salvador", "NI": "Nicaragua",
+        "JM": "Jamaica", "TT": "Trinidad", "BB": "Barbados",
+        "BS": "Bahamas", "BM": "Bermuda", "KY": "Cayman Islands",
+        "PS": "Palestine", "MV": "Maldives", "RW": "Rwanda",
+        "ZM": "Zambia", "BW": "Botswana", "NA": "Namibia",
+        "CG": "Congo", "CD": "DR Congo", "CM": "Cameroon",
+        "CI": "Ivory Coast", "ML": "Mali", "BF": "Burkina Faso",
+        "NE": "Niger", "TD": "Chad", "GA": "Gabon", "MU": "Mauritius",
+        "MG": "Madagascar", "PG": "Papua New Guinea", "FJ": "Fiji",
+        "WS": "Samoa", "TO": "Tonga",
+    }
+    return mapping.get(code, code)
