@@ -31,5 +31,10 @@
    - В `hunt/models.py` в формулу score добавлен бонус: `+10` за `ssl_supported`, дополнительно `+5` за `supports_connect`.
    - Добавлен тест `test_score_bonus_for_ssl` в `tests/test_proxy_rating.py`.
 
+8. [DONE] График Availability (last 24h) в Connectivity не рисуется по времени и не показывает реальные отвалы
+   - `web/js/pages/connectivity.js` `updateGraph()` переписан: история канарейки агрегируется в корзины по 10 минут за последние 24 часа, каждая корзина отображается столбиком (зелёный — все проверки OK, красный — был отказ, серый — нет данных).
+   - Добавлены временные метки по оси X каждые 4 часа и текстовая сводка: uptime за 24ч и количество ok/fail проверок.
+   - Добавлены i18n-ключи `uptime24h` и `okFail` в `web/locales/en.json` и `ru.json`.
+
 ----
 Все тесты проходят: 143 passed.

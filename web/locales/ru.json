@@ -533,6 +533,8 @@
       "onlineLegend": "Доступен",
       "offlineLegend": "Недоступен",
       "noDataYet": "Пока нет данных",
+      "uptime24h": "Доступность за 24ч: {pct}%",
+      "okFail": "{up} ок / {down} отказ",
       "eventLog": "Журнал событий",
       "waitingForEvents": "Ожидание событий...",
       "internetWentOffline": "Интернет стал недоступен",

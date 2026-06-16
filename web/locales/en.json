@@ -533,6 +533,8 @@
       "onlineLegend": "Online",
       "offlineLegend": "Offline",
       "noDataYet": "No data yet",
+      "uptime24h": "24h uptime: {pct}%",
+      "okFail": "{up} ok / {down} fail",
       "eventLog": "Event Log",
       "waitingForEvents": "Waiting for events...",
       "internetWentOffline": "Internet went offline",

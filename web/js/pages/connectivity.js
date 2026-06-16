@@ -292,21 +292,89 @@ router.register('connectivity', (container) => {
     const colorOk = getComputedStyle(document.documentElement).getPropertyValue('--success').trim() || '#1a7f37';
     const colorFail = getComputedStyle(document.documentElement).getPropertyValue('--danger').trim() || '#cf222e';
     const colorMuted = getComputedStyle(document.documentElement).getPropertyValue('--text-muted').trim() || '#888';
+    const colorBorder = getComputedStyle(document.documentElement).getPropertyValue('--border').trim() || '#d0d7de';
+
+    const pad = { top: 18, right: 4, bottom: 24, left: 4 };
+    const chartW = W - pad.left - pad.right;
+    const chartH = H - pad.top - pad.bottom;
+
     if (!hist || !hist.length) {
       ctx.fillStyle = colorMuted; ctx.font = '12px sans-serif'; ctx.textAlign = 'center';
       ctx.fillText(t('page.connectivity.noDataYet'), W / 2, H / 2); return;
     }
-    const pad = 4;
-    const barH = H - 24;
-    const barW = Math.max(2, (W - pad * 2) / hist.length - 1);
-    for (let i = 0; i < hist.length; i++) {
-      const x = pad + i * (barW + 1);
-      ctx.fillStyle = hist[i].alive ? colorOk : colorFail;
-      ctx.fillRect(x, 10, barW, barH);
+
+    const now = Date.now();
+    const start = now - 24 * 3600 * 1000;
+    const bucketMs = 10 * 60 * 1000;
+    const bucketCount = 24 * 6; // 144 buckets of 10 min
+    const buckets = Array.from({ length: bucketCount }, (_, i) => ({
+      start: start + i * bucketMs,
+      end: start + (i + 1) * bucketMs,
+      up: 0,
+      down: 0,
+    }));
+
+    let totalUp = 0, totalDown = 0;
+    hist.forEach(e => {
+      const ts = e.ts * 1000;
+      if (ts < start || ts > now) return;
+      const idx = Math.min(bucketCount - 1, Math.floor((ts - start) / bucketMs));
+      if (buckets[idx]) {
+        if (e.alive) { buckets[idx].up++; totalUp++; }
+        else { buckets[idx].down++; totalDown++; }
+      }
+    });
+
+    const barW = chartW / bucketCount;
+    for (let i = 0; i < bucketCount; i++) {
+      const b = buckets[i];
+      const x = pad.left + i * barW;
+      if (b.up + b.down === 0) {
+        ctx.fillStyle = colorBorder;
+        ctx.fillRect(x + 1, pad.top + chartH - 2, barW - 2, 2);
+      } else if (b.down > 0) {
+        ctx.fillStyle = colorFail;
+        ctx.fillRect(x + 1, pad.top, barW - 2, chartH);
+      } else {
+        ctx.fillStyle = colorOk;
+        ctx.fillRect(x + 1, pad.top, barW - 2, chartH);
+      }
     }
-    ctx.fillStyle = colorMuted; ctx.font = '9px sans-serif';
-    ctx.textAlign = 'left'; ctx.fillText(new Date(hist[0].ts * 1000).toLocaleTimeString(), pad, H - 2);
-    ctx.textAlign = 'right'; ctx.fillText(new Date(hist[hist.length - 1].ts * 1000).toLocaleTimeString(), W - pad, H - 2);
+
+    // Grid lines
+    ctx.strokeStyle = colorBorder;
+    ctx.lineWidth = 1;
+    ctx.setLineDash([2, 2]);
+    for (let i = 1; i <= 3; i++) {
+      const y = pad.top + (chartH / 4) * i;
+      ctx.beginPath();
+      ctx.moveTo(pad.left, y);
+      ctx.lineTo(W - pad.right, y);
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+
+    // Time labels every 4 hours
+    ctx.fillStyle = colorMuted;
+    ctx.font = '9px sans-serif';
+    ctx.textAlign = 'center';
+    for (let h = 0; h <= 24; h += 4) {
+      const idx = h * 6;
+      if (idx >= bucketCount) continue;
+      const x = pad.left + idx * barW + (barW / 2);
+      const d = new Date(start + h * 3600 * 1000);
+      ctx.fillText(`${d.getHours().toString().padStart(2, '0')}:00`, x, H - 8);
+    }
+
+    // Uptime summary
+    const total = totalUp + totalDown;
+    const uptime = total ? Math.round(totalUp / total * 100) : 0;
+    ctx.fillStyle = colorMuted;
+    ctx.font = '11px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText(t('page.connectivity.uptime24h', { pct: uptime }), pad.left, 12);
+    ctx.textAlign = 'right';
+    ctx.fillText(t('page.connectivity.okFail', { up: totalUp, down: totalDown }), W - pad.right, 12);
   }
 
   build();
