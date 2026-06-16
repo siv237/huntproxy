@@ -30,13 +30,64 @@ if [ ! -f "$VENV/installed.flag" ]; then
 fi
 
 PID_FILE="$DIR/.hunt.pid"
-if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
-    echo "[*] Stopping existing daemon (pid $(cat "$PID_FILE"))..."
-    kill "$(cat "$PID_FILE")" 2>/dev/null || true
-    sleep 0.5
+
+kill_pids() {
+    local pids="$1"
+    local sig="${2:-TERM}"
+    [ -z "$pids" ] && return 0
+    for pid in $pids; do
+        [ "$pid" = "$$" ] && continue
+        kill -s "$sig" "$pid" 2>/dev/null || true
+    done
+}
+
+kill_existing() {
+    local pids=""
+
+    # PID from previous run
+    if [ -f "$PID_FILE" ]; then
+        local old_pid
+        old_pid=$(cat "$PID_FILE" 2>/dev/null) || true
+        if [ -n "$old_pid" ] && kill -0 "$old_pid" 2>/dev/null; then
+            pids="$pids $old_pid"
+        fi
+    fi
+
+    # Anything listening on our port
+    local port_pids
+    port_pids=$(lsof -ti tcp:"$PORT" 2>/dev/null || ss -ltnp 2>/dev/null | grep -oP 'pid=\K[0-9]+' | sort -u || true)
+    if [ -n "$port_pids" ]; then
+        pids="$pids $port_pids"
+    fi
+
+    # Any other hunt.py processes from this project directory
+    local hunt_pids
+    hunt_pids=$(pgrep -f "python.*$DIR/hunt\.py" 2>/dev/null || true)
+    if [ -n "$hunt_pids" ]; then
+        pids="$pids $hunt_pids"
+    fi
+
+    # Deduplicate and filter
+    pids=$(echo "$pids" | tr ' ' '\n' | grep -E '^[0-9]+$' | sort -u | tr '\n' ' ')
+    [ -z "$pids" ] && return 0
+
+    echo "[*] Stopping existing hunt processes (pids:$pids)..."
+    kill_pids "$pids" TERM
+    for _ in {1..10}; do
+        local still_alive=""
+        for pid in $pids; do
+            kill -0 "$pid" 2>/dev/null && still_alive="$still_alive $pid"
+        done
+        [ -z "$still_alive" ] && break
+        sleep 0.5
+    done
+    kill_pids "$still_alive" KILL
+    sleep 0.2
     rm -f "$PID_FILE"
-    echo "[*] Daemon stopped."
-fi
+    echo "[*] Existing processes stopped."
+}
+
+kill_existing
 
 echo "[*] Starting hunt web UI at http://$HOST:$PORT/"
 if [ "$HOST" = "0.0.0.0" ]; then
