@@ -8,8 +8,10 @@
    - Добавлены i18n-ключи `reverse` и `autoScroll` в `web/locales/en.json` и `ru.json`.
 
 3. [DONE] Analytics Proxy performance analytics and trends там явно с графиками чтото не так толстенные линии как будто они отмасштабированны и вообще оцени их адрекватность и приведи в порядок
-   - В `web/js/charts.js` линии графиков получили `vector-effect="non-scaling-stroke"` и толщина уменьшена до 1.5px, чтобы линии не казались толстыми при масштабировании SVG.
-   - В `web/js/pages/analytics.js` кастомные SVG-графики (pool size, bandwidth) также используют `vector-effect="non-scaling-stroke"` и толщину 1.5px.
+   - Полностью переписан `web/js/pages/analytics.js`: все графики теперь рисуются через единую функцию `charts.lineChart` / `charts.multiLineChart`.
+   - Добавлена `charts.multiLineChart` в `web/js/charts.js` для многосерийных графиков (pool size — alive/dead, bandwidth — in/out) с легендой.
+   - Все графики имеют одинаковые отступы, оси Y с подписями, сетку и корректное масштабирование; SVG растягивается на всю высоту карточки (`flex:1; min-height:0`).
+   - `web/css/layout.css`: для SVG внутри карточек добавлен `max-height: 100%`, чтобы графики не обрезались и не выходили за пределы карточек.
 
 4. [DONE] Connectivity Event Log постоянно стирается хотя должен хранить всю историю
    - `hunt/snapshot.py` `get_activity()` теперь читает события из SQLite (`events` таблица), а не только из in-memory списка, поэтому история сохраняется между сессиями/перезапусками.
