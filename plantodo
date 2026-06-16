@@ -1,42 +1,33 @@
-1. [DONE] При запуске перепроверять прокси из основного листа если им уже больше часа.
-   - Добавлена `_revalidate_stale_proxies()` в `hunt/health.py`.
-   - При запуске в `hunt/main.py` запускается фоновая задача, которая перепроверяет прокси из `working.txt` (если файл старше часа) и любые alive-прокси с `last_check` старше часа.
+1. [DONE] почему рейтинги в процентах это бред рейтинги в балах, процент чего крутизины блин?
+   - В `web/js/pages/overview.js` убран знак % у числового значения score в таблице топ-прокси.
+   - Рейтинг теперь отображается в баллах, а не как процент.
 
-2. [DONE] Решить проблемы с определением скорости через ssl.
-   - В `hunt/checking.py` добавлена `_https_speed_single()`.
-   - Для SSL-прокси теперь делается CONNECT к целевому хосту `:443`, туннель апгрейдится через `start_tls`, и замеряется HTTPS-скорость (раньше использовался HTTP :80 и не работал с HTTPS-редиректами).
+2. [DONE] Logs System logs and activity вообще не заполнен там надо нормально сделать с фильтрами сортировками и все такое нормальный такой контроль логов
+   - `hunt/logging_config.py` теперь пишет логи в `data/huntproxy.log` в дополнение к stdout.
+   - `web/js/pages/logs.js` добавлены переключатели "Сначала новые" / "Авто-прокрутка" и авто-скролл к самым свежим строкам.
+   - Добавлены i18n-ключи `reverse` и `autoScroll` в `web/locales/en.json` и `ru.json`.
 
-3. [DONE] Разобраться со списками проксей не везде влезает адаптировать динамически ширину.
-   - В `web/css/components.css` `.table` перешла на `width: auto; min-width: 100%; table-layout: auto`.
-   - В `web/js/components.js` ширины столбцов теперь задаются как `min-width`, а не фиксированный `width`, таблицы адаптируются к контейнеру с горизонтальным скроллом при необходимости.
+3. [DONE] Analytics Proxy performance analytics and trends там явно с графиками чтото не так толстенные линии как будто они отмасштабированны и вообще оцени их адрекватность и приведи в порядок
+   - В `web/js/charts.js` линии графиков получили `vector-effect="non-scaling-stroke"` и толщина уменьшена до 1.5px, чтобы линии не казались толстыми при масштабировании SVG.
+   - В `web/js/pages/analytics.js` кастомные SVG-графики (pool size, bandwidth) также используют `vector-effect="non-scaling-stroke"` и толщину 1.5px.
 
-4. [DONE] Решить наконец с правильностью отображения SSL-прокси: они обычно пропускают через себя HTTP, а у нас все отмечены как без HTTPS.
-   - Бэкенд: `_update_rating()` теперь ставит `protocol = "https"` для прокси с `ssl_supported=True` (если это не SOCKS).
-   - Фронтенд: `web/js/pages/proxy-pool.js` — `proxyUrl()` и `proxyProtoGroup()` теперь считают `ssl_supported` признаком HTTPS, формируют URL `https://` и бейдж HTTPS.
+4. [DONE] Connectivity Event Log постоянно стирается хотя должен хранить всю историю
+   - `hunt/snapshot.py` `get_activity()` теперь читает события из SQLite (`events` таблица), а не только из in-memory списка, поэтому история сохраняется между сессиями/перезапусками.
+   - `web/js/pages/connectivity.js` лог событий теперь загружается из `/api/activity` каждые 10 секунд, фильтруя события internet/ISP/canary.
+   - Фронтенд больше не ведет отдельный in-memory eventLog — источник правды бэкенд.
 
-5. [DONE] В Client Log показывать не только куда, а через что — цепочку выхода через какой прокси или прямой с учетом роутинга.
-   - Бэкенд: `_connect_by_route()` в `hunt/proxy_runner.py` теперь собирает `chain` (`direct`, `custom:...`, `proxy:...`, `pool:...`).
-   - Логи записывают цепочку (например, `custom:foo (disabled) → direct`).
-   - Фронтенд: `web/js/pages/proxy-pool.js` и `web/js/pages/proxy-control.js` теперь всегда показывают upstream/цепочку, включая `direct`.
+5. [DONE] Логотип надо сделать кликабельным на главную
+   - В `web/index.html` логотип в `sidebar-brand` обернут в ссылку, которая вызывает `router.navigate('overview')`.
 
----
-Дополнительно (исправленные критические баги из аудита):
-- Разделены ручной и скачанный IP-блэклист: `in_blacklist` в `to_dict()` только для ручного; IP-блэклист не исключает прокси из alive/working.txt, а только снижает score.
-- `blacklist_remove()` не сбрасывает IP-блэклист, переприменяет проверку egress IP.
-- Добавлено сохранение состояния в `_update_rating()` (каждые 25 обновлений), `proxy_runner`/`socks5_runner` start/stop и API `/api/proxy/start|stop`/`/api/settings/country_filter`.
-- Маршрут `proxy:<addr>` корректно отказывается работать с ручно заблокированными прокси.
-- Исправлена загрузка legacy-состояния и `blacklist.txt` (сохраняются/восстанавливаются `in_blacklist` и `blacklist_reason`).
-- Исправлен `hunt.sh`:
-  - Убран широкий `pgrep`, который убивал любой Python-процесс с `hunt.py` в командной строке.
-  - По умолчанию `./hunt.sh` больше не убивает ничего; если порт занят, выводит предупреждение и завершается.
-  - Убийство предыдущего процесса только по явному флагу `./hunt.sh --kill` (или `-K`).
-  - Для поиска процесса на порту теперь сначала используется `ss -ltnp` (только слушатели), `lsof` — фолбэк.
-  - Перед `exec` записывается `.hunt.pid`.
-- В `hunt/main.py` возвращен `import argparse`, который отсутствовал и ломал запуск.
-- Исправлена работа HTTP-прокси через `hunt/proxy_runner.py`:
-  - Прокси, которые не поддерживают `CONNECT` (`supports_connect=false`), теперь корректно используются для HTTP-запросов: запрос передается напрямую с полным URL (`GET http://target/...`), а не пытается создать туннель.
-  - Для HTTPS-запросов через такие прокси возвращается 502 (корректное поведение, т.к. без CONNECT HTTPS невозможен).
-  - Добавлен параметр `need_connect` в `_connect_by_route()` и `_connect_upstream()`; для HTTP-форвардинга он `False`, для HTTPS/SOCKS — `True`.
-  - Исправлена ошибка в `_handle_http_forward()`: заголовки клиента теперь читаются и передаются upstream всегда, а не только для относительных URL.
-  - Добавлен тест `test_connect_by_route_http_non_connect_returns_raw`.
-- Все тесты проходят: 142 passed.
+6. [DONE] в Proxies нет SSL надо добавить не работает быстрой прокси
+   - В `web/js/pages/proxies.js` добавлена колонка SSL в таблицу прокси, в поиск добавлен фильтр по `ssl`.
+   - Кнопка "Sel" теперь не только выбирает апстрим, но и автоматически запускает локальный прокси, если он не запущен (аналогично Overview).
+   - В `hunt/server.py` исправлено группирование по протоколу: HTTPS теперь определяется по `ssl_supported` или `protocol === 'https'`, а не только по `supports_connect`.
+   - В `web/js/pages/overview.js`, `web/js/pages/hunt.js` и legacy-страницах `hunt/server.py` флаг HTTPS теперь показывается для всех SSL-прокси, включая те, что не поддерживают CONNECT.
+
+7. [DONE] за SSL надо давать плюсы как и за скорость
+   - В `hunt/models.py` в формулу score добавлен бонус: `+10` за `ssl_supported`, дополнительно `+5` за `supports_connect`.
+   - Добавлен тест `test_score_bonus_for_ssl` в `tests/test_proxy_rating.py`.
+
+----
+Все тесты проходят: 143 passed.

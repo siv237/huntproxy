@@ -13,6 +13,9 @@ router.register('logs', (container) => {
     container.style.minHeight = '0';
     container.style.flex = '1';
 
+    state.reverse = state.reverse !== false;
+    state.autoScroll = state.autoScroll !== false;
+
     const filterBar = ui.el('div', '', { style: 'display:flex;gap:8px;flex-wrap:wrap;align-items:center;flex-shrink:0' });
     const search = ui.el('input', '', { type: 'text', placeholder: t('page.logs.filterPlaceholder'), value: state.filter, style: 'padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--bg);color:var(--text-primary);font-size:13px;min-width:220px' });
     search.addEventListener('input', (e) => {
@@ -30,6 +33,21 @@ router.register('logs', (container) => {
        });
        filterBar.appendChild(btn);
      });
+
+    const reverseBtn = ui.el('button', `btn btn-sm ${state.reverse ? 'btn-primary' : 'btn-secondary'}`, { text: t('page.logs.reverse') || 'Newest first' });
+    reverseBtn.addEventListener('click', () => {
+      state.reverse = !state.reverse;
+      reverseBtn.className = `btn btn-sm ${state.reverse ? 'btn-primary' : 'btn-secondary'}`;
+      render();
+    });
+    filterBar.appendChild(reverseBtn);
+
+    const autoScrollBtn = ui.el('button', `btn btn-sm ${state.autoScroll ? 'btn-primary' : 'btn-secondary'}`, { text: t('page.logs.autoScroll') || 'Auto-scroll' });
+    autoScrollBtn.addEventListener('click', () => {
+      state.autoScroll = !state.autoScroll;
+      autoScrollBtn.className = `btn btn-sm ${state.autoScroll ? 'btn-primary' : 'btn-secondary'}`;
+    });
+    filterBar.appendChild(autoScrollBtn);
 
     filterBar.appendChild(ui.el('div', '', { style: 'flex:1' }));
 
@@ -101,8 +119,9 @@ router.register('logs', (container) => {
       return;
     }
 
-    const wrap = ui.el('div', '', { style: 'font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;line-height:1.6;flex:1;min-height:0;overflow-y:auto' });
-    lines.forEach(line => {
+    const displayLines = state.reverse ? lines.slice().reverse() : lines.slice();
+    const wrap = ui.el('div', '', { id: 'logs-lines-wrap', style: 'font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;line-height:1.6;flex:1;min-height:0;overflow-y:auto' });
+    displayLines.forEach(line => {
       const row = ui.el('div', '', { style: 'padding:2px 0;border-bottom:1px solid var(--border-subtle);white-space:pre-wrap;word-break:break-all' });
       let color = 'var(--text-primary)';
       if (line.includes('ERROR')) color = 'var(--danger)';
@@ -113,6 +132,9 @@ router.register('logs', (container) => {
       wrap.appendChild(row);
     });
     card.appendChild(wrap);
+    if (state.reverse && state.autoScroll) {
+      requestAnimationFrame(() => { wrap.scrollTop = wrap.scrollHeight; });
+    }
   }
 
   load();

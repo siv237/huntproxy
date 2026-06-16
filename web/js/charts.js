@@ -20,12 +20,12 @@ const charts = {
     return `
       <svg class="sparkline" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none">
         ${fill ? `<path class="area" d="${areaD}" fill="${color}"/>` : ''}
-        <path d="${pathD}" stroke="${color}" fill="none"/>
+        <path d="${pathD}" stroke="${color}" fill="none" vector-effect="non-scaling-stroke"/>
       </svg>`;
   },
 
   lineChart(data, opts = {}) {
-    const { width = 600, height = 200, color = 'var(--accent)', strokeWidth = 2, fillArea = true, grid = true, labels = [], responsive = false } = opts;
+    const { width = 600, height = 200, color = 'var(--accent)', strokeWidth = 1.5, fillArea = true, grid = true, labels = [], responsive = false } = opts;
     if (!data || data.length < 2) {
       return `<svg ${responsive ? `width="100%" height="100%"` : `width="${width}" height="${height}"`} viewBox="0 0 ${width} ${height}"><text x="${width/2}" y="${height/2}" text-anchor="middle" fill="var(--text-muted)" font-size="12">No data</text></svg>`;
     }
@@ -78,7 +78,7 @@ const charts = {
         ${gridLines}
         ${yText}
         ${fillArea ? `<path d="${areaD}" fill="${color}" fill-opacity="0.1" stroke="none"/>` : ''}
-        <path d="${pathD}" fill="none" stroke="${color}" stroke-width="${strokeWidth}" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="${pathD}" fill="none" stroke="${color}" stroke-width="${strokeWidth}" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
         ${labelText}
       </svg>`;
   },

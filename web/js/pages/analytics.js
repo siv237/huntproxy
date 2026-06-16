@@ -83,9 +83,9 @@ router.register('analytics', (container) => {
         const deadPath = mkPath(dead);
         const innerSvg = `
           ${gridLines}
-          <path d="${alivePath}" fill="none" stroke="var(--success)" stroke-width="2"/>
+          <path d="${alivePath}" fill="none" stroke="var(--success)" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
           <path d="${mkArea(alive, alivePath)}" fill="var(--success)" opacity="0.15"/>
-          <path d="${deadPath}" fill="none" stroke="var(--danger)" stroke-width="2"/>
+          <path d="${deadPath}" fill="none" stroke="var(--danger)" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
           <path d="${mkArea(dead, deadPath)}" fill="var(--danger)" opacity="0.1"/>
           <text x="${pad.left + 10}" y="${pad.top + 2}" fill="var(--success)" font-size="10">${t('page.analytics.alive')}</text>
           <text x="${pad.left + 60}" y="${pad.top + 2}" fill="var(--danger)" font-size="10">${t('page.analytics.dead')}</text>
@@ -135,9 +135,9 @@ router.register('analytics', (container) => {
         const outPath = mkPath(bwOut);
         const innerSvg = `
           ${gridLines}
-          <path d="${inPath}" fill="none" stroke="var(--info)" stroke-width="2"/>
+          <path d="${inPath}" fill="none" stroke="var(--info)" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
           <path d="${inPath} L${(pad.left + cw).toFixed(1)},${pad.top + ch} L${pad.left},${pad.top + ch} Z" fill="var(--info)" opacity="0.1"/>
-          <path d="${outPath}" fill="none" stroke="var(--warning)" stroke-width="2"/>
+          <path d="${outPath}" fill="none" stroke="var(--warning)" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
           <text x="${pad.left + 10}" y="${pad.top + 2}" fill="var(--info)" font-size="10">${t('page.analytics.inKB')}</text>
           <text x="${pad.left + 80}" y="${pad.top + 2}" fill="var(--warning)" font-size="10">${t('page.analytics.outKB')}</text>
           ${[min, (min + max) / 2, max].map((v, i) => {

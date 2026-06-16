@@ -70,8 +70,10 @@ class ProxyRating:
         else:
             lat_score = max(0, 100 - self.latency_avg * 10)
         result = base + lat_score * 0.5
+        if self.ssl_supported:
+            result += 10
         if self.supports_connect:
-            result += 15
+            result += 5
         if self.mitm_suspect:
             result -= 30
         if self.speed_count > 0:

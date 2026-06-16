@@ -40,6 +40,18 @@ class TestProxyRating:
         r.latency_count = 1
         assert r.score > 0.0
 
+    def test_score_bonus_for_ssl(self):
+        r = hunt.ProxyRating(address="1.2.3.4:8080", checks_total=1, checks_ok=1, last_status="ok")
+        r.latency_sum = 0.5
+        r.latency_count = 1
+        base_score = r.score
+        r.ssl_supported = True
+        ssl_score = r.score
+        assert ssl_score > base_score
+        r.supports_connect = True
+        connect_score = r.score
+        assert connect_score > ssl_score
+
     def test_latency_average(self):
         r = hunt.ProxyRating(address="1.2.3.4:8080")
         r.latency_sum = 1.5

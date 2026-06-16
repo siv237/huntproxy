@@ -5,6 +5,7 @@ router.register('connectivity', (container) => {
   let lastAlive = null;
   let lastIp = null;
   let eventLog = [];
+  let eventInterval = null;
 
   function setContainerStyle() {
     container.style.display = 'flex';
@@ -191,16 +192,12 @@ router.register('connectivity', (container) => {
       sub.textContent = pct + '% reachable | ' + latParts.join(' | ');
     }
 
-    if (wasAlive === true && isAlive === false) {
-      addEvent('DOWN', t('page.connectivity.internetWentOffline'), 'error');
-    } else if (wasAlive === false && isAlive === true) {
-      addEvent('UP', t('page.connectivity.internetRestored'), 'ok');
+    if (isAlive && data.direct_ip) {
+      if (lastIp && data.direct_ip !== lastIp) {
+        // IP change is logged as an event by the backend; frontend just keeps state.
+      }
+      lastIp = data.direct_ip;
     }
-
-    if (isAlive && data.direct_ip && lastIp && data.direct_ip !== lastIp) {
-      addEvent('CHANGE', t('page.connectivity.ipChanged', { old: lastIp, new: data.direct_ip, isp: data.direct_isp }), 'warn');
-    }
-    if (isAlive && data.direct_ip) lastIp = data.direct_ip;
     lastAlive = isAlive;
   }
 
@@ -343,8 +340,32 @@ router.register('connectivity', (container) => {
     }
   }
 
+  async function loadEvents() {
+    try {
+      const activity = await api.activity(200);
+      const connectivityTypes = ['ok', 'error', 'warn'];
+      eventLog = (activity || []).filter(e => {
+        const msg = (e.msg || '').toLowerCase();
+        return msg.includes('internet') || msg.includes('isp changed') || msg.includes('canary');
+      }).map(e => ({
+        ts: new Date(e.ts * 1000).toLocaleTimeString(),
+        type: e.type === 'ok' ? 'UP' : e.type === 'error' ? 'DOWN' : e.type === 'warn' ? 'CHANGE' : String(e.type).toUpperCase(),
+        msg: e.msg,
+        variant: e.type === 'ok' ? 'ok' : e.type === 'error' ? 'error' : e.type === 'warn' ? 'warn' : 'info',
+      })).slice(0, 100);
+      renderEventLog();
+    } catch (e) {
+      console.error('connectivity events load', e);
+    }
+  }
+
   load();
+  loadEvents();
   const id = setInterval(load, 10000);
-  if (window._pageIntervals) window._pageIntervals.push(id);
-  else window._pageIntervals = [id];
+  const eventId = setInterval(loadEvents, 10000);
+  if (window._pageIntervals) {
+    window._pageIntervals.push(id, eventId);
+  } else {
+    window._pageIntervals = [id, eventId];
+  }
 });

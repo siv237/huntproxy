@@ -106,7 +106,14 @@ class SnapshotMixin:
                 if "started" in msg.lower(): return "started"
                 return "info"
             out = []
-            if self.events:
+            try:
+                conn = self._stats_db()
+                rows = conn.execute("SELECT ts, seq, type, msg FROM events ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+                conn.close()
+                for r in rows:
+                    out.append({"seq": r["seq"], "ts": r["ts"], "type": r["type"], "msg": r["msg"], "icon": _icon(r["type"], r["msg"])})
+            except Exception:
+                # Fallback to in-memory events if DB is unavailable.
                 for ev in reversed(self.events[-limit:]):
                     out.append({
                         "seq": ev["seq"],
@@ -115,16 +122,8 @@ class SnapshotMixin:
                         "msg": ev["msg"],
                         "icon": _icon(ev["type"], ev["msg"]),
                     })
-            else:
-                try:
-                    conn = self._stats_db()
-                    rows = conn.execute("SELECT ts, seq, type, msg FROM events ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
-                    conn.close()
-                    for r in rows:
-                        out.append({"seq": r["seq"], "ts": r["ts"], "type": r["type"], "msg": r["msg"], "icon": _icon(r["type"], r["msg"])})
-                except Exception:
-                    pass
             return out
+
 
     def get_history(self, last: str = "1h") -> list:
             try:

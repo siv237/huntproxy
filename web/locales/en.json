@@ -380,6 +380,8 @@
       "live": "Live",
       "stopLive": "Stop Live",
       "clear": "Clear",
+      "reverse": "Newest first",
+      "autoScroll": "Auto-scroll",
       "noMatching": "No matching logs",
       "lines": "{count} lines"
     },

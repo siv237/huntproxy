@@ -225,7 +225,7 @@ router.register('overview', (container) => {
     }
     wrap.innerHTML = '';
 
-    const mode = det.supports_connect ? 'HTTPS' : (det.protocol || 'HTTP').toUpperCase();
+    const mode = (det.ssl_supported || det.protocol === 'https') ? 'HTTPS' : (det.protocol || 'HTTP').toUpperCase();
     const ok = det.last_status === 'ok';
     const addrRow = ui.el('div', '', { style: 'display:flex;align-items:center;gap:0.4em;flex-wrap:wrap;margin-bottom:0.4em' });
     addrRow.appendChild(ui.el('span', '', { style: 'font-family:monospace;font-weight:700;color:var(--accent);font-size:12px', text: det.address }));
@@ -437,7 +437,7 @@ router.register('overview', (container) => {
         p.ssl_supported ? '<span style="color:#06b6d4;font-weight:600;font-size:10px">SSL</span>' : '<span style="color:var(--text-muted)">—</span>',
         p.last_latency ? p.last_latency.toFixed(2) + 's' : '—',
         p.speed_avg ? p.speed_avg.toFixed(0) + 'KB/s' : '—',
-        (p.score || 0).toFixed(0) + '%',
+        (p.score || 0).toFixed(0),
         `${p.checks_ok || 0}/${p.checks_total || 0}`,
         agoShort(p.last_check),
         `<button class="btn btn-xs ${isSel ? 'btn-primary' : 'btn-secondary'}" data-select-addr="${ui.escHtml(p.address)}" style="padding:1px 4px;font-size:9px">${isSel ? t('page.proxyPool.active') : t('page.proxyPool.select')}</button>`,
@@ -865,7 +865,7 @@ router.register('overview', (container) => {
       return;
     }
 
-    const mode = ap.supports_connect ? 'HTTPS' : (ap.protocol || 'HTTP').toUpperCase();
+    const mode = (ap.ssl_supported || ap.protocol === 'https') ? 'HTTPS' : (ap.protocol || 'HTTP').toUpperCase();
     const ok = ap.last_status === 'ok';
     const metaRow = ui.el('div', '', { style: 'display:flex;align-items:center;gap:0.4em;flex-wrap:wrap;margin-bottom:0.3em' });
     metaRow.appendChild(ui.el('span', '', { style: 'color:var(--accent);font-weight:600;font-size:11px', text: mode }));

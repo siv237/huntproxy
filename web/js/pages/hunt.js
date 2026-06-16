@@ -221,7 +221,7 @@ router.register('hunt', (container) => {
     const rows = sorted.slice(0, 10).map((p, i) => {
       const sc = Math.min(100, Math.max(0, p.score || 0));
       const flags = [];
-      if (p.supports_connect) flags.push('<span style="color:var(--success);font-weight:600">HTTPS</span>');
+      if (p.ssl_supported || p.protocol === 'https') flags.push('<span style="color:var(--success);font-weight:600">HTTPS</span>');
       else flags.push('<span style="color:var(--text-muted)">HTTP</span>');
       if (p.mitm_suspect) flags.push('<span style="color:var(--danger);font-weight:600">MITM!</span>');
       const proto = p.protocol || 'http';

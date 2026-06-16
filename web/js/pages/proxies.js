@@ -129,6 +129,7 @@ router.register('proxies', (container) => {
     const statusColor = p.in_blacklist ? 'var(--danger)' : p.last_status === 'ok' ? 'var(--success)' : 'var(--danger)';
     const statusText = p.in_blacklist ? 'BL' : p.last_status === 'ok' ? 'OK' : 'FAIL';
     const proto = (p.protocol || 'http').toUpperCase();
+    const ssl = p.ssl_supported ? '<span style="color:#06b6d4;font-weight:600;font-size:10px">SSL</span>' : '<span style="color:var(--text-muted);font-size:10px">—</span>';
     const lat = p.last_latency != null ? (p.last_latency < 1 ? (p.last_latency * 1000).toFixed(0) + 'ms' : p.last_latency.toFixed(2) + 's') : '—';
     const avg = p.latency_avg != null ? (p.latency_avg < 1 ? (p.latency_avg * 1000).toFixed(0) + 'ms' : p.latency_avg.toFixed(2) + 's') : '—';
     const speed = p.speed_avg ? p.speed_avg.toFixed(0) + 'KB/s' : '—';
@@ -141,6 +142,7 @@ router.register('proxies', (container) => {
       `<span style="font-size:12px;font-family:monospace;color:var(--text-primary)">${ui.escHtml(p.address)}</span>`,
       `<span style="font-size:12px">${flag} ${ui.escHtml(p.country || '—')}</span>`,
       `<span style="font-size:11px;color:var(--text-muted)">${proto}</span>`,
+      ssl,
       `<span style="font-size:11px">${lat}</span>`,
       `<span style="font-size:11px;color:var(--text-muted)">${avg}</span>`,
       `<span style="font-size:11px">${speed}</span>`,
@@ -165,7 +167,8 @@ router.register('proxies', (container) => {
       filtered = proxies.filter(p =>
         (p.address || '').toLowerCase().includes(search) ||
         (p.country || '').toLowerCase().includes(search) ||
-        (p.protocol || '').toLowerCase().includes(search)
+        (p.protocol || '').toLowerCase().includes(search) ||
+        (p.ssl_supported ? 'ssl' : '').includes(search)
       );
     }
 
@@ -180,6 +183,7 @@ router.register('proxies', (container) => {
       { label: 'Proxy', width: null },
       { label: 'Country', width: '110px' },
       { label: 'Proto', width: '50px', align: 'center' },
+      { label: 'SSL', width: '36px', align: 'center' },
       { label: 'Lat', width: '50px', align: 'right' },
       { label: 'Avg', width: '50px', align: 'right' },
       { label: 'Speed', width: '55px', align: 'right' },
@@ -208,7 +212,28 @@ router.register('proxies', (container) => {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
         const addr = btn.dataset.selectAddr;
-        if (addr) api.proxySelect(addr).then(() => app.toast(t('page.proxyPool.selected', {addr: addr}))).catch(er => app.toast(t('common.error', {message: er.message}), 'error'));
+        if (!addr) return;
+        btn.disabled = true;
+        btn.textContent = '...';
+        api.proxySelect(addr).then(async () => {
+          app.toast(t('page.proxyPool.selected', {addr: addr}));
+          try {
+            const ps = await api.proxyStatus();
+            if (!ps || !ps.running) {
+              const port = ps && ps.port ? ps.port : 8080;
+              await api.proxyStart(port);
+              app.toast(t('page.overview.proxyStarted'));
+            }
+          } catch (startErr) {
+            console.error('proxy start', startErr);
+          }
+          btn.disabled = false;
+          btn.textContent = 'Sel';
+        }).catch(er => {
+          btn.disabled = false;
+          btn.textContent = 'Sel';
+          app.toast(t('common.error', {message: er.message}), 'error');
+        });
       });
     });
 
