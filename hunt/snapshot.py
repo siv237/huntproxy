@@ -8,11 +8,14 @@ from hunt.models import ProxyRating
 
 class SnapshotMixin:
     def get_snapshot(self) -> dict:
+            # Manual operator blacklist is the only hard exclusion; IP blacklist
+            # only lowers the score and keeps the proxy alive/working.
             alive = [r for r in self.ratings.values()
-                     if r.last_status == "ok" and not r.is_blacklisted]
+                     if r.last_status == "ok" and not r.in_blacklist]
             sorted_alive = sorted(alive, key=lambda r: r.score, reverse=True)
             dead = [r for r in self.ratings.values() if r.last_status == "failed"]
-            banned = [r for r in self.ratings.values() if r.is_blacklisted]
+            banned = [r for r in self.ratings.values() if r.in_blacklist]
+            ip_blacklisted = sum(1 for r in self.ratings.values() if r.ip_blacklist_reason and not r.in_blacklist)
 
             return {
                 "phase": self.phase,
@@ -35,7 +38,8 @@ class SnapshotMixin:
                     "ratings": len(self.ratings),
                     "alive": len(alive),
                     "dead": len(dead),
-                    "blacklist": len(banned) + sum(1 for a in self.blacklist if a not in self.ratings),
+                    "blacklist": len(self.blacklist),
+                    "ip_blacklisted": ip_blacklisted,
                     "new_today": sum(1 for r in self.ratings.values() if r.first_seen > time.time() - 86400),
                 },
                 "settings": {
@@ -65,7 +69,7 @@ class SnapshotMixin:
             return out
 
     def get_countries(self) -> list:
-            alive = [r for r in self.ratings.values() if r.last_status == "ok" and not r.is_blacklisted]
+            alive = [r for r in self.ratings.values() if r.last_status == "ok" and not r.in_blacklist]
             counts = Counter((r.country_code or r.country or "?") for r in alive)
             total = sum(counts.values()) or 1
             result = []
@@ -197,7 +201,7 @@ class SnapshotMixin:
             return {"cpu": cpu, "memory": mem, "disk": disk}
 
     def _push_history(self):
-            alive = sum(1 for r in self.ratings.values() if r.last_status == "ok" and not r.is_blacklisted)
+            alive = sum(1 for r in self.ratings.values() if r.last_status == "ok" and not r.in_blacklist)
             dead = sum(1 for r in self.ratings.values() if r.last_status == "failed")
             pool_sr = (alive / max(1, alive + dead)) * 100
 

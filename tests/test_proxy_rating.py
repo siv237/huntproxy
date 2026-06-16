@@ -59,9 +59,18 @@ class TestProxyRating:
         assert d["latency_count"] == 1
         assert d["in_blacklist"] is False
 
-    def test_to_dict_marks_ip_blacklisted_as_blacklisted(self):
+    def test_to_dict_does_not_mark_ip_blacklisted_as_manual_blacklisted(self):
         r = hunt.ProxyRating(address="1.2.3.4:8080", checks_total=1, checks_ok=1, last_status="ok")
         r.ip_blacklist_reason = "bad exit IP"
         d = r.to_dict()
-        assert d["in_blacklist"] is True
+        # Manual operator blacklist is independent from downloaded IP blacklist.
+        assert d["in_blacklist"] is False
         assert d["ip_blacklist_reason"] == "bad exit IP"
+
+    def test_to_dict_marks_manual_blacklisted(self):
+        r = hunt.ProxyRating(address="1.2.3.4:8080", checks_total=1, checks_ok=1, last_status="ok")
+        r.in_blacklist = True
+        r.blacklist_reason = "manual"
+        d = r.to_dict()
+        assert d["in_blacklist"] is True
+        assert d["blacklist_reason"] == "manual"

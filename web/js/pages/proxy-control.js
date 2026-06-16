@@ -400,6 +400,7 @@ router.register('proxy-control', (container) => {
       const st = (r.status || '').toString();
       const isOk = st === 'ok' || st === '200';
       const dur = r.duration ? r.duration.toFixed(3) + 's' : '—';
+      const upstream = r.upstream && r.upstream !== '?' ? r.upstream : 'direct';
       return [
         ui.fmtTime(r.ts || 0).split(' ')[0],
         r.client || '—',
@@ -408,7 +409,7 @@ router.register('proxy-control', (container) => {
         dur,
         fmtBytes(r.bytes_in),
         fmtBytes(r.bytes_out),
-        r.upstream || '—',
+        `<span style="color:var(--info)">${ui.escHtml(upstream)}</span>`,
       ];
     });
     const tblWrap = ui.el('div', 'table-wrap', { style: 'flex:1;min-height:0;overflow-y:auto' });

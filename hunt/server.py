@@ -609,6 +609,7 @@ class HuntServer:
 
         if path == "/api/proxy/stop":
             await self.proxy.stop()
+            self.state._save_state()
             return json.dumps({"ok": True}), 200, "application/json"
 
         if path == "/api/socks5/status":
@@ -708,6 +709,7 @@ class HuntServer:
             qs = _qs(raw_path)
             code = qs.get("code", "").upper()
             self.state.country_filter = code
+            self.state._save_state()
             self.state._emit(f"Country filter set to: {code or 'ALL'}", "info")
             return json.dumps({"ok": True, "country_filter": self.state.country_filter}), 200, "application/json"
 

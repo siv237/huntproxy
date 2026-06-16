@@ -64,3 +64,102 @@ class TestProxyServer:
         runner = hunt.Socks5Runner(state, "127.0.0.1")
         assert runner.selected_proxy is not None
         assert runner.selected_proxy.address == "1.2.3.4:1080"
+
+    def test_proxy_route_hard_blacklisted_returns_none(self):
+        async def run():
+            state = hunt.HuntState({"ip_blacklists": {"enabled": False}})
+            addr = "1.2.3.4:8080"
+            state.ratings[addr] = hunt.ProxyRating(address=addr, last_status="ok", checks_total=1, checks_ok=1)
+            state.blacklist_add(addr, "manual")
+            runner = hunt.ProxyRunner(state, "127.0.0.1")
+            result = await runner._connect_by_route(f"proxy:{addr}", "example.com", 80)
+            assert result is None
+        asyncio.run(run())
+
+    def test_proxy_route_ip_blacklisted_allowed(self):
+        async def run():
+            state = hunt.HuntState({"ip_blacklists": {"enabled": False}})
+            addr = "1.2.3.4:8080"
+            r = hunt.ProxyRating(address=addr, last_status="ok", checks_total=1, checks_ok=1)
+            r.egress_ip = "8.8.8.8"
+            state.ratings[addr] = r
+            state._parse_ip_blacklist("8.8.8.8\n", "test", "Test Source")
+            state._apply_ip_blacklist_to_proxy(addr, r.egress_ip)
+            assert r.is_blacklisted is True
+            assert r.in_blacklist is False
+            runner = hunt.ProxyRunner(state, "127.0.0.1")
+            # Connection will fail because 1.2.3.4 is not reachable, but the
+            # route must not be rejected due to IP blacklist alone.
+            result = await runner._connect_by_route(f"proxy:{addr}", "example.com", 80)
+            # The route is allowed, but the actual connection to 1.2.3.4 fails.
+            assert result is None
+        asyncio.run(run())
+
+    def test_connect_by_route_direct_returns_chain(self):
+        async def run():
+            state = hunt.HuntState({"ip_blacklists": {"enabled": False}})
+            runner = hunt.ProxyRunner(state, "127.0.0.1")
+            chain = []
+            result = await runner._connect_by_route("direct", "127.0.0.1", 9)
+            assert result is None  # port 9 is discarded
+            assert chain == []
+            # Connect to an actual local port to verify chain population.
+            server = await asyncio.start_server(lambda r, w: w.close(), "127.0.0.1", 0)
+            try:
+                port = server.sockets[0].getsockname()[1]
+                chain = []
+                result = await runner._connect_by_route("direct", "127.0.0.1", port, chain)
+                assert result is not None
+                assert chain == ["direct"]
+                r, w, _ = result
+                w.close()
+                await w.wait_closed()
+            finally:
+                server.close()
+                await server.wait_closed()
+        asyncio.run(run())
+
+    def test_connect_by_route_http_non_connect_returns_raw(self):
+        async def run():
+            state = hunt.HuntState({"ip_blacklists": {"enabled": False}})
+            # Start a minimal HTTP proxy that accepts GET <full-url>.
+            async def proxy_handler(reader, writer):
+                line = await reader.readline()
+                while True:
+                    hdr = await reader.readline()
+                    if hdr in (b"\r\n", b"\n", b""):
+                        break
+                writer.write(b"HTTP/1.1 200 OK\r\nContent-Length: 9\r\n\r\nOK-PROXY")
+                await writer.drain()
+                writer.close()
+                await writer.wait_closed()
+
+            proxy_server = await asyncio.start_server(proxy_handler, "127.0.0.1", 0)
+            proxy_port = proxy_server.sockets[0].getsockname()[1]
+            proxy_addr = f"127.0.0.1:{proxy_port}"
+            r = state.ratings[proxy_addr] = hunt.ProxyRating(
+                address=proxy_addr, protocol="http", last_status="ok",
+                checks_total=1, checks_ok=1)
+            r.supports_connect = False
+
+            runner = hunt.ProxyRunner(state, "127.0.0.1")
+            chain = []
+            result = await runner._connect_by_route(
+                f"proxy:{proxy_addr}", "example.com", 80, chain, need_connect=False)
+            assert result is not None
+            up_r, up_w, is_raw = result
+            assert is_raw is True
+            assert chain == [f"proxy:{proxy_addr}"]
+
+            # Send a full-URL request through the raw proxy connection.
+            up_w.write(b"GET http://example.com/ HTTP/1.1\r\nHost: example.com\r\n\r\n")
+            await up_w.drain()
+            data = await asyncio.wait_for(up_r.read(4096), timeout=5)
+            assert b"OK-PROXY" in data, data
+            up_w.close()
+            await up_w.wait_closed()
+
+            proxy_server.close()
+            await proxy_server.wait_closed()
+
+        asyncio.run(run())

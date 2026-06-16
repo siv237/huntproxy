@@ -109,7 +109,7 @@ class ProxyRating:
             "last_check": self.last_check,
             "last_status": self.last_status,
             "first_seen": self.first_seen,
-            "in_blacklist": self.in_blacklist or bool(self.ip_blacklist_reason),
+            "in_blacklist": self.in_blacklist,
             "blacklist_reason": self.blacklist_reason,
             "ip_blacklist_reason": self.ip_blacklist_reason,
             "ip_blacklist_hits": self.ip_blacklist_hits,

@@ -31,12 +31,14 @@ class Socks5Runner:
         self.running = True
         self.state._socks5_running = True
         self.state._socks5_port = port
+        self.state._save_state()
         self._task = asyncio.create_task(self._run())
         self.state._emit(f"SOCKS5 proxy server starting on {port}...", "info")
 
     async def stop(self):
         self.running = False
         self.state._socks5_running = False
+        self.state._save_state()
         if self._server:
             self._server.close()
             await self._server.wait_closed()
@@ -102,7 +104,7 @@ class Socks5Runner:
                 self._log(peer, target_host, "502 no upstream", duration=dur)
                 return
 
-            up_r, up_w, up_addr = upstream
+            up_r, up_w, chain, _is_raw = upstream
             bind_addr = up_w.get_extra_info("sockname")
             if bind_addr:
                 bind_ip = bind_addr[0] if isinstance(bind_addr, tuple) else "0.0.0.0"
@@ -122,7 +124,7 @@ class Socks5Runner:
             else:
                 bi, bo = 0, 0
             dur = time.monotonic() - t0
-            self._log(peer, target_host, "ok", up_addr, bytes_in=bi, bytes_out=bo, duration=dur)
+            self._log(peer, target_host, "ok", " → ".join(chain), bytes_in=bi, bytes_out=bo, duration=dur)
         except Exception as e:
             dur = time.monotonic() - t0
             self._log(peer, target_host, f"err: {e}", duration=dur)

@@ -191,7 +191,9 @@
 }
 
 .table {
-  width: 100%;
+  width: auto;
+  min-width: 100%;
+  table-layout: auto;
   border-collapse: collapse;
   font-size: 11px;
 }
@@ -215,6 +217,7 @@
   top: 0;
   z-index: 1;
   padding: 4px 8px;
+  width: auto;
 }
 
 .table tbody tr:hover { background: var(--hover); }

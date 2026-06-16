@@ -95,7 +95,10 @@ const ui = {
     headers.forEach(h => {
       const label = typeof h === 'string' ? h : h.label;
       const th = ui.el('th', '', { html: label });
-      if (typeof h === 'object' && h.width) th.style.width = h.width;
+      if (typeof h === 'object' && h.width) {
+        th.style.minWidth = h.width;
+        th.style.width = 'auto';
+      }
       if (typeof h === 'object' && h.align) th.style.textAlign = h.align;
       if (typeof h === 'object' && h.sortKey) {
         th.style.cursor = 'pointer';

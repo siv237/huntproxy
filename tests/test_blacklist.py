@@ -44,3 +44,48 @@ class TestBlacklist:
         state.blacklist_add("1.2.3.4:8080")
         snapshot = state.get_snapshot()
         assert snapshot["counts"]["blacklist"] >= 1
+
+    def test_blacklist_remove_keeps_ip_blacklist(self, state):
+        addr = "1.2.3.4:8080"
+        r = hunt.ProxyRating(address=addr, last_status="ok", checks_total=1, checks_ok=1)
+        r.egress_ip = "8.8.8.8"
+        state.ratings[addr] = r
+        state._parse_ip_blacklist("8.8.8.8\n", "test", "Test Source")
+        state._apply_ip_blacklist_to_proxy(addr, r.egress_ip)
+        state.blacklist_add(addr, "manual")
+        assert r.in_blacklist is True
+        assert r.ip_blacklist_reason == "blacklist from Test Source"
+
+        state.blacklist_remove(addr)
+        assert r.in_blacklist is False
+        assert r.blacklist_reason == ""
+        # Downloaded IP blacklist status must be preserved/reevaluated.
+        assert r.ip_blacklist_reason == "blacklist from Test Source"
+        assert r.ip_blacklist_hits == 1
+
+    def test_blacklist_file_loads_sets_in_blacklist(self, state, tmp_data_dir):
+        addr = "1.2.3.4:8080"
+        r = hunt.ProxyRating(address=addr, last_status="ok", checks_total=1, checks_ok=1)
+        state.ratings[addr] = r
+        (tmp_data_dir / "blacklist.txt").write_text(f"{addr}  test reason\n")
+        state._load_blacklist_file()
+        assert state.blacklist[addr] == "test reason"
+        assert r.in_blacklist is True
+        assert r.blacklist_reason == "test reason"
+
+    def test_ip_blacklisted_not_excluded_from_alive(self, state):
+        addr = "1.2.3.4:8080"
+        r = hunt.ProxyRating(address=addr, last_status="ok", checks_total=1, checks_ok=1)
+        r.egress_ip = "8.8.8.8"
+        state.ratings[addr] = r
+        state._parse_ip_blacklist("8.8.8.8\n", "test", "Test Source")
+        state._apply_ip_blacklist_to_proxy(addr, r.egress_ip)
+        assert r.is_blacklisted is True
+        assert r.in_blacklist is False
+
+        alive = [x for x in state.ratings.values() if x.last_status == "ok" and not x.in_blacklist]
+        assert addr in {x.address for x in alive}
+        snapshot = state.get_snapshot()
+        assert addr in {x["address"] for x in snapshot["top_proxies"]}
+        assert snapshot["counts"]["ip_blacklisted"] == 1
+        assert snapshot["counts"]["blacklist"] == 0

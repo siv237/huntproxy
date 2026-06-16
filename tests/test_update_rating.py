@@ -3,7 +3,7 @@ import time
 
 
 class TestUpdateRating:
-    def test_update_rating_increments_latency_sum_and_count(self):
+    def test_update_rating_increments_latency_sum_and_count(self, tmp_data_dir):
         state = hunt.HuntState({"ip_blacklists": {"enabled": False}})
         state._update_rating(
             "1.2.3.4:8080",
@@ -29,7 +29,7 @@ class TestUpdateRating:
         assert r.speed_count == 1
         assert r.speed_avg == 100.0
 
-    def test_update_rating_does_not_increment_speed_on_zero(self):
+    def test_update_rating_does_not_increment_speed_on_zero(self, tmp_data_dir):
         state = hunt.HuntState({"ip_blacklists": {"enabled": False}})
         state._update_rating(
             "1.2.3.4:8080",
@@ -42,7 +42,7 @@ class TestUpdateRating:
         assert r.speed_count == 0
         assert r.speed_fails == 1
 
-    def test_update_rating_marks_failed(self):
+    def test_update_rating_marks_failed(self, tmp_data_dir):
         state = hunt.HuntState({"ip_blacklists": {"enabled": False}})
         state._update_rating(
             "1.2.3.4:8080",
@@ -56,7 +56,7 @@ class TestUpdateRating:
         assert r.checks_ok == 0
         assert r.latency_count == 0
 
-    def test_update_rating_applies_ip_blacklist(self):
+    def test_update_rating_applies_ip_blacklist(self, tmp_data_dir):
         state = hunt.HuntState({"ip_blacklists": {"enabled": False}})
         state._parse_ip_blacklist("8.8.8.8\n", "test", "Test")
         state._update_rating(
@@ -73,7 +73,7 @@ class TestUpdateRating:
         # IP-blacklist is no longer a hard sentence; score is reduced but positive.
         assert r.score > 0.0
 
-    def test_update_rating_accumulates_multiple_checks(self):
+    def test_update_rating_accumulates_multiple_checks(self, tmp_data_dir):
         state = hunt.HuntState({"ip_blacklists": {"enabled": False}})
         for latency in [0.5, 0.7, 0.6]:
             state._update_rating(
@@ -91,7 +91,7 @@ class TestUpdateRating:
         assert r.speed_count == 3
         assert r.speed_avg == 100.0
 
-    def test_update_rating_updates_existing_proxy(self):
+    def test_update_rating_updates_existing_proxy(self, tmp_data_dir):
         state = hunt.HuntState({"ip_blacklists": {"enabled": False}})
         r = hunt.ProxyRating(address="1.2.3.4:8080")
         r.checks_total = 5
@@ -109,3 +109,16 @@ class TestUpdateRating:
         assert r.checks_total == 6
         assert r.latency_count == 6
         assert r.latency_sum == 3.5
+
+    def test_update_rating_sets_https_protocol_for_ssl_proxy(self, tmp_data_dir):
+        state = hunt.HuntState({"ip_blacklists": {"enabled": False}})
+        state._update_rating(
+            "1.2.3.4:443",
+            ok=True,
+            country="US",
+            latency=0.5,
+            ssl_supported=True,
+        )
+        r = state.ratings["1.2.3.4:443"]
+        assert r.protocol == "https"
+        assert r.ssl_supported is True

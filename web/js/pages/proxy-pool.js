@@ -301,7 +301,11 @@ router.register('proxy-pool', (container) => {
       if (!m) return t;
       return (m[1] || '') + '<b>' + m[2] + '</b>' + (m[3] || '');
     };
-    log.innerHTML = all.map(e => `<span style="color:var(--text-muted)">${ui.fmtTime(e.ts)}</span> <span style="color:var(--accent);font-size:10px">${e.type}</span> ${e.client || '?'} → ${fmtTarget(e.target)} [${e.status || ''}]` + (e.upstream && e.upstream !== 'direct' && e.upstream !== '?' ? ` <span style="color:var(--accent)">via ${e.upstream}</span>` : '')).join('<br>');
+    const fmtChain = upstream => {
+      if (!upstream || upstream === '?') return 'direct';
+      return ui.escHtml(upstream);
+    };
+    log.innerHTML = all.map(e => `<span style="color:var(--text-muted)">${ui.fmtTime(e.ts)}</span> <span style="color:var(--accent);font-size:10px">${e.type}</span> ${e.client || '?'} → ${fmtTarget(e.target)} [${e.status || ''}] <span style="color:var(--info)">via ${fmtChain(e.upstream)}</span>`).join('<br>');
   }
 
   function proxyProtoGroup(p) {
@@ -309,7 +313,7 @@ router.register('proxy-pool', (container) => {
     if (proto === 'socks5') return 'SOCKS5';
     if (proto === 'socks4') return 'SOCKS4';
     if (proto === 'tor' || p.address.includes('.onion')) return 'TOR';
-    if (p.supports_connect) return 'HTTPS';
+    if (p.supports_connect || p.ssl_supported) return 'HTTPS';
     return 'HTTP';
   }
 
@@ -318,7 +322,7 @@ router.register('proxy-pool', (container) => {
     if (proto === 'socks5') return `socks5://${p.address}`;
     if (proto === 'socks4') return `socks4://${p.address}`;
     if (proto === 'tor' || p.address.includes('.onion')) return `tor://${p.address}`;
-    if (p.supports_connect) return `https://${p.address}`;
+    if (p.supports_connect || p.ssl_supported) return `https://${p.address}`;
     return `http://${p.address}`;
   }
 

@@ -17,6 +17,9 @@ async def amain(config: dict):
     server = HuntServer(state, host, port)
     state.proxy_runner = server.proxy
 
+    # Re-check stale proxies from the main working list at startup
+    asyncio.create_task(state._revalidate_stale_proxies())
+
     # Restore services that were running before restart
     restored = []
     if getattr(state, '_hunt_running', False):
@@ -61,14 +64,14 @@ async def amain(config: dict):
 
 def main():
     setup_logging()
-    import argparse
     ap = argparse.ArgumentParser()
     ap.add_argument("--host", default=None)
     ap.add_argument("--port", type=int, default=None)
     args, _ = ap.parse_known_args()
 
     if not CONFIG_PATH.exists():
-        print(f"ERROR: {CONFIG_PATH} not found", file=__import__("sys").stderr)
+        import sys
+        print(f"ERROR: {CONFIG_PATH} not found", file=sys.stderr)
         return
 
     with open(CONFIG_PATH) as f:

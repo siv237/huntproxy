@@ -7,10 +7,14 @@ HOST="${HUNT_HOST:-127.0.0.1}"
 PORT="${HUNT_PORT:-17177}"
 
 ARGS=()
+KILL=false
 for arg in "$@"; do
     case "$arg" in
         --public|--listen-all|-P)
             HOST="0.0.0.0"
+            ;;
+        --kill|-K)
+            KILL=true
             ;;
         *)
             ARGS+=("$arg")
@@ -31,17 +35,7 @@ fi
 
 PID_FILE="$DIR/.hunt.pid"
 
-kill_pids() {
-    local pids="$1"
-    local sig="${2:-TERM}"
-    [ -z "$pids" ] && return 0
-    for pid in $pids; do
-        [ "$pid" = "$$" ] && continue
-        kill -s "$sig" "$pid" 2>/dev/null || true
-    done
-}
-
-kill_existing() {
+existing_pids() {
     local pids=""
 
     # PID from previous run
@@ -53,22 +47,38 @@ kill_existing() {
         fi
     fi
 
-    # Anything listening on our port
+    # Anything listening on our port (prefer ss to only catch listeners, not clients)
     local port_pids
-    port_pids=$(lsof -ti tcp:"$PORT" 2>/dev/null || ss -ltnp 2>/dev/null | grep -oP 'pid=\K[0-9]+' | sort -u || true)
+    port_pids=$(ss -ltnp "sport = :$PORT" 2>/dev/null | grep -oP 'pid=\K[0-9]+' | sort -u || lsof -ti tcp:"$PORT" 2>/dev/null || true)
     if [ -n "$port_pids" ]; then
         pids="$pids $port_pids"
     fi
 
-    # Any other hunt.py processes from this project directory
-    local hunt_pids
-    hunt_pids=$(pgrep -f "python.*$DIR/hunt\.py" 2>/dev/null || true)
-    if [ -n "$hunt_pids" ]; then
-        pids="$pids $hunt_pids"
-    fi
-
     # Deduplicate and filter
-    pids=$(echo "$pids" | tr ' ' '\n' | grep -E '^[0-9]+$' | sort -u | tr '\n' ' ')
+    echo "$pids" | tr ' ' '\n' | grep -E '^[0-9]+$' | sort -u | tr '\n' ' '
+}
+
+check_existing() {
+    local pids
+    pids=$(existing_pids)
+    [ -z "$pids" ] && return 0
+    echo "[*] Port $PORT is already in use (pids:$pids). Use --kill to stop existing process(s) or run with a different port." >&2
+    return 1
+}
+
+kill_pids() {
+    local pids="$1"
+    local sig="${2:-TERM}"
+    [ -z "$pids" ] && return 0
+    for pid in $pids; do
+        [ "$pid" = "$$" ] && continue
+        kill -s "$sig" "$pid" 2>/dev/null || true
+    done
+}
+
+kill_existing() {
+    local pids
+    pids=$(existing_pids)
     [ -z "$pids" ] && return 0
 
     echo "[*] Stopping existing hunt processes (pids:$pids)..."
@@ -87,11 +97,19 @@ kill_existing() {
     echo "[*] Existing processes stopped."
 }
 
-kill_existing
+if [ "$KILL" = "true" ]; then
+    kill_existing
+else
+    check_existing
+fi
 
 echo "[*] Starting hunt web UI at http://$HOST:$PORT/"
 if [ "$HOST" = "0.0.0.0" ]; then
     echo "[*] Listening on all interfaces (public mode). Use --host 127.0.0.1 to restrict."
 fi
 echo "[*] Press Ctrl+C to stop."
+# Write PID before exec: after exec Python inherits the same PID.
+if [ -n "$PID_FILE" ]; then
+    echo $$ > "$PID_FILE"
+fi
 exec "$VENV/bin/python" "$DIR/hunt.py" --host "$HOST" --port "$PORT" "${ARGS[@]}"

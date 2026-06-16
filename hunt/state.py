@@ -70,6 +70,9 @@ class HuntState(DbMixin, EventsMixin, SnapshotMixin, HealthMixin, CheckingMixin,
             self._proxy_direct_mode: bool = False
             self._proxy_active_addr: Optional[str] = None
 
+            # Persistence batching counter
+            self._rating_updates_since_save: int = 0
+
             # Hunt progress counters
             self.sources_total: int = 0
             self.sources_done: int = 0
@@ -299,7 +302,7 @@ class HuntState(DbMixin, EventsMixin, SnapshotMixin, HealthMixin, CheckingMixin,
                         latency_count=latency_count,
                         last_latency=last_latency,
                         checks_total=d.get("checks_total", 0),
-                        checks_ok=d.get("checks_ok", 0),
+                        checks_ok=checks_ok,
                         last_check=d.get("last_check", 0),
                         last_ok=d.get("last_ok", 0),
                         last_status=d.get("last_status", "untested"),
@@ -326,12 +329,15 @@ class HuntState(DbMixin, EventsMixin, SnapshotMixin, HealthMixin, CheckingMixin,
                         ip_blacklist_reason=d.get("ip_blacklist_reason", ""),
                         ip_blacklist_hits=d.get("ip_blacklist_hits", 0),
                         ip_blacklist_sources=d.get("ip_blacklist_sources", []),
+                        in_blacklist=d.get("in_blacklist", False),
+                        blacklist_reason=d.get("blacklist_reason", ""),
                     )
                     if not r.egress_country_code and r.egress_country:
                         r.egress_country_code = country_code_from_name(r.egress_country)
                     if not r.listen_country_code and r.listen_country:
                         r.listen_country_code = country_code_from_name(r.listen_country)
                     self.ratings[r.address] = r
+                self._load_blacklist_file()
                 self._addr_sources = {}
                 for r in self.ratings.values():
                     for sid in r.source_ids:
@@ -412,6 +418,8 @@ class HuntState(DbMixin, EventsMixin, SnapshotMixin, HealthMixin, CheckingMixin,
             if not self.working_file.exists():
                 return
             count = 0
+            loaded = set()
+            file_mtime = self.working_file.stat().st_mtime
             with open(self.working_file) as f:
                 for line in f:
                     line = line.strip()
@@ -452,14 +460,21 @@ class HuntState(DbMixin, EventsMixin, SnapshotMixin, HealthMixin, CheckingMixin,
                     elif addr.rsplit(":", 1)[-1] == "4145":
                         r.protocol = "socks4"
                     self.ratings[addr] = r
+                    loaded.add(addr)
                     count += 1
+            if loaded:
+                self._working_file_loaded = loaded
+                self._working_file_mtime = file_mtime
             if count:
                 logger.info(f"Loaded {count} proxies from working.txt")
 
     def _save_working_file(self):
-            """Write alive (non-blacklisted) proxies to working.txt, atomic."""
+            """Write alive (non-blacklisted) proxies to working.txt, atomic.
+
+            Only the operator-curated manual blacklist is a hard exclusion;
+            downloaded IP blacklist matches only lower the score."""
             alive = [r for r in self.ratings.values()
-                     if r.last_status == "ok" and not r.is_blacklisted]
+                     if r.last_status == "ok" and not r.in_blacklist]
             alive.sort(key=lambda r: r.score, reverse=True)
             tmp = self.working_file.with_suffix(".tmp")
             with open(tmp, "w") as f:

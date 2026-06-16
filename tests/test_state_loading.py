@@ -1,6 +1,7 @@
 import json
 import hunt
 import sqlite3
+import time
 
 
 class TestStateLoading:
@@ -173,3 +174,29 @@ class TestDbRecovery:
         assert "ratings" in tables
         assert "blacklist" in tables
         assert "runtime_state" in tables
+
+
+class TestStaleRevalidation:
+    def test_revalidate_stale_proxies_from_working_file(self, state, tmp_data_dir):
+        import asyncio
+        import os
+        wf = tmp_data_dir / "working.txt"
+        wf.write_text("1.2.3.4:8080 US 0.66\n")
+        # Make the working file older than an hour so proxies are considered stale.
+        old_time = time.time() - 7200
+        os.utime(wf, (old_time, old_time))
+        state._load_working_file()
+        r = state.ratings["1.2.3.4:8080"]
+        assert r.checks_total == 1
+        asyncio.run(state._revalidate_stale_proxies())
+        # The re-check will fail because 1.2.3.4 is unreachable, but it will
+        # still increment the check counter and update the status.
+        assert state.ratings["1.2.3.4:8080"].checks_total >= 2
+
+    def test_revalidate_skips_fresh_proxies(self, state, tmp_data_dir):
+        import asyncio
+        r = hunt.ProxyRating(address="1.2.3.4:8080", last_status="ok", checks_total=1, checks_ok=1)
+        r.last_check = time.time()
+        state.ratings["1.2.3.4:8080"] = r
+        asyncio.run(state._revalidate_stale_proxies())
+        assert r.checks_total == 1
