@@ -44,5 +44,9 @@
    - Метки в `web/locales/en.json` и `ru.json` изменены на понятные: `Upload (KB)` / `Download (KB)` и `Отдача (КБ)` / `Загрузка (КБ)`.
    - Добавлено кэш-бастинг для JSON-локалей (`?v=2`) в `web/js/i18n.js`.
 
+10. [DONE] В логах при перезапуске спам "Task was destroyed but it is pending!"
+   - `hunt/main.py` теперь устанавливает обработчики `SIGTERM` и `SIGINT`, которые корректно отменяют все asyncio-задачи и дожидаются их завершения перед выходом.
+   - Добавлена явная функция `shutdown()` с `asyncio.gather(..., return_exceptions=True)`, чтобы при остановке не оставалось pending-задач, которые Python уничтожает с ошибкой.
+
 ----
 Все тесты проходят: 143 passed.

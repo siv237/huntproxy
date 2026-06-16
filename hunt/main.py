@@ -2,6 +2,7 @@
 
 import argparse
 import asyncio
+import signal
 import yaml
 from hunt.constants import CONFIG_PATH, DATA_DIR
 from hunt.logging_config import setup_logging
@@ -53,14 +54,27 @@ async def amain(config: dict):
     print("  Ctrl+C to stop")
     print("=" * 56)
 
+    async def shutdown():
+        tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        try:
+            loop.add_signal_handler(sig, lambda: asyncio.create_task(shutdown()))
+        except Exception:
+            pass
+
     try:
         await server.start()
     except asyncio.CancelledError:
         pass
     finally:
+        await server.stop()
         state._save_state()
         state._save_working_file()
-        await server.stop()
 
 def main():
     setup_logging()
