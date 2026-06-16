@@ -120,7 +120,7 @@ class Socks5Runner:
 
             pr = getattr(self.state, 'proxy_runner', None)
             if pr:
-                bi, bo = await pr._relay(reader, up_w, up_r, writer)
+                bi, bo = await pr._relay(reader, writer, up_r, up_w)
             else:
                 bi, bo = 0, 0
             dur = time.monotonic() - t0

@@ -131,7 +131,7 @@ class ProxyRunner:
                 up_r, up_w, chain, _is_raw = upstream
                 writer.write(b"HTTP/1.1 200 Connection Established\r\n\r\n")
                 await writer.drain()
-                bi, bo = await self._relay(reader, up_w, up_r, writer)
+                bi, bo = await self._relay(reader, writer, up_r, up_w)
                 dur = time.monotonic() - t0
                 self._log(peer, target_host, "ok", " → ".join(chain), bytes_in=bi, bytes_out=bo, duration=dur)
             else:
@@ -209,7 +209,7 @@ class ProxyRunner:
                 writer.write(b"\r\n"); break
             writer.write(line)
         await writer.drain()
-        bi, bo = await self._relay(up_r, writer, reader, up_w)
+        bi, bo = await self._relay(reader, writer, up_r, up_w)
         dur = time.monotonic() - t0
         self._log(peer, target_host, "ok", " → ".join(chain), bytes_in=bi, bytes_out=bo, duration=dur)
 
@@ -591,9 +591,9 @@ class ProxyRunner:
         except Exception:
             return False
 
-    async def _relay(self, r1, w1, r2, w2):
-        bytes_in = 0
-        bytes_out = 0
+    async def _relay(self, client_reader, client_writer, upstream_reader, upstream_writer):
+        bytes_in = 0   # client → upstream (upload)
+        bytes_out = 0  # upstream → client (download)
         async def pipe(r, w, label):
             nonlocal bytes_in, bytes_out
             try:
@@ -610,7 +610,7 @@ class ProxyRunner:
             finally:
                 try: w.close()
                 except: pass
-        await asyncio.gather(pipe(r1, w1, "c2u"), pipe(r2, w2, "u2c"))
+        await asyncio.gather(pipe(client_reader, upstream_writer, "c2u"), pipe(upstream_reader, client_writer, "u2c"))
         return bytes_in, bytes_out
 
     def _log(self, peer, target, status, upstream="", bytes_in=0, bytes_out=0, duration=0.0):

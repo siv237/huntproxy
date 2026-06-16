@@ -368,8 +368,8 @@
       "couldNotLoadEvents": "Could not load events",
       "alive": "Alive",
       "dead": "Dead",
-      "inKB": "In (KB)",
-      "outKB": "Out (KB)"
+      "inKB": "Upload (KB)",
+      "outKB": "Download (KB)"
     },
     "logs": {
       "title": "Logs",

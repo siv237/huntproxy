@@ -36,5 +36,13 @@
    - Добавлены временные метки по оси X каждые 4 часа и текстовая сводка: uptime за 24ч и количество ok/fail проверок.
    - Добавлены i18n-ключи `uptime24h` и `okFail` в `web/locales/en.json` и `ru.json`.
 
+9. [DONE] Bandwidth (24h) в Analytics: путаница с направлением трафика и непонятные метки In/Out
+   - Исправлен `_relay()` в `hunt/proxy_runner.py`: для HTTP-форварда байты `bytes_in`/`bytes_out` считались в обратном направлении из-за разного порядка аргументов. Теперь параметры называются явно (`client_reader`, `client_writer`, `upstream_reader`, `upstream_writer`) и направления всегда:
+     - `bytes_in` = клиент → апстрим (upload/отдача);
+     - `bytes_out` = апстрим → клиент (download/загрузка).
+   - Обновлён вызов `_relay()` в `hunt/socks5_runner.py` под новую сигнатуру.
+   - Метки в `web/locales/en.json` и `ru.json` изменены на понятные: `Upload (KB)` / `Download (KB)` и `Отдача (КБ)` / `Загрузка (КБ)`.
+   - Добавлено кэш-бастинг для JSON-локалей (`?v=2`) в `web/js/i18n.js`.
+
 ----
 Все тесты проходят: 143 passed.
