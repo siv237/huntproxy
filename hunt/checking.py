@@ -63,11 +63,11 @@ class CheckingMixin:
                         speed = 0.0
                         if ok:
                             host, port_str = addr.rsplit(":", 1)
-                            use_ssl = ssl_ok and not (port_str.isdigit() and int(port_str) in (1080, 10808, 9050, 4145))
+                            is_socks = port_str.isdigit() and int(port_str) in (1080, 10808, 9050, 4145)
+                            use_ssl = ssl_ok and not is_socks
                             try:
-                                speed = await self._measure_speed(host, int(port_str),
-                                                                   port_str.isdigit() and int(port_str) in (1080, 10808, 9050, 4145),
-                                                                   use_ssl=use_ssl)
+                                speed = await self._measure_speed(host, int(port_str), is_socks,
+                                                                   use_ssl=use_ssl, supports_connect=supports_connect)
                             except Exception:
                                 speed = 0.0
                         async with lock:
@@ -393,16 +393,16 @@ class CheckingMixin:
             }
             return True, country, country_code, egress, ssl_latency
 
-    async def _measure_speed(self, host: str, port: int, is_socks: bool = False, use_ssl: bool = False) -> float:
+    async def _measure_speed(self, host: str, port: int, is_socks: bool = False, use_ssl: bool = False, supports_connect: bool = False) -> float:
             for srv_host, srv_path, expected_size in self.SPEED_SERVERS:
-                speed = await self._speed_single(host, port, is_socks, srv_host, srv_path, expected_size, use_ssl)
+                speed = await self._speed_single(host, port, is_socks, srv_host, srv_path, expected_size, use_ssl, supports_connect)
                 if speed > 0:
                     return speed
             return 0.0
 
     async def _speed_single(self, host: str, port: int, is_socks: bool,
                                  srv_host: str, srv_path: str, expected_size: int,
-                                 use_ssl: bool = False) -> float:
+                                 use_ssl: bool = False, supports_connect: bool = False) -> float:
             conn_kwargs = {}
             if use_ssl:
                 ctx = self._make_ssl_ctx()
@@ -421,10 +421,12 @@ class CheckingMixin:
                         ok = await self._socks5_test(r, w)
                     if not ok:
                         return 0.0
-                elif use_ssl:
-                    # Proxy is an HTTPS proxy; use CONNECT to target :443 and then
-                    # upgrade the tunnel to TLS so we measure actual HTTPS throughput.
+                elif use_ssl and supports_connect:
+                    # HTTPS proxy that supports CONNECT: tunnel to target :443 and
+                    # upgrade to TLS so we measure real HTTPS throughput.
                     return await self._https_speed_single(r, w, srv_host, srv_path, expected_size)
+                # Plain HTTP proxy or HTTPS proxy without CONNECT: send a direct
+                # GET with the full URL. The connection itself may be plain or SSL.
                 t0 = time.monotonic()
                 req = (
                     f"GET http://{srv_host}{srv_path} HTTP/1.0\r\n"

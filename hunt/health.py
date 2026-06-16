@@ -412,11 +412,11 @@ class HealthMixin:
                         speed = 0.0
                         if ok:
                             host, port_str = r.address.rsplit(":", 1)
-                            use_ssl = ssl_ok and not (port_str.isdigit() and int(port_str) in (1080, 10808, 9050, 4145))
+                            is_socks = port_str.isdigit() and int(port_str) in (1080, 10808, 9050, 4145)
+                            use_ssl = ssl_ok and not is_socks
                             try:
-                                speed = await self._measure_speed(host, int(port_str),
-                                                                   port_str.isdigit() and int(port_str) in (1080, 10808, 9050, 4145),
-                                                                   use_ssl=use_ssl)
+                                speed = await self._measure_speed(host, int(port_str), is_socks,
+                                                                   use_ssl=use_ssl, supports_connect=supports_connect)
                             except Exception:
                                 speed = 0.0
                         async with lock:
@@ -501,11 +501,11 @@ class HealthMixin:
                 speed = 0.0
                 if ok:
                     host, port_str = r.address.rsplit(":", 1)
-                    use_ssl = ssl_ok and not (port_str.isdigit() and int(port_str) in (1080, 10808, 9050, 4145))
+                    is_socks = port_str.isdigit() and int(port_str) in (1080, 10808, 9050, 4145)
+                    use_ssl = ssl_ok and not is_socks
                     try:
-                        speed = await self._measure_speed(host, int(port_str),
-                                                           port_str.isdigit() and int(port_str) in (1080, 10808, 9050, 4145),
-                                                           use_ssl=use_ssl)
+                        speed = await self._measure_speed(host, int(port_str), is_socks,
+                                                           use_ssl=use_ssl, supports_connect=supports_connect)
                     except Exception:
                         speed = 0.0
                 async with lock:

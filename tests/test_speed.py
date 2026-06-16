@@ -56,6 +56,7 @@ class TestSpeedMeasurement:
                     srv_path="/file",
                     expected_size=len(body),
                     use_ssl=False,
+                    supports_connect=False,
                 )
                 assert speed > 0.0
             finally:
@@ -71,7 +72,7 @@ class TestSpeedMeasurement:
         ]
         call_count = 0
 
-        async def fake_speed_single(host, port, is_socks, srv_host, srv_path, expected_size, use_ssl):
+        async def fake_speed_single(host, port, is_socks, srv_host, srv_path, expected_size, use_ssl, supports_connect):
             nonlocal call_count
             call_count += 1
             if call_count == 1:
@@ -102,6 +103,7 @@ class TestSpeedMeasurement:
                     srv_path="/missing",
                     expected_size=1024,
                     use_ssl=False,
+                    supports_connect=False,
                 )
                 assert speed == 0.0
             finally:

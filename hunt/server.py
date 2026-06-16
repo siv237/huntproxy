@@ -684,7 +684,7 @@ class HuntServer:
                 if ok:
                     use_ssl = ssl_ok and not is_socks
                     try:
-                        speed = await self.state._measure_speed(host, port, is_socks, use_ssl=use_ssl)
+                        speed = await self.state._measure_speed(host, port, is_socks, use_ssl=use_ssl, supports_connect=supports_connect)
                     except Exception:
                         speed = 0.0
                 self.state._update_rating(address, ok, country, http_latency, supports_connect, mitm_suspect, egress, listen, speed, country_code=cc, ssl_supported=ssl_ok)
