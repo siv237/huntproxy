@@ -146,3 +146,25 @@ class TestCheckProxyHttp:
             assert latency == 0.0
 
         asyncio.run(run())
+
+    def test_check_proxy_http_no_connect_is_failed(self):
+        resp = b'{"query":"1.2.3.4","country":"United States","countryCode":"US","city":"New York","isp":"Test ISP"}'
+        proxy = FakeHttpProxyServer(resp)
+
+        async def run():
+            await proxy.start()
+            try:
+                state = hunt.HuntState({"ip_blacklists": {"enabled": False}})
+                async def fake_connect(host, port, is_socks):
+                    return False, False
+                state._check_proxy_connect = fake_connect
+                ok, country, supports_connect, mitm_suspect, egress, listen, latency, country_code, fast_fail = await state._check_proxy(
+                    f"127.0.0.1:{proxy.port}"
+                )
+                assert ok is False
+                assert supports_connect is False
+                assert latency > 0
+            finally:
+                await proxy.stop()
+
+        asyncio.run(run())

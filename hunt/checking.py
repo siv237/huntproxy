@@ -7,6 +7,16 @@ from hunt.geo import country_code_from_name
 from hunt.models import ProxyRating
 
 class CheckingMixin:
+    _SOCKS_PORTS = frozenset({1080, 10808, 9050, 4145})
+
+    @staticmethod
+    def _is_socks_addr(addr: str) -> bool:
+            try:
+                _, port_str = addr.rsplit(":", 1)
+                return int(port_str) in CheckingMixin._SOCKS_PORTS
+            except Exception:
+                return False
+
     async def _validate_all(self, proxies: set):
             sem = asyncio.Semaphore(self.parallel)
             lock = asyncio.Lock()
@@ -60,6 +70,9 @@ class CheckingMixin:
                         elif ok and ssl_ok:
                             if not egress and ssl_egress:
                                 egress = ssl_egress
+                        # Non-SOCKS proxies must support CONNECT to be useful for HTTPS.
+                        if ok and not self._is_socks_addr(addr) and not supports_connect:
+                            ok = False
                         speed = 0.0
                         if ok:
                             host, port_str = addr.rsplit(":", 1)
@@ -216,7 +229,8 @@ class CheckingMixin:
             supports_connect = connect_ok
 
             if not connect_ok and not is_socks:
-                return True, country, False, mitm_suspect, egress, listen, http_latency, country_code, False
+                # HTTP-only proxies cannot tunnel HTTPS, so they are useless for us.
+                return False, country, False, mitm_suspect, egress, listen, http_latency, country_code, False
 
             if not connect_ok:
                 return False, country, False, mitm_suspect, egress, listen, http_latency, country_code, False

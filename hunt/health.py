@@ -409,6 +409,9 @@ class HealthMixin:
                         elif ok and ssl_ok:
                             if not egress and ssl_egress:
                                 egress = ssl_egress
+                        # Non-SOCKS proxies must support CONNECT to be useful for HTTPS.
+                        if ok and not self._is_socks_addr(r.address) and not supports_connect:
+                            ok = False
                         speed = 0.0
                         if ok:
                             host, port_str = r.address.rsplit(":", 1)
@@ -498,6 +501,9 @@ class HealthMixin:
                 elif ok and ssl_ok:
                     if not egress and ssl_egress:
                         egress = ssl_egress
+                # Non-SOCKS proxies must support CONNECT to be useful for HTTPS.
+                if ok and not self._is_socks_addr(r.address) and not supports_connect:
+                    ok = False
                 speed = 0.0
                 if ok:
                     host, port_str = r.address.rsplit(":", 1)
