@@ -65,6 +65,7 @@ class TestUpdateRating:
             country="US",
             latency=0.5,
             egress={"egress_ip": "8.8.8.8"},
+            speed=200.0,
         )
         r = state.ratings["1.2.3.4:8080"]
         assert r.ip_blacklist_reason != ""

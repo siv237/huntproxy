@@ -393,14 +393,18 @@ class HealthMixin:
                 lock = asyncio.Lock()
                 ok_count = fail_count = 0
 
+                # The main hunt shares self._pause_event and self._paused with us.
+                # We deliberately do not block on self._paused here because the
+                # main hunt (paused earlier) is still holding _pause_event;
+                # waiting on it would deadlock this manual check until the main
+                # hunt resumes. We only honor self._internet_suspect, which
+                # is unrelated to the manual pause.
                 async def check(r: ProxyRating):
                     nonlocal ok_count, fail_count
                     while True:
-                        if self._paused:
-                            await self._pause_event.wait()
                         async with sem:
                             if self._internet_suspect:
-                                await self._pause_event.wait()
+                                await asyncio.sleep(0.5)
                                 continue
                             http_task = asyncio.create_task(self._check_proxy(r.address))
                             ssl_task = asyncio.create_task(self._check_ssl(r.address))
@@ -485,10 +489,11 @@ class HealthMixin:
                 self._emit(f"Health check done: {ok_count} ok, {fail_count} failed", "ok")
                 self.phase = self.PHASE_DONE
             finally:
-                # Restore the main hunt's progress counters so the pool progress
-                # card jumps back to where it was before the manual recheck.
+                # Always restore the saved state so that whoever owns the
+                # counters next (the paused main hunt, or whoever triggers a
+                # fresh snapshot) sees consistent numbers — and we set our own
+                # PHASE_DONE so the UI does not stay stuck on PHASE_HEALTH.
                 self.phase = saved["phase"]
-                self.phase_started = saved["phase_started"]
                 self.checking_total = saved["checking_total"]
                 self.checked = saved["checked"]
                 self.working = saved["working"]
@@ -497,7 +502,13 @@ class HealthMixin:
                 self.last_proxy = saved["last_proxy"]
                 self.last_country = saved["last_country"]
                 if hunt_was_running:
+                    # Resume the main hunt's _pause_event so any of its
+                    # in-flight `_validate_all` / `_health_loop` workers
+                    # continue with the live counters now in place.
                     self.resume_hunt(manual=True)
+                # phase_started is bumped by resume_hunt() above; restore the
+                # pre-recheck value so the UI progress timer is consistent.
+                self.phase_started = saved["phase_started"]
                 self._health_running = False
 
     async def _revalidate_stale_proxies(self):

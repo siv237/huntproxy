@@ -78,6 +78,25 @@ class ProxyRating:
             result += 5
         if self.mitm_suspect:
             result -= 30
+        # Speed is dominant. A non-SOCKS proxy that has never produced a speed
+        # measurement is unusable in practice; zero it out instead of letting it
+        # linger near the top with a small score from reliability only.
+        # SOCKS tunnels cannot use the HTTP speed servers meaningfully, so they
+        # are exempt — their score is based on reliability, latency and protocol.
+        if self.speed_count == 0 and self.checks_ok > 0:
+            port = None
+            socks_proxy = False
+            try:
+                port = int(self.address.rsplit(":", 1)[1])
+            except (IndexError, ValueError):
+                pass
+            if port is not None and port in (1080, 10808, 9050, 4145, 9051):
+                socks_proxy = True
+            if not socks_proxy:
+                # Boost the result upward before subtraction so a strong base
+                # does not slip into a small positive score; the requirement is
+                # that a no-speed proxy is dropped, not merely demoted.
+                result -= max(80, result + 10)
         if self.speed_count > 0:
             result += min(50, self.speed_avg / 20)
         if self.speed_fails > 0:

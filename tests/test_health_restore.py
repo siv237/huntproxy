@@ -4,12 +4,13 @@ import hunt
 
 
 class TestHealthCheckRestoreProgress:
-    """Manual recheck via _health_check must pause the running hunt and restore
-    its progress counters and phase after completion."""
+    """Manual recheck via _health_check must snapshot the live hunt counters
+    before running and restore them after, so the running hunt picks up exactly
+    where it left off."""
 
-    def test_health_check_restores_hunt_progress(self, state):
+    def test_health_check_restores_hunt_counters(self, state):
         async def run():
-            # Simulate a hunt that has downloaded sources and is validating.
+            # Simulate a hunt in mid-validation with live counters.
             state.phase = state.PHASE_VALIDATE
             state.phase_started = 1000000.0
             state.downloaded = 100
@@ -20,7 +21,61 @@ class TestHealthCheckRestoreProgress:
             state.last_proxy = "5.6.7.8:8080"
             state.last_country = "United States"
 
-            # Mock _check_proxy and _check_ssl so _health_check completes quickly.
+            # A real running task so pause_hunt() actually pauses.
+            state.task = asyncio.create_task(asyncio.sleep(5))
+
+            try:
+                async def fake_check_proxy(addr):
+                    return (True, "US", True, False, {}, {}, 0.1, "US", False)
+
+                async def fake_check_ssl(addr):
+                    return (False, "", "", {}, 0.0, False)
+
+                async def fake_measure_speed(host, port, is_socks, **kwargs):
+                    return 0.0
+
+                state._check_proxy = fake_check_proxy
+                state._check_ssl = fake_check_ssl
+                state._measure_speed = fake_measure_speed
+
+                from hunt.models import ProxyRating
+                r = ProxyRating(
+                    address="1.2.3.4:8080", last_status="ok",
+                    speed_sum=200, speed_count=1,
+                )
+                state.ratings[r.address] = r
+
+                await state._health_check()
+
+                # _health_check must restore the hunt's counters that it
+                # temporarily overwrote while running.
+                assert state.checking_total == 200
+                assert state.checked == 150
+                assert state.working == 60
+                assert state.failed == 40
+                assert state.downloaded == 100
+                # Phase must be restored to the pre-recheck phase.
+                assert state.phase == state.PHASE_VALIDATE
+                assert state.phase_started == 1000000.0
+                # Hunt is no longer paused.
+                assert state._paused is False
+                assert state._manual_pause is False
+            finally:
+                state.task.cancel()
+                try:
+                    await state.task
+                except (asyncio.CancelledError, Exception):
+                    pass
+
+        asyncio.run(run())
+
+    def test_health_check_no_hunt_keeps_idle(self, state):
+        async def run():
+            state.phase = state.PHASE_DONE
+            state.checking_total = 0
+            state.checked = 0
+            state.last_proxy = "old"
+
             async def fake_check_proxy(addr):
                 return (True, "US", True, False, {}, {}, 0.1, "US", False)
 
@@ -34,35 +89,60 @@ class TestHealthCheckRestoreProgress:
             state._check_ssl = fake_check_ssl
             state._measure_speed = fake_measure_speed
 
-            # Add one alive candidate so _health_check has work to do.
             from hunt.models import ProxyRating
             r = ProxyRating(
-                address="1.2.3.4:8080",
-                last_status="ok",
-                latency_sum=1.0,
-                latency_count=1,
-                checks_total=1,
-                checks_ok=1,
+                address="1.2.3.4:8080", last_status="ok",
+                speed_sum=200, speed_count=1,
+            )
+            state.ratings[r.address] = r
+
+            # No main hunt is running (state.task is None).
+            await state._health_check()
+
+            # Idle state preserved.
+            assert state.phase == state.PHASE_DONE
+            assert state.checking_total == 0
+            assert state.checked == 0
+            assert state.last_proxy == "old"
+
+        asyncio.run(run())
+
+    def test_health_check_resets_last_proxy_info(self, state):
+        async def run():
+            state.phase = state.PHASE_DONE
+            state.last_proxy = "5.6.7.8:8080"
+            state.last_country = "United States"
+
+            async def fake_check_proxy(addr):
+                return (True, "US", True, False, {}, {}, 0.1, "US", False)
+
+            async def fake_check_ssl(addr):
+                return (False, "", "", {}, 0.0, False)
+
+            async def fake_measure_speed(host, port, is_socks, **kwargs):
+                return 0.0
+
+            state._check_proxy = fake_check_proxy
+            state._check_ssl = fake_check_ssl
+            state._measure_speed = fake_measure_speed
+
+            from hunt.models import ProxyRating
+            r = ProxyRating(
+                address="1.2.3.4:8080", last_status="ok",
+                speed_sum=200, speed_count=1,
             )
             state.ratings[r.address] = r
 
             await state._health_check()
 
-            # After completion, counters and phase must be restored.
-            assert state.phase == state.PHASE_VALIDATE
-            assert state.phase_started == 1000000.0
-            assert state.downloaded == 100
-            assert state.checking_total == 200
-            assert state.checked == 150
-            assert state.working == 60
-            assert state.failed == 40
+            # Cosmetic last_proxy/last_country are restored to their
+            # pre-health-check values.
             assert state.last_proxy == "5.6.7.8:8080"
             assert state.last_country == "United States"
 
         asyncio.run(run())
 
-    def test_health_check_resets_progress_when_no_main_hunt(self, state):
-        """When no hunt is running, counters should not be restored to garbage."""
+    def test_health_check_no_hunt_pauses_then_sets_phase_done(self, state):
         async def run():
             state.phase = state.PHASE_DONE
             state.checking_total = 0
@@ -83,19 +163,15 @@ class TestHealthCheckRestoreProgress:
 
             from hunt.models import ProxyRating
             r = ProxyRating(
-                address="1.2.3.4:8080",
-                last_status="ok",
-                latency_sum=1.0,
-                latency_count=1,
-                checks_total=1,
-                checks_ok=1,
+                address="1.2.3.4:8080", last_status="ok",
+                speed_sum=200, speed_count=1,
             )
             state.ratings[r.address] = r
 
+            # No main hunt is running (self.task is None).
             await state._health_check()
 
-            # After completion, counters restored to PHASE_DONE state.
+            # No hunt to restore -> phase goes to DONE.
             assert state.phase == state.PHASE_DONE
-            assert state.checking_total == 0
 
         asyncio.run(run())
