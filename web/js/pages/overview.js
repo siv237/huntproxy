@@ -228,7 +228,9 @@ router.register('overview', (container) => {
     const mode = (det.ssl_supported || det.protocol === 'https') ? 'HTTPS' : (det.protocol || 'HTTP').toUpperCase();
     const ok = det.last_status === 'ok';
     const addrRow = ui.el('div', '', { style: 'display:flex;align-items:center;gap:0.4em;flex-wrap:wrap;margin-bottom:0.4em' });
-    addrRow.appendChild(ui.el('span', '', { style: 'font-family:monospace;font-weight:700;color:var(--accent);font-size:12px', text: det.address }));
+    const addrLink = ui.el('span', '', { style: 'font-family:monospace;font-weight:700;color:var(--accent);font-size:12px;cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px', text: det.address });
+    addrLink.addEventListener('click', () => { if (window.proxyCard) window.proxyCard.show(det.address); });
+    addrRow.appendChild(addrLink);
     addrRow.appendChild(ui.el('span', '', { style: 'color:var(--accent);font-weight:600;font-size:11px', text: mode }));
     if (det.ssl_supported) addrRow.appendChild(ui.el('span', '', { style: 'color:#06b6d4;font-weight:600;font-size:10px;border:1px solid #06b6d4;border-radius:3px;padding:0 3px', text: 'SSL' }));
     addrRow.appendChild(ui.el('span', '', { style: `color:${ok ? 'var(--success)' : 'var(--danger)'};font-size:14px`, text: ok ? '●' : '○' }));
@@ -433,7 +435,7 @@ router.register('overview', (container) => {
       return [
         `<span style="color:var(--text-muted);font-size:11px">${i + 1}</span>`,
         `<span class="flag">${ui.flag(p.country_code)}</span> <span style="font-size:11px">${ui.escHtml(p.country || '')}</span>`,
-        `<span class="addr">${ui.escHtml(p.address)}</span>`,
+        `<span class="addr proxy-address-link" data-card-addr="${ui.escHtml(p.address)}" style="cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px">${ui.escHtml(p.address)}</span>`,
         p.ssl_supported ? '<span style="color:#06b6d4;font-weight:600;font-size:10px">SSL</span>' : '<span style="color:var(--text-muted)">—</span>',
         p.last_latency ? p.last_latency.toFixed(2) + 's' : '—',
         p.speed_avg ? p.speed_avg.toFixed(0) + 'KB/s' : '—',
@@ -457,6 +459,14 @@ router.register('overview', (container) => {
             return api.proxyStart(port).then(() => app.toast(t('page.overview.proxyStarted')));
           }
         }).catch(er => app.toast(t('common.error', { message: er.message }), 'error'));
+      });
+    });
+
+    wrap.querySelectorAll('[data-card-addr]').forEach(el => {
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const addr = el.dataset.cardAddr;
+        if (addr && window.proxyCard) window.proxyCard.show(addr);
       });
     });
   }

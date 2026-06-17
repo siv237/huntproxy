@@ -302,7 +302,7 @@ router.register('ip-blacklists', (container) => {
     ];
 
     const rows = matches.map(m => [
-      `<span class="addr">${m.address}</span>`,
+      `<span class="addr proxy-address-link" data-card-addr="${ui.escHtml(m.address)}" style="cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px">${m.address}</span>`,
       ui.escHtml(m.egress_ip || '—'),
       `${ui.flag(m.country_code)} ${ui.escHtml(m.country || '—')}`,
       `<span style="color:var(--danger)">${ui.escHtml(m.reason || '—')}</span>`,
@@ -311,6 +311,14 @@ router.register('ip-blacklists', (container) => {
 
     wrap.innerHTML = '';
     wrap.appendChild(ui.table(headers, rows));
+
+    wrap.querySelectorAll('[data-card-addr]').forEach(el => {
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const addr = el.dataset.cardAddr;
+        if (addr && window.proxyCard) window.proxyCard.show(addr);
+      });
+    });
   }
 
   function editSource(id) {

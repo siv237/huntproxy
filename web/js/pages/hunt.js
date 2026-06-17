@@ -227,7 +227,7 @@ router.register('hunt', (container) => {
       const proto = p.protocol || 'http';
       return [
         `<span style="color:var(--text-muted)">${i+1}</span>`,
-        `<span class="addr" style="font-size:10px;cursor:pointer" onclick="window._proxySelect='${p.address}';router.navigate('proxy-pool')">${p.address}</span>`,
+        `<span class="addr proxy-address-link" data-card-addr="${ui.escHtml(p.address)}" style="font-size:10px;cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px">${p.address}</span>`,
         ui.flag(p.country_code) || '—',
         p.last_latency ? p.last_latency.toFixed(2) + 's' : '—',
         p.latency_avg ? p.latency_avg.toFixed(2) + 's' : '—',
@@ -242,6 +242,14 @@ router.register('hunt', (container) => {
     });
     wrap.innerHTML = '';
     wrap.appendChild(ui.table(headers, rows));
+
+    wrap.querySelectorAll('[data-card-addr]').forEach(el => {
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const addr = el.dataset.cardAddr;
+        if (addr && window.proxyCard) window.proxyCard.show(addr);
+      });
+    });
   }
 
   function setBlSort(key) {
@@ -262,13 +270,21 @@ router.register('hunt', (container) => {
       h('', null, '30px', 'center'),
     ];
     const rows = sorted.slice(0, 8).map(b => [
-      `<span class="addr" style="font-size:10px">${b.address}</span>`,
+      `<span class="addr proxy-address-link" data-card-addr="${ui.escHtml(b.address)}" style="font-size:10px;cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px">${b.address}</span>`,
       `<span style="color:var(--danger);font-size:10px">${b.reason || '—'}</span>`,
       b.country || '—',
       `<button class="btn btn-xs btn-secondary" onclick="blRemove('${b.address}')" style="padding:1px 4px;font-size:9px">×</button>`,
     ]);
     wrap.innerHTML = '';
     wrap.appendChild(ui.table(headers, rows));
+
+    wrap.querySelectorAll('[data-card-addr]').forEach(el => {
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const addr = el.dataset.cardAddr;
+        if (addr && window.proxyCard) window.proxyCard.show(addr);
+      });
+    });
   }
 
   let huntLogLines = [];

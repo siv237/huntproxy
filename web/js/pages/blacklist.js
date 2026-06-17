@@ -124,7 +124,7 @@ router.register('blacklist', (container) => {
       h('', null, '80px', 'center'),
     ];
     const bodyRows = rows.map(b => [
-      `<span class="addr">${b.address}</span>`,
+      `<span class="addr proxy-address-link" data-card-addr="${ui.escHtml(b.address)}" style="cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px">${b.address}</span>`,
       `${ui.escHtml(b.country || '—')}`,
       `<span style="color:var(--danger)">${b.reason || '—'}</span>`,
       Math.round(b.score || 0),
@@ -133,6 +133,14 @@ router.register('blacklist', (container) => {
     const tblWrap = ui.el('div', 'table-wrap', { style: 'flex:1;min-height:0;overflow-y:auto' });
     tblWrap.appendChild(ui.table(headers, bodyRows));
     card.appendChild(tblWrap);
+
+    tblWrap.querySelectorAll('[data-card-addr]').forEach(el => {
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const addr = el.dataset.cardAddr;
+        if (addr && window.proxyCard) window.proxyCard.show(addr);
+      });
+    });
   }
 
   function renderPagination() {

@@ -139,7 +139,7 @@ router.register('proxies', (container) => {
     const flag = ui.flag(p.country_code);
 
     return [
-      `<span style="font-size:12px;font-family:monospace;color:var(--text-primary)">${ui.escHtml(p.address)}</span>`,
+      `<span class="proxy-address-link" data-card-addr="${ui.escHtml(p.address)}" style="font-size:12px;font-family:monospace;color:var(--text-primary);cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px">${ui.escHtml(p.address)}</span>`,
       `<span style="font-size:12px">${flag} ${ui.escHtml(p.country || '—')}</span>`,
       `<span style="font-size:11px;color:var(--text-muted)">${proto}</span>`,
       ssl,
@@ -199,6 +199,14 @@ router.register('proxies', (container) => {
     const rows = sorted.map(p => renderProxyRow(p));
     tblWrap.appendChild(ui.table(headers, rows));
     body.appendChild(tblWrap);
+
+    body.querySelectorAll('[data-card-addr]').forEach(el => {
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const addr = el.dataset.cardAddr;
+        if (addr && window.proxyCard) window.proxyCard.show(addr);
+      });
+    });
 
     body.querySelectorAll('[data-bl-addr]').forEach(btn => {
       btn.addEventListener('click', (e) => {

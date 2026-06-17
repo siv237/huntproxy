@@ -151,6 +151,13 @@ router.register('proxy-pool', (container) => {
     card.appendChild(filterRow);
 
     const wrap = ui.el('div', '', { id: 'select-proxy-tbl', style: 'flex:1;overflow-y:auto;min-height:0' });
+    wrap.addEventListener('click', (e) => {
+      const el = e.target.closest('[data-card-addr]');
+      if (!el) return;
+      e.stopPropagation();
+      const addr = el.dataset.cardAddr;
+      if (addr && window.proxyCard) window.proxyCard.show(addr);
+    });
     card.appendChild(wrap);
     return card;
   }
@@ -212,8 +219,9 @@ router.register('proxy-pool', (container) => {
       return;
     }
 
-    const top = ui.el('div', '', { style: 'font-family:monospace;font-size:13px;font-weight:700;color:var(--accent);margin-bottom:4px;word-break:break-all' });
+    const top = ui.el('div', '', { style: 'font-family:monospace;font-size:13px;font-weight:700;color:var(--accent);margin-bottom:4px;word-break:break-all;cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px' });
     top.textContent = proxyUrl(ap);
+    top.addEventListener('click', () => { if (window.proxyCard) window.proxyCard.show(ap.address); });
     body.innerHTML = '';
     body.appendChild(top);
 
@@ -408,7 +416,7 @@ router.register('proxy-pool', (container) => {
           const exitFlag = hasDiff ? (ui.flag(p.egress_country_code || p.country_code) || '') : '';
           return [
             `<span style="color:var(--text-muted)">${i+1}</span>`,
-            `<span class="addr" style="font-size:10px">${proxyUrl(p)}</span>`,
+            `<span class="addr proxy-address-link" data-card-addr="${ui.escHtml(p.address)}" style="font-size:10px;cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px">${proxyUrl(p)}</span>`,
             srvFlag,
             exitFlag,
             p.ssl_supported ? '<span style="color:#06b6d4;font-weight:600;font-size:10px">✓</span>' : '<span style="color:var(--text-muted)">—</span>',
@@ -462,7 +470,7 @@ router.register('proxy-pool', (container) => {
         const exitFlag = hasDiff ? (ui.flag(p.egress_country_code || p.country_code) || '') : '';
         return [
           `<span style="color:var(--text-muted)">${i+1}</span>`,
-          `<span class="addr" style="font-size:10px">${proxyUrl(p)}</span>`,
+          `<span class="addr proxy-address-link" data-card-addr="${ui.escHtml(p.address)}" style="font-size:10px;cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px">${proxyUrl(p)}</span>`,
           srvFlag,
           exitFlag,
           p.ssl_supported ? '<span style="color:#06b6d4;font-weight:600;font-size:10px">✓</span>' : '<span style="color:var(--text-muted)">—</span>',

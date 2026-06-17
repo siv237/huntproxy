@@ -105,7 +105,7 @@ router.register('proxy-control', (container) => {
     const sr = totalReq ? (successCount / totalReq * 100) : 0;
 
     const kpiMap = {
-      'kpi-active': { value: ap ? ap.address.split(':')[0] : t('page.proxyControl.none'), sub: ap ? (ap.last_status === 'ok' ? t('page.proxyControl.healthy') : t('page.proxyControl.unhealthy')) : '—' },
+      'kpi-active': { value: ap ? ap.address.split(':')[0] : t('page.proxyControl.none'), sub: ap ? (ap.last_status === 'ok' ? t('page.proxyControl.healthy') : t('page.proxyControl.unhealthy')) : '—', addr: ap ? ap.address : null },
       'kpi-type': { value: ap ? (ap.protocol || 'HTTP').toUpperCase() : '—', sub: 'CONNECT' },
       'kpi-uptime': { value: '—', sub: t('page.proxyControl.sinceStart') },
       'kpi-req': { value: totalReq.toLocaleString(), sub: '—' },
@@ -116,7 +116,13 @@ router.register('proxy-control', (container) => {
       const card = document.getElementById(id);
       if (!card) return;
       const val = card.querySelector('.stat-value');
-      if (val) val.textContent = data.value;
+      if (val) {
+        val.textContent = data.value;
+        val.style.cursor = data.addr ? 'pointer' : '';
+        val.style.textDecoration = data.addr ? 'underline dotted' : '';
+        val.style.textUnderlineOffset = data.addr ? '2px' : '';
+        val.onclick = data.addr ? () => { if (window.proxyCard) window.proxyCard.show(data.addr); } : null;
+      }
       const sub = card.querySelector('.stat-delta');
       if (sub) {
         sub.style.display = 'block';
@@ -203,7 +209,9 @@ router.register('proxy-control', (container) => {
     }
 
     const top = ui.el('div', '', { style: 'display:flex;align-items:center;gap:10px;margin-bottom:12px' });
-    top.appendChild(ui.el('div', '', { style: 'font-size:16px;font-weight:700;font-family:monospace;color:var(--accent)', text: ap.address }));
+    const addrLink = ui.el('div', '', { style: 'font-size:16px;font-weight:700;font-family:monospace;color:var(--accent);cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px', text: ap.address });
+    addrLink.addEventListener('click', () => { if (window.proxyCard) window.proxyCard.show(ap.address); });
+    top.appendChild(addrLink);
     top.appendChild(ui.badge(ap.last_status === 'ok' ? t('page.proxyControl.healthy') : t('page.proxyControl.unhealthy'), ap.last_status === 'ok' ? 'green' : 'red'));
     top.appendChild(ui.el('span', 'flag', { text: ui.flag(ap.country_code) }));
     card.appendChild(top);
