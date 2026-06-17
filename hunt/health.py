@@ -354,6 +354,24 @@ class HealthMixin:
                 self._emit("Health check already in progress, skipping", "warn")
                 return
             self._health_running = True
+            # Save the current main-hunt progress so we can restore it after
+            # this manual health check completes.
+            saved = {
+                "phase": self.phase,
+                "phase_started": self.phase_started,
+                "checking_total": self.checking_total,
+                "checked": self.checked,
+                "working": self.working,
+                "failed": self.failed,
+                "downloaded": self.downloaded,
+                "last_proxy": self.last_proxy,
+                "last_country": self.last_country,
+            }
+            # Pause the running hunt so its workers don't interfere with the
+            # manual check. If already manually paused, leave as-is.
+            hunt_was_running = bool(self.task and not self.task.done()) and not self._paused
+            if hunt_was_running:
+                self.pause_hunt(manual=True)
             try:
                 # Only manual blacklist is a hard exclusion; IP-blacklisted proxies
                 # remain candidates and are ranked by their reduced score.
@@ -467,6 +485,19 @@ class HealthMixin:
                 self._emit(f"Health check done: {ok_count} ok, {fail_count} failed", "ok")
                 self.phase = self.PHASE_DONE
             finally:
+                # Restore the main hunt's progress counters so the pool progress
+                # card jumps back to where it was before the manual recheck.
+                self.phase = saved["phase"]
+                self.phase_started = saved["phase_started"]
+                self.checking_total = saved["checking_total"]
+                self.checked = saved["checked"]
+                self.working = saved["working"]
+                self.failed = saved["failed"]
+                self.downloaded = saved["downloaded"]
+                self.last_proxy = saved["last_proxy"]
+                self.last_country = saved["last_country"]
+                if hunt_was_running:
+                    self.resume_hunt(manual=True)
                 self._health_running = False
 
     async def _revalidate_stale_proxies(self):
