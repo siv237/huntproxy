@@ -22,7 +22,11 @@
   "topbar": {
     "searchPlaceholder": "Поиск прокси, IP, стран...",
     "quickActions": "Быстрые действия",
-    "admin": "Админ"
+    "admin": "Админ",
+    "trafficCounter": "Текущий трафик прокси",
+    "trafficIn": "In",
+    "trafficOut": "Out",
+    "trafficTotal": "Всего"
   },
   "sidebar": {
     "allSystemsOperational": "Все системы работают",
@@ -63,7 +67,9 @@
     "portRequired": "Порт обязателен",
     "confirmDelete": "Удалить {item}?",
     "yes": "Да",
-    "no": "Нет"
+    "no": "Нет",
+    "recheckStarted": "Проверка запущена",
+    "recheckAlreadyRunning": "Проверка уже выполняется, подождите"
   },
   "route": {
     "direct": "Напрямую",
@@ -293,6 +299,7 @@
       "directModeOn": "Прямой режим ВКЛ",
       "directModeOff": "Прямой режим ВЫКЛ",
       "selectUpstreamProxy": "Выбор апстрим-прокси",
+      "recheckAll": "Перепроверить все",
       "hideNoHttps": "Скрыть без HTTPS",
       "hideMitm": "Скрыть MITM-подозрительных",
       "hideBlacklisted": "Скрыть IP-блэклист",
@@ -575,6 +582,7 @@
     "security": "Безопасность",
     "network": "Сеть",
     "timeline": "Временная шкала",
+    "blacklist": "Чёрный список",
     "scoreBreakdown": "Разбор рейтинга",
     "lastLatency": "Последняя задержка",
     "avgLatency": "Средняя задержка",
@@ -589,6 +597,7 @@
     "manualBlacklist": "Ручной чёрный список",
     "ipBlacklist": "IP-чёрный список",
     "hits": "совпадений",
+    "fromSources": "из {count} источников",
     "egressIp": "Egress IP",
     "egress": "Egress",
     "listenIp": "Listen IP",
@@ -611,7 +620,37 @@
     "addToBlacklist": "В чёрный список",
     "removeFromBlacklist": "Убрать из чёрного списка",
     "copy": "Копировать",
-    "copied": "Адрес скопирован"
+    "copied": "Адрес скопирован",
+    "tooltip": {
+      "lastLatency": "Время отклика при последней проверке.",
+      "avgLatency": "Среднее время отклика по успешным проверкам.",
+      "lastSpeed": "Скорость скачивания в последнем тесте.",
+      "avgSpeed": "Средняя скорость скачивания по успешным тестам.",
+      "successRate": "Доля успешных проверок от общего числа.",
+      "checks": "Успешные проверки из общего числа попыток.",
+      "ssl": "Поддержка HTTPS/TLS.",
+      "connect": "Поддержка метода CONNECT для туннелирования.",
+      "mitm": "Подозрение на подмену TLS (MITM).",
+      "manualBlacklist": "Запись в ручном чёрном списке оператора.",
+      "ipBlacklist": "Совпадения в загруженных IP-чёрных списках для egress IP.",
+      "egressIp": "IP, видимый целевому серверу.",
+      "egress": "Расположение и провайдер выходного IP прокси.",
+      "listenIp": "Адрес, на котором слушает прокси.",
+      "listen": "Расположение и провайдер listen-IP прокси.",
+      "sources": "Списки источников, из которых пришёл адрес.",
+      "firstSeen": "Когда прокси был впервые обнаружен.",
+      "lastCheck": "Когда прокси последний раз проверялся.",
+      "lastOk": "Когда прокси последний раз отвечал успешно.",
+      "speedFails": "Число подряд неудачных измерений скорости.",
+      "latencyScore": "Баллы за среднее время отклика.",
+      "sslBonus": "Бонус за поддержку HTTPS.",
+      "connectBonus": "Бонус за поддержку CONNECT.",
+      "speedBonus": "Баллы за среднюю скорость скачивания.",
+      "mitmPenalty": "Штраф при подозрении на MITM.",
+      "speedFailPenalty": "Штраф за неудачные тесты скорости.",
+      "ipBlacklistMultiplier": "Множитель рейтинга по числу совпадений в чёрных списках.",
+      "totalScore": "Итоговый рейтинг от 0 до 100."
+    }
   },
   "lang": {
     "selector": "Язык"

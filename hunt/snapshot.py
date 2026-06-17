@@ -147,6 +147,31 @@ class SnapshotMixin:
                 logger.error("DB get_history: %s", e)
                 return []
 
+    def get_live_traffic(self) -> dict:
+            """Return total traffic bytes (last 24h) and request count."""
+            cutoff = time.time() - 86400
+            try:
+                conn = self._stats_db()
+                row = conn.execute(
+                    "SELECT COALESCE(SUM(bytes_in), 0) as in_bytes, "
+                    "COALESCE(SUM(bytes_out), 0) as out_bytes, "
+                    "COUNT(*) as requests "
+                    "FROM traffic_log WHERE ts > ?",
+                    (cutoff,)
+                ).fetchone()
+                conn.close()
+                in_bytes = int(row["in_bytes"] or 0)
+                out_bytes = int(row["out_bytes"] or 0)
+                return {
+                    "in_bytes": in_bytes,
+                    "out_bytes": out_bytes,
+                    "total_bytes": in_bytes + out_bytes,
+                    "requests": int(row["requests"] or 0),
+                }
+            except Exception as e:
+                logger.error("DB live traffic query: %s", e)
+                return {"in_bytes": 0, "out_bytes": 0, "total_bytes": 0, "requests": 0}
+
     def _get_system(self) -> dict:
             try:
                 import psutil

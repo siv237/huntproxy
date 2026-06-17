@@ -64,12 +64,14 @@ class ProxyRating:
         if self.checks_total == 0 or self.last_status != "ok":
             return 0.0
         sr = self.success_rate
-        base = sr * 50
+        # Reliability and latency matter, but usable speed is the dominant
+        # factor for the end user experience.
+        base = sr * 40
         if self.latency_count == 0:
-            lat_score = 50
+            lat_score = 20
         else:
-            lat_score = max(0, 100 - self.latency_avg * 10)
-        result = base + lat_score * 0.5
+            lat_score = max(0, 100 - self.latency_avg * 10) * 0.2
+        result = base + lat_score
         if self.ssl_supported:
             result += 10
         if self.supports_connect:
@@ -77,9 +79,9 @@ class ProxyRating:
         if self.mitm_suspect:
             result -= 30
         if self.speed_count > 0:
-            result += min(20, self.speed_avg / 50)
-        if self.speed_fails >= 3:
-            result -= 40
+            result += min(50, self.speed_avg / 20)
+        if self.speed_fails > 0:
+            result -= min(45, self.speed_fails * 15)
         # Manual operator blacklist is still a hard exclusion.
         if self.in_blacklist:
             return 0.0
@@ -87,7 +89,7 @@ class ProxyRating:
         # but never drop below 20% of the computed score so it remains usable.
         if self.ip_blacklist_hits > 0:
             result *= max(0.2, 0.75 ** self.ip_blacklist_hits)
-        return max(0, result)
+        return max(0.0, min(100.0, result))
 
     def to_dict(self) -> dict:
         return {

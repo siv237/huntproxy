@@ -1,0 +1,26 @@
+ВСЁ ГОТОВО — можно коммитить и пушить
+
+1. перепроверка листа — фикс: блокировка параллельных health-check через _health_running, кнопки disabled пока проверка идёт, 409 если уже запущено, checked не превышает total (была проблема 108/27=400%)
+
+2. счётчик трафика — переделан: убрано поле поиска, 3 колонки (Out/In/Total), скорость по дельте байтов, API с WHERE ts>? по индексу, тест test_api_traffic_live_reads_totals
+
+3. SSL-прокси не измеряет скорость — ИСПРАВЛЕНО И ПРОВЕРЕНО КУРЛОМ:
+   - TLS-прокси 223.130.11.151:8443: скорость 59.7 KB/s (curl: 46.4) ✓
+   - HTTP-прокси 47.79.119.13:8080: скорость 234.5 KB/s (curl: 202.3) ✓
+   - _check_ssl возвращает supports_connect, мерджится в основную логику
+   - _speed_single: 3 попытки с новым подключением (direct GET / CONNECT:80 / CONNECT:443+TLS)
+   - тесты: LocalHttpsProxyServer, test_speed_single_ssl_proxy_requires_connect, test_check_ssl_detects_connect_support
+
+4. аудит кода — исправлены 4 проблемы:
+   - CRITICAL: /api/proxy/recheck падал с ValueError (5-tuple вместо 6-tuple из _check_ssl)
+   - WARNING: утечка TLS-транспорта в _https_speed_single (теперь закрывается в finally)
+   - WARNING: get_live_traffic full table scan (добавлен WHERE ts > ? + индекс)
+   - WARNING: progress emit на каждый ok вместо каждых 10
+
+5. восстановление сервисов после рестарта — ИСПРАВЛЕНО:
+   - коммит 71491eb поменял порядок: server.stop() стал до _save_state()
+   - server.stop() сбрасывает _proxy_running/_socks5_running в False → после рестарта сервисы не поднимались
+   - фикс: флаги сохраняются перед server.stop(), восстанавливаются после, затем _save_state()
+   - тест test_graceful_shutdown_preserves_running_flags
+
+все 153 теста проходят

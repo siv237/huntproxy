@@ -22,7 +22,11 @@
   "topbar": {
     "searchPlaceholder": "Search proxies, IPs, countries...",
     "quickActions": "Quick Actions",
-    "admin": "Admin"
+    "admin": "Admin",
+    "trafficCounter": "Live proxy traffic",
+    "trafficIn": "In",
+    "trafficOut": "Out",
+    "trafficTotal": "Total"
   },
   "sidebar": {
     "allSystemsOperational": "All Systems Operational",
@@ -63,7 +67,9 @@
     "portRequired": "Port is required",
     "confirmDelete": "Delete this {item}?",
     "yes": "Yes",
-    "no": "No"
+    "no": "No",
+    "recheckStarted": "Health check started",
+    "recheckAlreadyRunning": "Health check already running, please wait"
   },
   "route": {
     "direct": "Direct",
@@ -293,6 +299,7 @@
       "directModeOn": "Direct mode ON",
       "directModeOff": "Direct mode OFF",
       "selectUpstreamProxy": "Select Upstream Proxy",
+      "recheckAll": "Recheck all",
       "hideNoHttps": "Hide without HTTPS",
       "hideMitm": "Hide MITM suspects",
       "hideBlacklisted": "Hide IP blacklist",
@@ -575,6 +582,7 @@
     "security": "Security",
     "network": "Network",
     "timeline": "Timeline",
+    "blacklist": "Blacklist",
     "scoreBreakdown": "Score Breakdown",
     "lastLatency": "Last latency",
     "avgLatency": "Avg latency",
@@ -589,6 +597,7 @@
     "manualBlacklist": "Manual blacklist",
     "ipBlacklist": "IP blacklist",
     "hits": "hits",
+    "fromSources": "from {count} sources",
     "egressIp": "Egress IP",
     "egress": "Egress",
     "listenIp": "Listen IP",
@@ -611,7 +620,37 @@
     "addToBlacklist": "Blacklist",
     "removeFromBlacklist": "Remove from BL",
     "copy": "Copy",
-    "copied": "Address copied"
+    "copied": "Address copied",
+    "tooltip": {
+      "lastLatency": "Response time in the last check.",
+      "avgLatency": "Average response time across successful checks.",
+      "lastSpeed": "Download speed in the last speed test.",
+      "avgSpeed": "Average download speed across successful tests.",
+      "successRate": "Successful checks divided by total checks.",
+      "checks": "Successful checks out of total attempts.",
+      "ssl": "HTTPS/TLS support.",
+      "connect": "CONNECT method for tunneling support.",
+      "mitm": "Man-in-the-middle tampering suspicion.",
+      "manualBlacklist": "Operator-managed blacklist entry.",
+      "ipBlacklist": "Downloaded IP blacklist matches for the exit IP.",
+      "egressIp": "IP seen by the destination server.",
+      "egress": "Exit location and ISP of the proxy.",
+      "listenIp": "Proxy listen address.",
+      "listen": "Listen location and ISP of the proxy.",
+      "sources": "Proxy source lists this address came from.",
+      "firstSeen": "When this proxy was first discovered.",
+      "lastCheck": "When the proxy was last tested.",
+      "lastOk": "When the proxy last responded successfully.",
+      "speedFails": "Failed consecutive speed measurements.",
+      "latencyScore": "Score based on average response time.",
+      "sslBonus": "Bonus for HTTPS support.",
+      "connectBonus": "Bonus for CONNECT tunneling support.",
+      "speedBonus": "Score based on average download speed.",
+      "mitmPenalty": "Penalty if MITM is suspected.",
+      "speedFailPenalty": "Penalty for failed speed tests.",
+      "ipBlacklistMultiplier": "Score multiplier based on blacklist hits.",
+      "totalScore": "Final rating from 0 to 100."
+    }
   },
   "lang": {
     "selector": "Language"

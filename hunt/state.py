@@ -60,6 +60,7 @@ class HuntState(DbMixin, EventsMixin, SnapshotMixin, HealthMixin, CheckingMixin,
             self._fail_streak: int = 0
             self._check_streak: int = 0
             self._canary_task: Optional[asyncio.Task] = None
+            self._health_running: bool = False
 
             # Service state for restoration after restart
             self._hunt_running: bool = False

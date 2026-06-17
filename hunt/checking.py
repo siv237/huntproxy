@@ -46,9 +46,9 @@ class CheckingMixin:
                         else:
                             ok, country, supports_connect, mitm_suspect, egress, listen, http_latency, cc, fast_fail = results[0]
                         if isinstance(results[1], Exception):
-                            ssl_ok, ssl_country, ssl_cc, ssl_egress, ssl_latency = False, "", "", {}, 0.0
+                            ssl_ok, ssl_country, ssl_cc, ssl_egress, ssl_latency, ssl_supports_connect = False, "", "", {}, 0.0, False
                         else:
-                            ssl_ok, ssl_country, ssl_cc, ssl_egress, ssl_latency = results[1]
+                            ssl_ok, ssl_country, ssl_cc, ssl_egress, ssl_latency, ssl_supports_connect = results[1]
                         if fast_fail and not ok and not ssl_ok:
                             async with lock:
                                 self._fail_streak += 1
@@ -65,11 +65,14 @@ class CheckingMixin:
                             cc = ssl_cc
                             egress = ssl_egress
                             http_latency = ssl_latency
+                            supports_connect = ssl_supports_connect
                         elif ok and not ssl_ok:
                             pass
                         elif ok and ssl_ok:
                             if not egress and ssl_egress:
                                 egress = ssl_egress
+                            if not supports_connect and ssl_supports_connect:
+                                supports_connect = ssl_supports_connect
                         # Non-SOCKS proxies must support CONNECT to be useful for HTTPS.
                         if ok and not self._is_socks_addr(addr) and not supports_connect:
                             ok = False
@@ -298,7 +301,7 @@ class CheckingMixin:
             try:
                 port = int(port_str)
             except ValueError:
-                return False, "", "", {}, 0.0
+                return False, "", "", {}, 0.0, False
             ctx = self._make_ssl_ctx()
             t0 = time.monotonic()
             try:
@@ -307,8 +310,9 @@ class CheckingMixin:
                     timeout=self.timeout,
                 )
             except Exception:
-                return False, "", "", {}, 0.0
+                return False, "", "", {}, 0.0, False
 
+            supports_connect = False
             buf = b""
             try:
                 req = f"CONNECT ip-api.com:80 HTTP/1.1\r\nHost: ip-api.com:80\r\n\r\n"
@@ -316,7 +320,10 @@ class CheckingMixin:
                 await asyncio.wait_for(writer.drain(), timeout=self.timeout)
                 try:
                     resp = await asyncio.wait_for(reader.readuntil(b"\r\n\r\n"), timeout=self.timeout)
-                    if b"200" in resp.split(b"\r\n")[0]:
+                    status_line = resp.split(b"\r\n")[0]
+                    connect_ok = b"200" in status_line
+                    if connect_ok:
+                        supports_connect = True
                         req = (
                             "GET /json/ HTTP/1.0\r\n"
                             "Host: ip-api.com\r\n"
@@ -378,7 +385,7 @@ class CheckingMixin:
                         if buf.count(b"}") >= 1 and len(buf) > 200:
                             break
             except Exception:
-                return False, "", "", {}, 0.0
+                return False, "", "", {}, 0.0, False
             finally:
                 try:
                     writer.close()
@@ -389,13 +396,13 @@ class CheckingMixin:
             if sep == -1:
                 sep = buf.find(b"\n\n")
             if sep == -1:
-                return False, "", "", {}, 0.0
+                return False, "", "", {}, 0.0, False
             try:
                 data = json.loads(buf[sep:].strip())
             except Exception:
-                return False, "", "", {}, 0.0
+                return False, "", "", {}, 0.0, False
             if "country" not in data and "query" not in data:
-                return False, "", "", {}, 0.0
+                return False, "", "", {}, 0.0, False
             ssl_latency = time.monotonic() - t0
             country = data.get("country", "")
             country_code = data.get("countryCode", "")
@@ -405,7 +412,7 @@ class CheckingMixin:
                 "egress_isp": data.get("isp", ""),
                 "egress_country": data.get("country", ""),
             }
-            return True, country, country_code, egress, ssl_latency
+            return True, country, country_code, egress, ssl_latency, supports_connect
 
     async def _measure_speed(self, host: str, port: int, is_socks: bool = False, use_ssl: bool = False, supports_connect: bool = False) -> float:
             for srv_host, srv_path, expected_size in self.SPEED_SERVERS:
@@ -414,33 +421,99 @@ class CheckingMixin:
                     return speed
             return 0.0
 
-    async def _speed_single(self, host: str, port: int, is_socks: bool,
-                                 srv_host: str, srv_path: str, expected_size: int,
-                                 use_ssl: bool = False, supports_connect: bool = False) -> float:
+    async def _speed_open(self, host: str, port: int, is_socks: bool, use_ssl: bool) -> tuple:
+            """Open a fresh connection for a speed measurement attempt."""
             conn_kwargs = {}
             if use_ssl:
                 ctx = self._make_ssl_ctx()
                 conn_kwargs["ssl"] = ctx
                 conn_kwargs["server_hostname"] = host
+            r, w = await asyncio.wait_for(
+                asyncio.open_connection(host, port, **conn_kwargs), timeout=self.timeout)
+            if is_socks:
+                if port == 4145:
+                    ok = await self._socks4_test(r, w)
+                else:
+                    ok = await self._socks5_test(r, w)
+                if not ok:
+                    w.close()
+                    try:
+                        await w.wait_closed()
+                    except Exception:
+                        pass
+                    return None
+            return r, w
+
+    async def _speed_single(self, host: str, port: int, is_socks: bool,
+                                 srv_host: str, srv_path: str, expected_size: int,
+                                 use_ssl: bool = False, supports_connect: bool = False) -> float:
+            # Attempt 1: direct HTTP GET over the connection.
+            w = None
             try:
-                r, w = await asyncio.wait_for(
-                    asyncio.open_connection(host, port, **conn_kwargs), timeout=self.timeout)
+                conn = await self._speed_open(host, port, is_socks, use_ssl)
+                if conn is None:
+                    return 0.0
+                r, w = conn
+                speed = await self._direct_speed_single(r, w, srv_host, srv_path, expected_size)
+                if speed > 0:
+                    return speed
             except Exception:
-                return 0.0
-            try:
-                if is_socks:
-                    if port == 4145:
-                        ok = await self._socks4_test(r, w)
-                    else:
-                        ok = await self._socks5_test(r, w)
-                    if not ok:
+                pass
+            finally:
+                try:
+                    if w is not None:
+                        w.close()
+                        await w.wait_closed()
+                except Exception:
+                    pass
+
+            # Attempt 2: for HTTPS proxies, try plain HTTP inside a CONNECT tunnel.
+            if use_ssl:
+                w = None
+                try:
+                    conn = await self._speed_open(host, port, is_socks, use_ssl)
+                    if conn is None:
                         return 0.0
-                elif use_ssl and supports_connect:
-                    # HTTPS proxy that supports CONNECT: tunnel to target :443 and
-                    # upgrade to TLS so we measure real HTTPS throughput.
-                    return await self._https_speed_single(r, w, srv_host, srv_path, expected_size)
-                # Plain HTTP proxy or HTTPS proxy without CONNECT: send a direct
-                # GET with the full URL. The connection itself may be plain or SSL.
+                    r, w = conn
+                    speed = await self._http_connect_speed_single(r, w, srv_host, srv_path, expected_size)
+                    if speed > 0:
+                        return speed
+                except Exception:
+                    pass
+                finally:
+                    try:
+                        if w is not None:
+                            w.close()
+                            await w.wait_closed()
+                    except Exception:
+                        pass
+
+                # Attempt 3: real HTTPS tunnel (CONNECT to 443 + TLS).
+                if supports_connect:
+                    w = None
+                    try:
+                        conn = await self._speed_open(host, port, is_socks, use_ssl)
+                        if conn is None:
+                            return 0.0
+                        r, w = conn
+                        return await self._https_speed_single(r, w, srv_host, srv_path, expected_size)
+                    except Exception:
+                        pass
+                    finally:
+                        try:
+                            if w is not None:
+                                w.close()
+                                await w.wait_closed()
+                        except Exception:
+                            pass
+            return 0.0
+
+    async def _direct_speed_single(self, r, w, srv_host: str, srv_path: str, expected_size: int) -> float:
+            """Send a plain HTTP GET through the existing connection.
+
+            Works for plain HTTP proxies, HTTPS proxies, and SOCKS tunnels.
+            """
+            try:
                 t0 = time.monotonic()
                 req = (
                     f"GET http://{srv_host}{srv_path} HTTP/1.0\r\n"
@@ -481,11 +554,27 @@ class CheckingMixin:
                 return 0.0
             except Exception:
                 return 0.0
-            finally:
+
+    async def _http_connect_speed_single(self, r, w, srv_host: str, srv_path: str, expected_size: int) -> float:
+            """HTTP download through a CONNECT tunnel to the target's port 80.
+
+            For HTTPS proxies that do not accept plain HTTP GET over TLS, we can
+            usually establish a CONNECT tunnel and send a plain HTTP request
+            inside it. This works with the existing HTTP speed servers.
+            """
+            try:
+                req = f"CONNECT {srv_host}:80 HTTP/1.1\r\nHost: {srv_host}:80\r\n\r\n"
+                w.write(req.encode())
+                await asyncio.wait_for(w.drain(), timeout=self.timeout)
                 try:
-                    w.close()
-                except Exception:
-                    pass
+                    resp = await asyncio.wait_for(r.readuntil(b"\r\n\r\n"), timeout=15)
+                    if b"200" not in resp.split(b"\r\n")[0]:
+                        return 0.0
+                except (asyncio.IncompleteReadError, asyncio.TimeoutError):
+                    return 0.0
+                return await self._direct_speed_single(r, w, srv_host, srv_path, expected_size)
+            except Exception:
+                return 0.0
 
     async def _https_speed_single(self, r, w, srv_host: str, srv_path: str, expected_size: int) -> float:
             """HTTPS download through a CONNECT (or SOCKS) tunnel.
@@ -495,6 +584,7 @@ class CheckingMixin:
             GET over HTTPS. This measures real SSL throughput and avoids HTTP-to-HTTPS
             redirects that break plain HTTP speed tests.
             """
+            tls_w = None
             try:
                 req = f"CONNECT {srv_host}:443 HTTP/1.1\r\nHost: {srv_host}:443\r\n\r\n"
                 w.write(req.encode())
@@ -510,11 +600,14 @@ class CheckingMixin:
                 ctx = self._make_ssl_ctx()
                 loop = asyncio.get_running_loop()
                 transport = w.transport
-                protocol = r._transport.get_protocol()
+                protocol = transport.get_protocol()
                 try:
-                    await loop.start_tls(transport, protocol, ctx, server_hostname=srv_host)
+                    new_transport = await loop.start_tls(transport, protocol, ctx, server_hostname=srv_host)
                 except Exception:
                     return 0.0
+                # After start_tls the old StreamWriter points to the closed
+                # transport; create a new writer over the upgraded transport.
+                tls_w = asyncio.StreamWriter(new_transport, protocol, r, loop)
 
                 t0 = time.monotonic()
                 req = (
@@ -523,8 +616,8 @@ class CheckingMixin:
                     "Connection: close\r\n"
                     "\r\n"
                 )
-                w.write(req.encode())
-                await asyncio.wait_for(w.drain(), timeout=10)
+                tls_w.write(req.encode())
+                await asyncio.wait_for(tls_w.drain(), timeout=10)
                 total = 0
                 http_ok = True
                 while True:
@@ -556,6 +649,13 @@ class CheckingMixin:
                 return 0.0
             except Exception:
                 return 0.0
+            finally:
+                if tls_w is not None:
+                    try:
+                        tls_w.close()
+                        await tls_w.wait_closed()
+                    except Exception:
+                        pass
 
     async def _check_mitm_http(self, r, w) -> bool:
             try:

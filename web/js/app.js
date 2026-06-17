@@ -92,7 +92,9 @@ const app = {
   startPollers() {
     this._pollers.push(setInterval(() => this.pollEvents(), 2000));
     this._pollers.push(setInterval(() => this.pollCanary(), 30000));
+    this._pollers.push(setInterval(() => this.pollTraffic(), 2000));
     this.pollCanary();
+    this.pollTraffic();
   },
 
   stopPollers() {
@@ -119,6 +121,40 @@ const app = {
       const text = document.getElementById('canary-text');
       if (dot) dot.className = 'status-dot offline';
       if (text) text.textContent = t('sidebar.internetUnknown');
+    }
+  },
+
+  async pollTraffic() {
+    try {
+      const t = await api.trafficLive();
+      const now = Date.now();
+      const inB = t.in_bytes || 0;
+      const outB = t.out_bytes || 0;
+      const totalB = t.total_bytes || 0;
+
+      let inRate = 0;
+      let outRate = 0;
+      if (this._lastTraffic && now > this._lastTraffic.ts) {
+        const delta = (now - this._lastTraffic.ts) / 1000;
+        inRate = Math.max(0, (inB - this._lastTraffic.inBytes) / delta);
+        outRate = Math.max(0, (outB - this._lastTraffic.outBytes) / delta);
+      }
+      this._lastTraffic = { ts: now, inBytes: inB, outBytes: outB, totalBytes: totalB };
+
+      const inEl = document.getElementById('traffic-in');
+      const outEl = document.getElementById('traffic-out');
+      const totalEl = document.getElementById('traffic-total');
+      if (inEl) inEl.textContent = ui.fmtBytes(inRate) + '/s';
+      if (outEl) outEl.textContent = ui.fmtBytes(outRate) + '/s';
+      if (totalEl) totalEl.textContent = ui.fmtBytes(totalB);
+    } catch (e) {
+      console.error('pollTraffic', e);
+      const inEl = document.getElementById('traffic-in');
+      const outEl = document.getElementById('traffic-out');
+      const totalEl = document.getElementById('traffic-total');
+      if (inEl) inEl.textContent = '—';
+      if (outEl) outEl.textContent = '—';
+      if (totalEl) totalEl.textContent = '—';
     }
   },
 

@@ -72,7 +72,21 @@ async def amain(config: dict):
     except asyncio.CancelledError:
         pass
     finally:
+        # Preserve running-service flags so they are restored after restart.
+        # server.stop() sets _proxy_running/_socks5_running to False internally,
+        # so we capture the pre-shutdown state and re-save it after stopping.
+        _saved_flags = {
+            '_hunt_running': getattr(state, '_hunt_running', False),
+            '_proxy_running': getattr(state, '_proxy_running', False),
+            '_proxy_port': getattr(state, '_proxy_port', 17277),
+            '_socks5_running': getattr(state, '_socks5_running', False),
+            '_socks5_port': getattr(state, '_socks5_port', 17278),
+            '_proxy_active_addr': getattr(state, '_proxy_active_addr', None),
+            '_proxy_direct_mode': getattr(state, '_proxy_direct_mode', False),
+        }
         await server.stop()
+        for k, v in _saved_flags.items():
+            setattr(state, k, v)
         state._save_state()
         state._save_working_file()
 

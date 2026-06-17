@@ -52,6 +52,39 @@ class TestProxyRating:
         connect_score = r.score
         assert connect_score > ssl_score
 
+    def test_score_decreases_with_speed_fails(self):
+        r = hunt.ProxyRating(address="1.2.3.4:8080", checks_total=2, checks_ok=2, last_status="ok")
+        r.latency_sum = 0.5
+        r.latency_count = 1
+        r.ssl_supported = True
+        r.supports_connect = True
+        no_fail = r.score
+        r.speed_fails = 1
+        one_fail = r.score
+        r.speed_fails = 3
+        three_fail = r.score
+        assert no_fail > one_fail > three_fail >= 0.0
+        assert three_fail > 0.0
+
+    def test_score_prefers_speed_over_latency(self):
+        fast_slow_latency = hunt.ProxyRating(
+            address="1.2.3.4:8080", checks_total=1, checks_ok=1, last_status="ok",
+            latency_sum=1.5, latency_count=1, speed_sum=400, speed_count=1
+        )
+        slow_low_latency = hunt.ProxyRating(
+            address="1.2.3.5:8080", checks_total=1, checks_ok=1, last_status="ok",
+            latency_sum=0.1, latency_count=1, speed_sum=50, speed_count=1
+        )
+        assert fast_slow_latency.score > slow_low_latency.score
+
+    def test_score_is_capped_at_100(self):
+        r = hunt.ProxyRating(
+            address="1.2.3.4:8080", checks_total=1, checks_ok=1, last_status="ok",
+            latency_sum=0.1, latency_count=1, speed_sum=10000, speed_count=1,
+            ssl_supported=True, supports_connect=True
+        )
+        assert r.score <= 100.0
+
     def test_latency_average(self):
         r = hunt.ProxyRating(address="1.2.3.4:8080")
         r.latency_sum = 1.5

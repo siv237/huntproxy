@@ -390,6 +390,34 @@ router.register('overview', (container) => {
 
     const header = ui.el('div', 'card-header');
     header.appendChild(ui.el('div', 'card-title', { text: t('page.overview.topRatedProxies') }));
+    const recheckBtn = ui.el('button', 'card-action', { text: t('page.overview.recheck') });
+    recheckBtn.addEventListener('click', () => {
+      recheckBtn.disabled = true;
+      recheckBtn.textContent = t('common.testing');
+      api.healthStart().then(() => {
+        app.toast(t('common.recheckStarted'));
+        const wait = setInterval(async () => {
+          try {
+            const s = await api.snapshot();
+            if (!s.running || s.phase !== 'health') {
+              clearInterval(wait);
+              recheckBtn.disabled = false;
+              recheckBtn.textContent = t('page.overview.recheck');
+            }
+          } catch (e) { /* keep waiting */ }
+        }, 2000);
+        if (window._pageIntervals) window._pageIntervals.push(wait);
+      }).catch(e => {
+        recheckBtn.disabled = false;
+        recheckBtn.textContent = t('page.overview.recheck');
+        if (e.message && e.message.includes('already_running')) {
+          app.toast(t('common.recheckAlreadyRunning'), 'warn');
+        } else {
+          app.toast(t('common.error', {message: e.message}), 'error');
+        }
+      });
+    });
+    header.appendChild(recheckBtn);
     const viewAllBtn = ui.el('button', 'card-action', { text: t('page.overview.viewAllProxies') });
     viewAllBtn.addEventListener('click', () => router.navigate('proxies'));
     header.appendChild(viewAllBtn);

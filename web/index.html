@@ -12,9 +12,9 @@
     <link rel="icon" type="image/png" sizes="192x192" href="/assets/android-chrome-192x192.png?v=3">
     <link rel="apple-touch-icon" sizes="180x180" href="/assets/apple-touch-icon.png?v=3">
     <link rel="manifest" href="/assets/site.webmanifest?v=3">
-    <link rel="stylesheet" href="/css/theme.css?v=10">
-<link rel="stylesheet" href="/css/layout.css?v=10">
-<link rel="stylesheet" href="/css/components.css?v=10">
+    <link rel="stylesheet" href="/css/theme.css?v=12">
+    <link rel="stylesheet" href="/css/layout.css?v=12">
+    <link rel="stylesheet" href="/css/components.css?v=12">
 </head>
 <body>
 
@@ -174,11 +174,23 @@
           <div class="page-subtitle" id="page-subtitle">Real-time overview of your proxy pool and system status</div>
         </div>
       </div>
-      <div class="search-bar">
-        <svg><use href="#icon-search"/></svg>
-        <input type="text" data-i18n-placeholder="topbar.searchPlaceholder" placeholder="Search proxies, IPs, countries..." id="global-search">
-      </div>
       <div class="topbar-right">
+        <div class="traffic-counter" id="traffic-counter" data-i18n-title="topbar.trafficCounter" title="Live proxy traffic">
+          <div class="tc-col">
+            <span class="tc-label">↑ <span data-i18n="topbar.trafficOut">Out</span></span>
+            <span class="tc-value" id="traffic-out">—</span>
+          </div>
+          <div class="tc-divider"></div>
+          <div class="tc-col">
+            <span class="tc-label">↓ <span data-i18n="topbar.trafficIn">In</span></span>
+            <span class="tc-value" id="traffic-in">—</span>
+          </div>
+          <div class="tc-divider"></div>
+          <div class="tc-col">
+            <span class="tc-label" data-i18n="topbar.trafficTotal">Total</span>
+            <span class="tc-value" id="traffic-total">—</span>
+          </div>
+        </div>
         <button class="topbar-btn" id="quick-actions-btn">
            <span data-i18n="topbar.quickActions">Quick Actions</span>
           <svg width="14" height="14"><use href="#icon-chevron-down"/></svg>
@@ -196,30 +208,30 @@
 
 <div class="toast-container" id="toast-container"></div>
 
-<script src="/js/i18n.js?v=10"></script>
-    <script src="/js/api.js?v=10"></script>
-    <script src="/js/router.js?v=10"></script>
-    <script src="/js/charts.js?v=10"></script>
-    <script src="/js/components.js?v=10"></script>
-    <script src="/js/pages/overview.js?v=10"></script>
-    <script src="/js/pages/hunt.js?v=10"></script>
-    <script src="/js/pages/proxy-sources.js?v=10"></script>
-    <script src="/js/pages/proxies.js?v=10"></script>
-    <script src="/js/pages/proxy-card.js?v=10"></script>
-    <script src="/js/pages/proxy-control.js?v=10"></script>
-    <script src="/js/pages/proxy-pool.js?v=10"></script>
-    <script src="/js/pages/blacklist.js?v=10"></script>
-    <script src="/js/pages/ip-blacklists.js?v=10"></script>
-    <script src="/js/pages/analytics.js?v=10"></script>
-    <script src="/js/pages/logs.js?v=10"></script>
-    <script src="/js/pages/settings.js?v=10"></script>
-    <script src="/js/pages/routes.js?v=10"></script>
-    <script src="/js/pages/domain-lists.js?v=10"></script>
-    <script src="/js/pages/custom-proxies.js?v=10"></script>
-    <script src="/js/pages/connectivity.js?v=10"></script>
-    <script src="/js/pages/downloads.js?v=10"></script>
-    <script src="/js/pages/api-docs.js?v=10"></script>
-    <script src="/js/pages/about.js?v=10"></script>
-    <script src="/js/app.js?v=10"></script>
+<script src="/js/i18n.js?v=12"></script>
+    <script src="/js/api.js?v=12"></script>
+    <script src="/js/router.js?v=12"></script>
+    <script src="/js/charts.js?v=12"></script>
+    <script src="/js/components.js?v=12"></script>
+    <script src="/js/pages/overview.js?v=12"></script>
+    <script src="/js/pages/hunt.js?v=12"></script>
+    <script src="/js/pages/proxy-sources.js?v=12"></script>
+    <script src="/js/pages/proxies.js?v=12"></script>
+    <script src="/js/pages/proxy-card.js?v=12"></script>
+    <script src="/js/pages/proxy-control.js?v=12"></script>
+    <script src="/js/pages/proxy-pool.js?v=12"></script>
+    <script src="/js/pages/blacklist.js?v=12"></script>
+    <script src="/js/pages/ip-blacklists.js?v=12"></script>
+    <script src="/js/pages/analytics.js?v=12"></script>
+    <script src="/js/pages/logs.js?v=12"></script>
+    <script src="/js/pages/settings.js?v=12"></script>
+    <script src="/js/pages/routes.js?v=12"></script>
+    <script src="/js/pages/domain-lists.js?v=12"></script>
+    <script src="/js/pages/custom-proxies.js?v=12"></script>
+    <script src="/js/pages/connectivity.js?v=12"></script>
+    <script src="/js/pages/downloads.js?v=12"></script>
+    <script src="/js/pages/api-docs.js?v=12"></script>
+    <script src="/js/pages/about.js?v=12"></script>
+    <script src="/js/app.js?v=12"></script>
 </body>
 </html>

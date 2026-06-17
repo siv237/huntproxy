@@ -139,3 +139,17 @@ class TestApiTraffic:
         data = _json_response(resp)
         assert data["total"] == 1
         assert any(e["type"] == "timeout" for e in data["errors"])
+
+    @pytest.mark.asyncio
+    async def test_api_traffic_live_reads_totals(self, http_client, api_server):
+        _, state = api_server
+        runner = hunt.ProxyRunner(state)
+        runner._log(None, "http://example.com/1", "ok", "5.5.5.5:8080", 100, 200, 0.1)
+        runner._log(None, "http://example.com/2", "ok", "5.5.5.5:8080", 300, 400, 0.1)
+
+        resp = await http_client("GET", "/api/traffic/live")
+        data = _json_response(resp)
+        assert data["in_bytes"] == 400
+        assert data["out_bytes"] == 600
+        assert data["total_bytes"] == 1000
+        assert data["requests"] == 2

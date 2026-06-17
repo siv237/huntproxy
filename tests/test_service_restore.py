@@ -125,3 +125,46 @@ class TestServiceStatePersistence:
             state.stop_hunt()
 
         asyncio.run(run())
+
+    def test_graceful_shutdown_preserves_running_flags(self, tmp_data_dir):
+        """After graceful shutdown (server.stop + save), running flags must
+        be preserved so services are restored on restart."""
+        async def run():
+            state = hunt.HuntState({"ip_blacklists": {"enabled": False}})
+            server = hunt.HuntServer(state, "127.0.0.1", 0)
+            state.proxy_runner = server.proxy
+
+            # Start services
+            await server.proxy.start(17333)
+            await server.socks5.start(17444)
+            server.proxy.select("1.2.3.4:8080")
+            state._proxy_active_addr = "1.2.3.4:8080"
+
+            assert state._proxy_running is True
+            assert state._socks5_running is True
+
+            # Simulate graceful shutdown (same logic as main.py finally block)
+            _saved_flags = {
+                '_hunt_running': getattr(state, '_hunt_running', False),
+                '_proxy_running': getattr(state, '_proxy_running', False),
+                '_proxy_port': getattr(state, '_proxy_port', 17277),
+                '_socks5_running': getattr(state, '_socks5_running', False),
+                '_socks5_port': getattr(state, '_socks5_port', 17278),
+                '_proxy_active_addr': getattr(state, '_proxy_active_addr', None),
+                '_proxy_direct_mode': getattr(state, '_proxy_direct_mode', False),
+            }
+            await server.stop()
+            for k, v in _saved_flags.items():
+                setattr(state, k, v)
+            state._save_state()
+            state._save_working_file()
+
+            # Simulate restart: create new state and check flags
+            state2 = hunt.HuntState({"ip_blacklists": {"enabled": False}})
+            assert state2._proxy_running is True, f"proxy_running={state2._proxy_running}"
+            assert state2._proxy_port == 17333
+            assert state2._socks5_running is True, f"socks5_running={state2._socks5_running}"
+            assert state2._socks5_port == 17444
+            assert state2._proxy_active_addr == "1.2.3.4:8080"
+
+        asyncio.run(run())

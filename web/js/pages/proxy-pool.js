@@ -115,6 +115,35 @@ router.register('proxy-pool', (container) => {
     header.appendChild(ui.el('div', 'card-title', { text: t('page.proxyPool.selectUpstreamProxy') }));
     const count = ui.el('div', '', { id: 'select-count', style: 'font-size:11px;color:var(--text-secondary)', text: '0' });
     header.appendChild(count);
+    const recheckAllBtn = ui.el('button', 'card-action', { text: t('page.proxyPool.recheckAll') });
+    recheckAllBtn.addEventListener('click', () => {
+      recheckAllBtn.disabled = true;
+      recheckAllBtn.textContent = t('common.testing');
+      api.healthStart().then(() => {
+        app.toast(t('common.recheckStarted'));
+        const wait = setInterval(async () => {
+          try {
+            const s = await api.snapshot();
+            if (!s.running || s.phase !== 'health') {
+              clearInterval(wait);
+              recheckAllBtn.disabled = false;
+              recheckAllBtn.textContent = t('page.proxyPool.recheckAll');
+              load();
+            }
+          } catch (e) { /* keep waiting */ }
+        }, 2000);
+        if (window._pageIntervals) window._pageIntervals.push(wait);
+      }).catch(e => {
+        recheckAllBtn.disabled = false;
+        recheckAllBtn.textContent = t('page.proxyPool.recheckAll');
+        if (e.message && e.message.includes('already_running')) {
+          app.toast(t('common.recheckAlreadyRunning'), 'warn');
+        } else {
+          app.toast(t('common.error', {message: e.message}), 'error');
+        }
+      });
+    });
+    header.appendChild(recheckAllBtn);
     card.appendChild(header);
 
     const filterRow = ui.el('div', '', { style: 'display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-shrink:0;flex-wrap:wrap' });

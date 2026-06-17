@@ -108,50 +108,82 @@ const proxyCard = {
       style: 'display:grid;grid-template-columns:repeat(3, 1fr);gap:12px;margin-bottom:20px'
     });
 
+    const egressFlag = ui.flag(p.egress_country_code);
+    const egressText = [p.egress_country, p.egress_city, p.egress_isp].filter(Boolean).join(', ') || '—';
+    const egressVal = ui.el('span', '', { text: `${egressFlag} ${egressText}`.trim() });
+    const listenFlag = ui.flag(p.listen_country_code || p.country_code);
+    const listenText = [p.listen_country || p.country, p.listen_city || p.city, p.listen_isp || p.isp].filter(Boolean).join(', ') || '—';
+    const listenVal = ui.el('span', '', { text: `${listenFlag} ${listenText}`.trim() });
+
     grid.appendChild(this._sectionCard(t('proxyCard.performance'), [
-      [t('proxyCard.lastLatency'), ui.fmtLatency(p.last_latency)],
-      [t('proxyCard.avgLatency'), ui.fmtLatency(p.latency_avg)],
-      [t('proxyCard.lastSpeed'), p.last_speed ? p.last_speed.toFixed(0) + ' KB/s' : '—'],
-      [t('proxyCard.avgSpeed'), p.speed_avg ? p.speed_avg.toFixed(0) + ' KB/s' : '—'],
-      [t('proxyCard.successRate'), ui.fmtPct(p.success_rate)],
-      [t('proxyCard.checks'), `${p.checks_ok || 0}/${p.checks_total || 0}`],
+      [t('proxyCard.lastLatency'), ui.fmtLatency(p.last_latency), t('proxyCard.tooltip.lastLatency')],
+      [t('proxyCard.avgLatency'), ui.fmtLatency(p.latency_avg), t('proxyCard.tooltip.avgLatency')],
+      [t('proxyCard.lastSpeed'), p.last_speed ? p.last_speed.toFixed(0) + ' KB/s' : '—', t('proxyCard.tooltip.lastSpeed')],
+      [t('proxyCard.avgSpeed'), p.speed_avg ? p.speed_avg.toFixed(0) + ' KB/s' : '—', t('proxyCard.tooltip.avgSpeed')],
+      [t('proxyCard.successRate'), ui.fmtPct(p.success_rate), t('proxyCard.tooltip.successRate')],
+      [t('proxyCard.checks'), `${p.checks_ok || 0}/${p.checks_total || 0}`, t('proxyCard.tooltip.checks')],
+      [t('proxyCard.speedFails'), String(p.speed_fails || 0), t('proxyCard.tooltip.speedFails')],
     ]));
 
     grid.appendChild(this._sectionCard(t('proxyCard.security'), [
-      [t('proxyCard.ssl'), p.ssl_supported ? t('common.yes') : t('common.no')],
-      [t('proxyCard.connect'), p.supports_connect ? t('common.yes') : t('common.no')],
-      [t('proxyCard.mitm'), p.mitm_suspect ? t('proxyCard.mitmYes') : t('common.no')],
-      [t('proxyCard.manualBlacklist'), p.in_blacklist ? t('common.yes') : t('common.no')],
-      [t('proxyCard.ipBlacklist'), p.ip_blacklist_hits ? `${p.ip_blacklist_hits} ${t('proxyCard.hits')}` : t('common.no')],
+      [t('proxyCard.ssl'), p.ssl_supported ? t('common.yes') : t('common.no'), t('proxyCard.tooltip.ssl')],
+      [t('proxyCard.connect'), p.supports_connect ? t('common.yes') : t('common.no'), t('proxyCard.tooltip.connect')],
+      [t('proxyCard.mitm'), p.mitm_suspect ? t('proxyCard.mitmYes') : t('common.no'), t('proxyCard.tooltip.mitm')],
     ]));
 
+    grid.appendChild(this._blacklistSection(p));
+
     grid.appendChild(this._sectionCard(t('proxyCard.network'), [
-      [t('proxyCard.egressIp'), p.egress_ip || '—'],
-      [t('proxyCard.egress'), [p.egress_country, p.egress_city, p.egress_isp].filter(Boolean).join(', ') || '—'],
-      [t('proxyCard.listenIp'), p.address ? p.address.split(':')[0] : '—'],
-      [t('proxyCard.listen'), [p.listen_country, p.listen_city, p.listen_isp].filter(Boolean).join(', ') || '—'],
-      [t('proxyCard.sources'), (p.source_ids || []).join(', ') || '—'],
+      [t('proxyCard.egressIp'), p.egress_ip || '—', t('proxyCard.tooltip.egressIp')],
+      [t('proxyCard.egress'), egressVal, t('proxyCard.tooltip.egress')],
+      [t('proxyCard.listenIp'), p.address ? p.address.split(':')[0] : '—', t('proxyCard.tooltip.listenIp')],
+      [t('proxyCard.listen'), listenVal, t('proxyCard.tooltip.listen')],
+      [t('proxyCard.sources'), (p.source_ids || []).join(', ') || '—', t('proxyCard.tooltip.sources')],
     ]));
 
     grid.appendChild(this._sectionCard(t('proxyCard.timeline'), [
-      [t('proxyCard.firstSeen'), p.first_seen ? ui.ago(p.first_seen) : '—'],
-      [t('proxyCard.lastCheck'), p.last_check ? ui.ago(p.last_check) : '—'],
-      [t('proxyCard.lastOk'), p.last_ok ? ui.ago(p.last_ok) : '—'],
-      [t('proxyCard.speedFails'), String(p.speed_fails || 0)],
+      [t('proxyCard.firstSeen'), p.first_seen ? ui.ago(p.first_seen) : '—', t('proxyCard.tooltip.firstSeen')],
+      [t('proxyCard.lastCheck'), p.last_check ? ui.ago(p.last_check) : '—', t('proxyCard.tooltip.lastCheck')],
+      [t('proxyCard.lastOk'), p.last_ok ? ui.ago(p.last_ok) : '—', t('proxyCard.tooltip.lastOk')],
     ]));
 
     return grid;
+  },
+
+  _blacklistSection(p) {
+    const rows = [
+      [t('proxyCard.manualBlacklist'), p.in_blacklist ? t('common.yes') : t('common.no'), t('proxyCard.tooltip.manualBlacklist')],
+    ];
+    if (p.in_blacklist && p.blacklist_reason) {
+      rows.push([t('common.reason'), p.blacklist_reason]);
+    }
+    rows.push([
+      t('proxyCard.ipBlacklist'),
+      p.ip_blacklist_hits ? `${p.ip_blacklist_hits} ${t('proxyCard.fromSources', {count: p.ip_blacklist_hits})}` : t('common.no'),
+      t('proxyCard.tooltip.ipBlacklist')
+    ]);
+    if (p.ip_blacklist_sources && p.ip_blacklist_sources.length) {
+      rows.push([t('proxyCard.sources'), p.ip_blacklist_sources.join(', ')]);
+    }
+    return this._sectionCard(t('proxyCard.blacklist'), rows);
   },
 
   _sectionCard(title, rows) {
     const card = ui.card(title);
     card.style.padding = '12px';
     const list = ui.el('div', '', { style: 'display:flex;flex-direction:column;gap:6px' });
-    rows.forEach(([label, value]) => {
+    rows.forEach(([label, value, tooltip]) => {
       const row = ui.el('div', '', { style: 'display:flex;justify-content:space-between;gap:12px;font-size:12px' });
-      row.appendChild(ui.el('span', '', { style: 'color:var(--text-secondary);flex-shrink:0', text: label }));
-      const val = typeof value === 'string' ? value : String(value || '—');
-      row.appendChild(ui.el('span', '', { style: 'color:var(--text-primary);text-align:right;word-break:break-word', text: val }));
+      const labelEl = ui.el('span', '', { style: 'color:var(--text-secondary);flex-shrink:0', text: label });
+      if (tooltip) labelEl.setAttribute('data-tooltip', tooltip);
+      row.appendChild(labelEl);
+      const valContainer = ui.el('span', '', { style: 'color:var(--text-primary);text-align:right;word-break:break-word' });
+      if (value && typeof value === 'object' && value.nodeType) {
+        valContainer.appendChild(value);
+      } else {
+        valContainer.textContent = typeof value === 'string' ? value : String(value || '—');
+      }
+      row.appendChild(valContainer);
       list.appendChild(row);
     });
     card.appendChild(list);
@@ -164,48 +196,52 @@ const proxyCard = {
     card.style.marginBottom = '0';
 
     const sr = p.success_rate || 0;
-    const base = sr * 50;
+    const base = sr * 40;
     const lat = p.latency_avg || 0;
-    const latScore = Math.max(0, 100 - lat * 10) * 0.5;
+    const latScore = Math.max(0, 100 - lat * 10) * 0.2;
     const sslBonus = p.ssl_supported ? 10 : 0;
     const connectBonus = p.supports_connect ? 5 : 0;
     const mitmPenalty = p.mitm_suspect ? -30 : 0;
-    const speedBonus = p.speed_avg ? Math.min(20, p.speed_avg / 50) : 0;
-    const speedFailPenalty = (p.speed_fails || 0) >= 3 ? -40 : 0;
+    const speedBonus = p.speed_avg ? Math.min(50, p.speed_avg / 20) : 0;
+    const speedFailPenalty = -Math.min(45, (p.speed_fails || 0) * 15);
     let total = base + latScore + sslBonus + connectBonus + mitmPenalty + speedBonus + speedFailPenalty;
     const hits = p.ip_blacklist_hits || 0;
     const ipMultiplier = hits ? Math.max(0.2, Math.pow(0.75, hits)) : 1;
     const beforeIp = total;
     if (hits) total *= ipMultiplier;
     if (p.in_blacklist) total = 0;
-    total = Math.max(0, total);
+    total = Math.max(0, Math.min(100, total));
 
     const rows = [
-      [t('proxyCard.successRate'), '+' + base.toFixed(1)],
-      [t('proxyCard.latencyScore'), '+' + latScore.toFixed(1)],
-      [t('proxyCard.sslBonus'), '+' + sslBonus.toFixed(0)],
-      [t('proxyCard.connectBonus'), '+' + connectBonus.toFixed(0)],
-      [t('proxyCard.speedBonus'), '+' + speedBonus.toFixed(1)],
-      [t('proxyCard.mitmPenalty'), mitmPenalty ? mitmPenalty.toFixed(0) : '0'],
-      [t('proxyCard.speedFailPenalty'), speedFailPenalty ? speedFailPenalty.toFixed(0) : '0'],
+      [t('proxyCard.successRate'), '+' + base.toFixed(1), t('proxyCard.tooltip.successRate')],
+      [t('proxyCard.latencyScore'), '+' + latScore.toFixed(1), t('proxyCard.tooltip.latencyScore')],
+      [t('proxyCard.sslBonus'), '+' + sslBonus.toFixed(0), t('proxyCard.tooltip.sslBonus')],
+      [t('proxyCard.connectBonus'), '+' + connectBonus.toFixed(0), t('proxyCard.tooltip.connectBonus')],
+      [t('proxyCard.speedBonus'), '+' + speedBonus.toFixed(1), t('proxyCard.tooltip.speedBonus')],
+      [t('proxyCard.mitmPenalty'), mitmPenalty ? mitmPenalty.toFixed(0) : '0', t('proxyCard.tooltip.mitmPenalty')],
+      [t('proxyCard.speedFailPenalty'), speedFailPenalty ? speedFailPenalty.toFixed(0) : '0', t('proxyCard.tooltip.speedFailPenalty')],
     ];
     if (hits) {
-      rows.push([t('proxyCard.ipBlacklistMultiplier'), `×${ipMultiplier.toFixed(3)}`]);
+      rows.push([t('proxyCard.ipBlacklistMultiplier'), `×${ipMultiplier.toFixed(3)}`, t('proxyCard.tooltip.ipBlacklistMultiplier')]);
     }
     if (p.in_blacklist) {
       rows.push([t('proxyCard.manualBlacklist'), '0']);
     }
 
     const list = ui.el('div', '', { style: 'display:grid;grid-template-columns:repeat(4, 1fr);gap:8px 12px' });
-    rows.forEach(([label, value]) => {
+    rows.forEach(([label, value, tooltip]) => {
       const row = ui.el('div', '', { style: 'display:flex;justify-content:space-between;gap:8px;font-size:12px;padding:4px 0;border-bottom:1px solid var(--border)' });
-      row.appendChild(ui.el('span', '', { style: 'color:var(--text-secondary)', text: label }));
+      const labelEl = ui.el('span', '', { style: 'color:var(--text-secondary)', text: label });
+      if (tooltip) labelEl.setAttribute('data-tooltip', tooltip);
+      row.appendChild(labelEl);
       row.appendChild(ui.el('span', '', { style: 'color:var(--text-primary);font-weight:500', text: value }));
       list.appendChild(row);
     });
 
     const sumRow = ui.el('div', '', { style: 'display:flex;justify-content:space-between;gap:8px;font-size:14px;font-weight:600;padding:8px 0 0;margin-top:4px' });
-    sumRow.appendChild(ui.el('span', '', { text: t('proxyCard.totalScore') }));
+    const totalLabelEl = ui.el('span', '', { text: t('proxyCard.totalScore') });
+    totalLabelEl.setAttribute('data-tooltip', t('proxyCard.tooltip.totalScore'));
+    sumRow.appendChild(totalLabelEl);
     sumRow.appendChild(ui.el('span', '', { style: 'color:var(--accent)', text: Math.round(total) }));
     list.appendChild(sumRow);
 

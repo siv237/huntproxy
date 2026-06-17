@@ -350,105 +350,124 @@ class HealthMixin:
                     pass
 
     async def _health_check(self):
-            # Only manual blacklist is a hard exclusion; IP-blacklisted proxies
-            # remain candidates and are ranked by their reduced score.
-            candidates = [r for r in self.ratings.values()
-                          if r.last_status == "ok" and not r.in_blacklist]
-            if not candidates:
+            if self._health_running:
+                self._emit("Health check already in progress, skipping", "warn")
                 return
-            self.phase = self.PHASE_HEALTH
-            self.phase_started = time.time()
-            self.checking_total = len(candidates)
-            self.checked = 0
-            self.working = 0
-            self.failed = 0
-            self._fail_streak = 0
-            self._check_streak = 0
-            self._emit(f"Health-checking {len(candidates)} alive proxies", "info")
+            self._health_running = True
+            try:
+                # Only manual blacklist is a hard exclusion; IP-blacklisted proxies
+                # remain candidates and are ranked by their reduced score.
+                candidates = [r for r in self.ratings.values()
+                              if r.last_status == "ok" and not r.in_blacklist]
+                if not candidates:
+                    return
+                self.phase = self.PHASE_HEALTH
+                self.phase_started = time.time()
+                self.checking_total = len(candidates)
+                self.checked = 0
+                self.working = 0
+                self.failed = 0
+                self._fail_streak = 0
+                self._check_streak = 0
+                self._emit(f"Health-checking {len(candidates)} alive proxies", "info")
 
-            sem = asyncio.Semaphore(self.health_parallel)
-            lock = asyncio.Lock()
-            ok_count = fail_count = 0
+                sem = asyncio.Semaphore(self.health_parallel)
+                lock = asyncio.Lock()
+                ok_count = fail_count = 0
 
-            async def check(r: ProxyRating):
-                nonlocal ok_count, fail_count
-                while True:
-                    if self._paused:
-                        await self._pause_event.wait()
-                    async with sem:
-                        if self._internet_suspect:
+                async def check(r: ProxyRating):
+                    nonlocal ok_count, fail_count
+                    while True:
+                        if self._paused:
                             await self._pause_event.wait()
-                            continue
-                        http_task = asyncio.create_task(self._check_proxy(r.address))
-                        ssl_task = asyncio.create_task(self._check_ssl(r.address))
-                        results = await asyncio.gather(http_task, ssl_task, return_exceptions=True)
-                        if isinstance(results[0], Exception):
-                            ok, country, supports_connect, mitm_suspect, egress, listen, http_latency, cc, fast_fail = False, "", False, False, {}, {}, 0.0, "", False
-                        else:
-                            ok, country, supports_connect, mitm_suspect, egress, listen, http_latency, cc, fast_fail = results[0]
-                        if isinstance(results[1], Exception):
-                            ssl_ok, ssl_country, ssl_cc, ssl_egress, ssl_latency = False, "", "", {}, 0.0
-                        else:
-                            ssl_ok, ssl_country, ssl_cc, ssl_egress, ssl_latency = results[1]
-                        if fast_fail and not ok and not ssl_ok:
-                            async with lock:
-                                self._fail_streak += 1
-                                self._check_streak += 1
-                                if self._check_streak >= 3 and self._fail_streak / self._check_streak > 0.7:
-                                    await self._auto_pause_if_internet_down()
+                        async with sem:
                             if self._internet_suspect:
                                 await self._pause_event.wait()
                                 continue
-                            return
-                        if not ok and ssl_ok:
-                            ok = True
-                            country = ssl_country
-                            cc = ssl_cc
-                            egress = ssl_egress
-                            http_latency = ssl_latency
-                        elif ok and ssl_ok:
-                            if not egress and ssl_egress:
-                                egress = ssl_egress
-                        # Non-SOCKS proxies must support CONNECT to be useful for HTTPS.
-                        if ok and not self._is_socks_addr(r.address) and not supports_connect:
-                            ok = False
-                        speed = 0.0
-                        if ok:
-                            host, port_str = r.address.rsplit(":", 1)
-                            is_socks = port_str.isdigit() and int(port_str) in (1080, 10808, 9050, 4145)
-                            use_ssl = ssl_ok and not is_socks
-                            try:
-                                speed = await self._measure_speed(host, int(port_str), is_socks,
-                                                                   use_ssl=use_ssl, supports_connect=supports_connect)
-                            except Exception:
-                                speed = 0.0
-                        async with lock:
-                            if self._internet_suspect:
-                                await self._pause_event.wait()
-                                continue
-                            self.checked += 1
-                            self._check_streak += 1
-                            if ok:
-                                ok_count += 1
-                                self.working = ok_count
-                                self._fail_streak = 0
+                            http_task = asyncio.create_task(self._check_proxy(r.address))
+                            ssl_task = asyncio.create_task(self._check_ssl(r.address))
+                            results = await asyncio.gather(http_task, ssl_task, return_exceptions=True)
+                            if isinstance(results[0], Exception):
+                                ok, country, supports_connect, mitm_suspect, egress, listen, http_latency, cc, fast_fail = False, "", False, False, {}, {}, 0.0, "", False
                             else:
-                                fail_count += 1
-                                self.failed = fail_count
-                                self._fail_streak += 1
-                            self._update_rating(r.address, ok, country, http_latency, supports_connect, mitm_suspect, egress, listen, speed, country_code=cc, ssl_supported=ssl_ok)
-                            if self._check_streak >= 10 and self._fail_streak / self._check_streak > 0.7:
-                                await self._auto_pause_if_internet_down()
-                        return
+                                ok, country, supports_connect, mitm_suspect, egress, listen, http_latency, cc, fast_fail = results[0]
+                            if isinstance(results[1], Exception):
+                                ssl_ok, ssl_country, ssl_cc, ssl_egress, ssl_latency, ssl_supports_connect = False, "", "", {}, 0.0, False
+                            else:
+                                ssl_ok, ssl_country, ssl_cc, ssl_egress, ssl_latency, ssl_supports_connect = results[1]
+                            if fast_fail and not ok and not ssl_ok:
+                                async with lock:
+                                    self._fail_streak += 1
+                                    self._check_streak += 1
+                                    if self._check_streak >= 3 and self._fail_streak / self._check_streak > 0.7:
+                                        await self._auto_pause_if_internet_down()
+                                if self._internet_suspect:
+                                    await self._pause_event.wait()
+                                    continue
+                                return
+                            if not ok and ssl_ok:
+                                ok = True
+                                country = ssl_country
+                                cc = ssl_cc
+                                egress = ssl_egress
+                                http_latency = ssl_latency
+                                supports_connect = ssl_supports_connect
+                            elif ok and ssl_ok:
+                                if not egress and ssl_egress:
+                                    egress = ssl_egress
+                                if not supports_connect and ssl_supports_connect:
+                                    supports_connect = ssl_supports_connect
+                            # Non-SOCKS proxies must support CONNECT to be useful for HTTPS.
+                            if ok and not self._is_socks_addr(r.address) and not supports_connect:
+                                ok = False
+                            speed = 0.0
+                            if ok:
+                                host, port_str = r.address.rsplit(":", 1)
+                                is_socks = port_str.isdigit() and int(port_str) in (1080, 10808, 9050, 4145)
+                                use_ssl = ssl_ok and not is_socks
+                                try:
+                                    speed = await self._measure_speed(host, int(port_str), is_socks,
+                                                                       use_ssl=use_ssl, supports_connect=supports_connect)
+                                except Exception:
+                                    speed = 0.0
+                            async with lock:
+                                if self._internet_suspect:
+                                    await self._pause_event.wait()
+                                    continue
+                                self.checked += 1
+                                self._check_streak += 1
+                                if ok:
+                                    ok_count += 1
+                                    self.working = ok_count
+                                    self.last_proxy = r.address
+                                    self.last_country = country
+                                    self._fail_streak = 0
+                                else:
+                                    fail_count += 1
+                                    self.failed = fail_count
+                                    self._fail_streak += 1
+                                self._update_rating(r.address, ok, country, http_latency, supports_connect, mitm_suspect, egress, listen, speed, country_code=cc, ssl_supported=ssl_ok)
+                                if self.checked % 10 == 0:
+                                    pct = int(100 * self.checked / max(1, self.checking_total))
+                                    self._emit(
+                                        f"{pct}% {self.checked}/{self.checking_total} | "
+                                        f"working: {ok_count} | last: {r.address} {country}",
+                                        "progress"
+                                    )
+                                if self._check_streak >= 10 and self._fail_streak / self._check_streak > 0.7:
+                                    await self._auto_pause_if_internet_down()
+                            return
 
-            tasks = [asyncio.create_task(check(r)) for r in candidates]
-            await asyncio.gather(*tasks, return_exceptions=True)
-            self._save_state()
-            self._save_working_file()
-            self._rating_updates_since_save = 0
-            self._push_history()
-            self._emit(f"Health check done: {ok_count} ok, {fail_count} failed", "ok")
-            self.phase = self.PHASE_DONE
+                tasks = [asyncio.create_task(check(r)) for r in candidates]
+                await asyncio.gather(*tasks, return_exceptions=True)
+                self._save_state()
+                self._save_working_file()
+                self._rating_updates_since_save = 0
+                self._push_history()
+                self._emit(f"Health check done: {ok_count} ok, {fail_count} failed", "ok")
+                self.phase = self.PHASE_DONE
+            finally:
+                self._health_running = False
 
     async def _revalidate_stale_proxies(self):
         """Re-check proxies that are stale at startup.
@@ -489,18 +508,21 @@ class HealthMixin:
                 else:
                     ok, country, supports_connect, mitm_suspect, egress, listen, http_latency, cc, fast_fail = results[0]
                 if isinstance(results[1], Exception):
-                    ssl_ok, ssl_country, ssl_cc, ssl_egress, ssl_latency = False, "", "", {}, 0.0
+                    ssl_ok, ssl_country, ssl_cc, ssl_egress, ssl_latency, ssl_supports_connect = False, "", "", {}, 0.0, False
                 else:
-                    ssl_ok, ssl_country, ssl_cc, ssl_egress, ssl_latency = results[1]
+                    ssl_ok, ssl_country, ssl_cc, ssl_egress, ssl_latency, ssl_supports_connect = results[1]
                 if not ok and ssl_ok:
                     ok = True
                     country = ssl_country
                     cc = ssl_cc
                     egress = ssl_egress
                     http_latency = ssl_latency
+                    supports_connect = ssl_supports_connect
                 elif ok and ssl_ok:
                     if not egress and ssl_egress:
                         egress = ssl_egress
+                    if not supports_connect and ssl_supports_connect:
+                        supports_connect = ssl_supports_connect
                 # Non-SOCKS proxies must support CONNECT to be useful for HTTPS.
                 if ok and not self._is_socks_addr(r.address) and not supports_connect:
                     ok = False
