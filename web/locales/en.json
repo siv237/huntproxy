@@ -587,7 +587,14 @@
     }
   },
   "proxyCard": {
-    "title": "Proxy Card",
+    "title": "Proxy Details",
+    "rating": "Rating",
+    "status": {
+      "ready": "Ready to use",
+      "degraded": "Degraded",
+      "unstable": "Unstable",
+      "blocked": "Blocked"
+    },
     "performance": "Performance",
     "security": "Security",
     "network": "Network",
@@ -620,9 +627,11 @@
     "latencyScore": "Latency score",
     "sslBonus": "SSL bonus",
     "connectBonus": "CONNECT bonus",
+    "sslConnectBonus": "SSL + CONNECT",
     "speedBonus": "Speed bonus",
     "mitmPenalty": "MITM penalty",
     "speedFailPenalty": "Speed-fail penalty",
+    "penalties": "Penalties",
     "ipBlacklistMultiplier": "IP blacklist multiplier",
     "totalScore": "Total score",
     "select": "Select",
@@ -631,6 +640,21 @@
     "removeFromBlacklist": "Remove from BL",
     "copy": "Copy",
     "copied": "Address copied",
+    "sslPassthrough": "SSL passthrough",
+    "notDetected": "Not detected",
+    "suspected": "Suspected",
+    "headerChanges": "Header changes",
+    "isp": "ISP",
+    "suitability": "Good for",
+    "ratingHint": "Rating is used only for sorting proxies and does not guarantee performance in every scenario.",
+    "use": {
+      "web": "Web surfing",
+      "api": "API",
+      "parsing": "Parsing",
+      "download": "File download",
+      "streaming": "Streaming",
+      "games": "Games"
+    },
     "tooltip": {
       "lastLatency": "Response time in the last check.",
       "avgLatency": "Average response time across successful checks.",

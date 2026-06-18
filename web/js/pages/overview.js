@@ -158,10 +158,12 @@ router.register('overview', (container) => {
 
   // --- Pool Progress Card ---
   function buildPoolProgressCard() {
-    const card = ui.el('div', 'card');
+    const card = ui.el('div', 'card pool-progress-card');
     card.id = 'pool-progress-card';
     card.style.display = 'flex';
     card.style.flexDirection = 'column';
+    card.style.overflow = 'hidden';
+    card.style.minWidth = '0';
 
     const header = ui.el('div', 'card-header');
     header.appendChild(ui.el('div', 'card-title', { id: 'pool-title', text: t('page.overview.poolProgress') }));
@@ -178,7 +180,7 @@ router.register('overview', (container) => {
     header.appendChild(btns);
     card.appendChild(header);
 
-    const body = ui.el('div', '', { style: 'display:flex;align-items:center;gap:20px;flex-wrap:wrap' });
+    const body = ui.el('div', '', { style: 'display:flex;align-items:center;gap:20px;flex-wrap:wrap;min-width:0' });
 
     const circle = ui.el('div', 'circle-progress', { id: 'pool-circle' });
     circle.innerHTML = `
@@ -191,24 +193,24 @@ router.register('overview', (container) => {
       </div>`;
     body.appendChild(circle);
 
-    const details = ui.el('div', '', { style: 'flex:1;min-width:180px' });
+    const details = ui.el('div', '', { style: 'flex:1;min-width:0;overflow:hidden' });
     details.appendChild(ui.el('div', '', { id: 'pool-phase', style: 'font-size:13px;font-weight:600;color:var(--text-primary);margin-bottom:8px', text: t('page.overview.validatingProxies') }));
 
     const bar = ui.el('div', 'progress-bar', { style: 'height:8px;margin-bottom:6px' });
     bar.appendChild(ui.el('div', '', { id: 'pool-bar-fill', style: 'width:0%;height:100%;background:var(--accent);transition:width 0.4s ease;border-radius:4px' }));
     details.appendChild(bar);
 
-    const stats = ui.el('div', '', { style: 'display:flex;justify-content:space-between;font-size:12px;color:var(--text-secondary)' });
-    stats.innerHTML = `<span>${t('page.overview.checked')} <b id="pool-checked" style="color:var(--text-primary)">0</b> / <b id="pool-total">0</b></span><span>${t('page.overview.working')} <b id="pool-working" style="color:var(--success)">0</b></span>`;
+    const stats = ui.el('div', '', { style: 'display:flex;justify-content:space-between;font-size:12px;color:var(--text-secondary);gap:8px;min-width:0' });
+    stats.innerHTML = `<span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t('page.overview.checked')} <b id="pool-checked" style="color:var(--text-primary)">0</b> / <b id="pool-total" style="color:var(--text-primary)">0</b></span><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t('page.overview.working')} <b id="pool-working" style="color:var(--success)">0</b></span>`;
     details.appendChild(stats);
     body.appendChild(details);
     card.appendChild(body);
 
-    const currentProxy = ui.el('div', '', { id: 'pool-current-proxy', style: 'margin-top:10px;font-size:12px;color:var(--text-secondary);flex:1' });
+    const currentProxy = ui.el('div', '', { id: 'pool-current-proxy', style: 'margin-top:10px;font-size:12px;color:var(--text-secondary);flex:1;min-width:0;overflow:hidden' });
     currentProxy.innerHTML = `<span style="color:var(--text-muted)">${t('common.ready')}</span>`;
     card.appendChild(currentProxy);
 
-    const poolStats = ui.el('div', '', { id: 'pool-stats-row', style: 'display:grid;grid-template-columns:repeat(auto-fit,minmax(60px,1fr));gap:0.3em;margin-top:auto' });
+    const poolStats = ui.el('div', '', { id: 'pool-stats-row', style: 'display:grid;grid-template-columns:repeat(4, minmax(0, 1fr));gap:0.3em;margin-top:auto;min-width:0' });
     card.appendChild(poolStats);
 
     return card;
@@ -227,8 +229,8 @@ router.register('overview', (container) => {
 
     const mode = (det.ssl_supported || det.protocol === 'https') ? 'HTTPS' : (det.protocol || 'HTTP').toUpperCase();
     const ok = det.last_status === 'ok';
-    const addrRow = ui.el('div', '', { style: 'display:flex;align-items:center;gap:0.4em;flex-wrap:wrap;margin-bottom:0.4em' });
-    const addrLink = ui.el('span', '', { style: 'font-family:monospace;font-weight:700;color:var(--accent);font-size:12px;cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px', text: det.address });
+    const addrRow = ui.el('div', '', { style: 'display:flex;align-items:center;gap:0.4em;flex-wrap:wrap;margin-bottom:0.4em;min-width:0' });
+    const addrLink = ui.el('span', '', { style: 'font-family:monospace;font-weight:700;color:var(--accent);font-size:12px;cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%', text: det.address });
     addrLink.addEventListener('click', () => { if (window.proxyCard) window.proxyCard.show(det.address); });
     addrRow.appendChild(addrLink);
     addrRow.appendChild(ui.el('span', '', { style: 'color:var(--accent);font-weight:600;font-size:11px', text: mode }));
@@ -241,7 +243,7 @@ router.register('overview', (container) => {
     const diffCountry = hasListen && hasEgress && (det.listen_country || '') !== (det.egress_country || '');
 
     if (diffCountry) {
-      const cols = ui.el('div', '', { style: 'display:grid;grid-template-columns:1fr auto 1fr;gap:0 0.5em;margin-bottom:0.3em;font-size:11px' });
+      const cols = ui.el('div', '', { style: 'display:grid;grid-template-columns:1fr auto 1fr;gap:0 0.5em;margin-bottom:0.3em;font-size:11px;min-width:0' });
 
       const lc = ui.el('div', '', { style: 'min-width:0' });
       lc.appendChild(ui.el('div', '', { style: 'font-size:0.65em;color:var(--text-muted);text-transform:uppercase;margin-bottom:2px', text: t('page.overview.server') }));
@@ -266,11 +268,11 @@ router.register('overview', (container) => {
 
       wrap.appendChild(cols);
     } else {
-      const single = ui.el('div', '', { style: 'display:flex;align-items:center;gap:0.4em;flex-wrap:wrap;margin-bottom:0.2em;font-size:11px' });
+      const single = ui.el('div', '', { style: 'display:flex;align-items:center;gap:0.4em;flex-wrap:wrap;margin-bottom:0.2em;font-size:11px;min-width:0' });
       single.appendChild(ui.el('span', 'flag', { text: ui.flag(det.country_code || ''), style: 'flex-shrink:0' }));
-      single.appendChild(ui.el('span', '', { style: 'color:var(--text-secondary)', text: (det.listen_country || det.egress_country || det.country || '') + (det.listen_city || det.egress_city ? ', ' + (det.listen_city || det.egress_city) : '') }));
+      single.appendChild(ui.el('span', '', { style: 'color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap', text: (det.listen_country || det.egress_country || det.country || '') + (det.listen_city || det.egress_city ? ', ' + (det.listen_city || det.egress_city) : '') }));
       wrap.appendChild(single);
-      const details = ui.el('div', '', { style: 'font-size:0.7em;color:var(--text-muted);line-height:1.3;margin-bottom:0.2em' });
+      const details = ui.el('div', '', { style: 'font-size:0.7em;color:var(--text-muted);line-height:1.3;margin-bottom:0.2em;overflow-wrap:break-word' });
       let d = '';
       if (det.listen_isp) d += det.listen_isp;
       if (det.egress_ip) d += (d ? ' · ' : '') + 'exit ' + det.egress_ip;
@@ -287,9 +289,9 @@ router.register('overview', (container) => {
         { l: 'Up', v: (det.checks_ok || 0) + '/' + (det.checks_total || 0) },
       ];
       stats.forEach(it => {
-        const cell = ui.el('div', '', { style: 'text-align:center;padding:0.25em 0.15em;background:var(--surface-raised);border-radius:0.25em;min-width:0' });
-        cell.appendChild(ui.el('div', '', { style: 'font-size:0.6em;color:var(--text-muted);text-transform:uppercase', text: it.l }));
-        cell.appendChild(ui.el('div', '', { style: 'font-weight:600;color:var(--text-primary);font-size:0.8em', text: it.v }));
+        const cell = ui.el('div', '', { style: 'text-align:center;padding:0.25em 0.15em;background:var(--surface-raised);border-radius:0.25em;min-width:0;overflow:hidden' });
+        cell.appendChild(ui.el('div', '', { style: 'font-size:0.6em;color:var(--text-muted);text-transform:uppercase;overflow:hidden;text-overflow:ellipsis;white-space:nowrap', text: it.l }));
+        cell.appendChild(ui.el('div', '', { style: 'font-weight:600;color:var(--text-primary);font-size:clamp(0.65em, 2.5cqw, 0.8em);overflow:hidden;text-overflow:ellipsis;white-space:nowrap', text: it.v }));
         statsWrap.appendChild(cell);
       });
     }
@@ -771,10 +773,12 @@ router.register('overview', (container) => {
 
   // --- Current Proxy Card ---
   function buildCurrentProxyCard() {
-    const card = ui.el('div', 'card');
+    const card = ui.el('div', 'card current-proxy-card');
     card.id = 'current-proxy-card';
     card.style.display = 'flex';
     card.style.flexDirection = 'column';
+    card.style.overflow = 'hidden';
+    card.style.minWidth = '0';
 
     const header = ui.el('div', 'card-header');
     const titleRow = ui.el('div', '', { style: 'display:flex;align-items:center;gap:8px' });
@@ -787,11 +791,11 @@ router.register('overview', (container) => {
     header.appendChild(poolBtn);
     card.appendChild(header);
 
-    const body = ui.el('div', '', { id: 'current-proxy-body', style: 'flex:1' });
+    const body = ui.el('div', '', { id: 'current-proxy-body', style: 'flex:1;min-width:0;overflow:hidden' });
     body.innerHTML = `<div class="empty" style="font-size:12px;padding:16px">${t('page.overview.noUpstreamSelected')}</div>`;
     card.appendChild(body);
 
-    const statsRow = ui.el('div', '', { id: 'proxy-stats-row', style: 'display:grid;grid-template-columns:repeat(auto-fit,minmax(60px,1fr));gap:0.3em;margin-top:auto' });
+    const statsRow = ui.el('div', '', { id: 'proxy-stats-row', style: 'display:grid;grid-template-columns:repeat(auto-fit, minmax(0, 1fr));gap:0.3em;margin-top:auto;min-width:0' });
     card.appendChild(statsRow);
 
     return card;
@@ -905,7 +909,7 @@ router.register('overview', (container) => {
 
     const mode = (ap.ssl_supported || ap.protocol === 'https') ? 'HTTPS' : (ap.protocol || 'HTTP').toUpperCase();
     const ok = ap.last_status === 'ok';
-    const metaRow = ui.el('div', '', { style: 'display:flex;align-items:center;gap:0.4em;flex-wrap:wrap;margin-bottom:0.3em' });
+    const metaRow = ui.el('div', '', { style: 'display:flex;align-items:center;gap:0.4em;flex-wrap:wrap;margin-bottom:0.3em;min-width:0' });
     metaRow.appendChild(ui.el('span', '', { style: 'color:var(--accent);font-weight:600;font-size:11px', text: mode }));
     if (ap.ssl_supported) metaRow.appendChild(ui.el('span', '', { style: 'color:#06b6d4;font-weight:600;font-size:10px;border:1px solid #06b6d4;border-radius:3px;padding:0 3px', text: 'SSL' }));
     metaRow.appendChild(ui.el('span', '', { style: `color:${ok ? 'var(--success)' : 'var(--danger)'};font-size:14px`, text: ok ? '●' : '○' }));
@@ -916,7 +920,7 @@ router.register('overview', (container) => {
     const diffCountry = hasListen && hasEgress && (ap.listen_country || '') !== (ap.egress_country || '');
 
     if (diffCountry) {
-      const cols = ui.el('div', '', { style: 'display:grid;grid-template-columns:1fr auto 1fr;gap:0 0.5em;margin-bottom:0.3em;font-size:11px' });
+      const cols = ui.el('div', '', { style: 'display:grid;grid-template-columns:1fr auto 1fr;gap:0 0.5em;margin-bottom:0.3em;font-size:11px;min-width:0' });
 
       const lc = ui.el('div', '', { style: 'min-width:0' });
       lc.appendChild(ui.el('div', '', { style: 'font-size:0.65em;color:var(--text-muted);text-transform:uppercase;margin-bottom:2px', text: t('page.overview.server') }));
@@ -942,11 +946,11 @@ router.register('overview', (container) => {
 
       body.appendChild(cols);
     } else {
-      const single = ui.el('div', '', { style: 'display:flex;align-items:center;gap:0.4em;flex-wrap:wrap;margin-bottom:0.2em;font-size:11px' });
+      const single = ui.el('div', '', { style: 'display:flex;align-items:center;gap:0.4em;flex-wrap:wrap;margin-bottom:0.2em;font-size:11px;min-width:0' });
       single.appendChild(ui.el('span', 'flag', { text: ui.flag(ap.country_code || ''), style: 'flex-shrink:0' }));
-      single.appendChild(ui.el('span', '', { style: 'color:var(--text-secondary)', text: (ap.listen_country || ap.egress_country || ap.country || '') + (ap.listen_city || ap.egress_city ? ', ' + (ap.listen_city || ap.egress_city) : '') }));
+      single.appendChild(ui.el('span', '', { style: 'color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap', text: (ap.listen_country || ap.egress_country || ap.country || '') + (ap.listen_city || ap.egress_city ? ', ' + (ap.listen_city || ap.egress_city) : '') }));
       body.appendChild(single);
-      const details = ui.el('div', '', { style: 'font-size:0.7em;color:var(--text-muted);line-height:1.3;margin-bottom:0.2em' });
+      const details = ui.el('div', '', { style: 'font-size:0.7em;color:var(--text-muted);line-height:1.3;margin-bottom:0.2em;overflow-wrap:break-word' });
       let d = '';
       if (ap.listen_isp) d += ap.listen_isp;
       if (ap.egress_ip) d += (d ? ' · ' : '') + 'exit ' + ap.egress_ip;
@@ -964,9 +968,9 @@ router.register('overview', (container) => {
         { l: 'Last', v: ui.ago(ap.last_check) },
       ];
       stats.forEach(it => {
-        const cell = ui.el('div', '', { style: 'text-align:center;padding:0.25em 0.15em;background:var(--surface-raised);border-radius:0.25em;min-width:0' });
-        cell.appendChild(ui.el('div', '', { style: 'font-size:0.6em;color:var(--text-muted);text-transform:uppercase', text: it.l }));
-        cell.appendChild(ui.el('div', '', { style: 'font-weight:600;color:var(--text-primary);font-size:0.8em', text: it.v }));
+        const cell = ui.el('div', '', { style: 'text-align:center;padding:0.25em 0.15em;background:var(--surface-raised);border-radius:0.25em;min-width:0;overflow:hidden' });
+        cell.appendChild(ui.el('div', '', { style: 'font-size:0.6em;color:var(--text-muted);text-transform:uppercase;overflow:hidden;text-overflow:ellipsis;white-space:nowrap', text: it.l }));
+        cell.appendChild(ui.el('div', '', { style: 'font-weight:600;color:var(--text-primary);font-size:clamp(0.65em, 2.5cqw, 0.8em);overflow:hidden;text-overflow:ellipsis;white-space:nowrap', text: it.v }));
         statsWrap.appendChild(cell);
       });
     }

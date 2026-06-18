@@ -352,6 +352,44 @@
   flex-shrink: 0;
 }
 
+/* Auto-scaling cards so content never spills out */
+.pool-progress-card,
+.current-proxy-card {
+  container-type: inline-size;
+}
+
+.pool-progress-card {
+  container-name: poolProgress;
+}
+
+.current-proxy-card {
+  container-name: currentProxy;
+}
+
+@container poolProgress (max-width: 280px) {
+  .pool-progress-card #pool-stats-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@container poolProgress (max-width: 160px) {
+  .pool-progress-card #pool-stats-row {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+@container currentProxy (max-width: 220px) {
+  .current-proxy-card #proxy-stats-row {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+}
+
+@container currentProxy (max-width: 140px) {
+  .current-proxy-card #proxy-stats-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
 .content .card .table-wrap,
 .content .card > div[id$="-log"],
 .content .card > div[id$="-tbl-wrap"],

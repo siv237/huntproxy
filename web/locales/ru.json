@@ -587,7 +587,14 @@
     }
   },
   "proxyCard": {
-    "title": "Карточка прокси",
+    "title": "Детали прокси",
+    "rating": "Рейтинг",
+    "status": {
+      "ready": "Готов к использованию",
+      "degraded": "Деградация",
+      "unstable": "Нестабилен",
+      "blocked": "Заблокирован"
+    },
     "performance": "Производительность",
     "security": "Безопасность",
     "network": "Сеть",
@@ -620,9 +627,11 @@
     "latencyScore": "Задержка",
     "sslBonus": "Бонус SSL",
     "connectBonus": "Бонус CONNECT",
+    "sslConnectBonus": "SSL + CONNECT",
     "speedBonus": "Бонус скорости",
     "mitmPenalty": "Штраф MITM",
     "speedFailPenalty": "Штраф за ошибки скорости",
+    "penalties": "Штрафы",
     "ipBlacklistMultiplier": "Множитель IP-чёрного списка",
     "totalScore": "Итоговый рейтинг",
     "select": "Выбрать",
@@ -631,6 +640,21 @@
     "removeFromBlacklist": "Убрать из чёрного списка",
     "copy": "Копировать",
     "copied": "Адрес скопирован",
+    "sslPassthrough": "SSL passthrough",
+    "notDetected": "Не обнаружен",
+    "suspected": "Подозрение",
+    "headerChanges": "Изменение заголовков",
+    "isp": "Провайдер",
+    "suitability": "Подходит для",
+    "ratingHint": "Рейтинг используется только для сортировки прокси и не является гарантией работоспособности в любых сценариях.",
+    "use": {
+      "web": "Веб-серфинг",
+      "api": "API",
+      "parsing": "Парсинг",
+      "download": "Загрузка файлов",
+      "streaming": "Стриминг",
+      "games": "Игры"
+    },
     "tooltip": {
       "lastLatency": "Время отклика при последней проверке.",
       "avgLatency": "Среднее время отклика по успешным проверкам.",
