@@ -8,7 +8,7 @@ router.register('about', (container) => {
   container.style.overflow = 'auto';
 
   const logoWrap = ui.el('div', '', { style: 'text-align:center' });
-  const logo = ui.el('img', '', {
+  const logo = ui.el('img', 'about-logo', {
     src: '/assets/biglogo.png',
     alt: 'huntproxy',
     style: 'max-width:320px;width:100%;height:auto;border-radius:12px',

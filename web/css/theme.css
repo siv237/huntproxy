@@ -86,3 +86,20 @@ button { font-family: inherit; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+.sidebar-brand img {
+  filter: drop-shadow(0 4px 12px rgba(0,0,0,.35));
+  transition: transform .25s ease, filter .25s ease;
+}
+
+.sidebar-brand img:hover {
+  transform: scale(1.04);
+}
+
+[data-theme="dark"] .sidebar-brand img {
+  filter: drop-shadow(0 0 18px rgba(99,102,241,.55)) drop-shadow(0 0 40px rgba(99,102,241,.25));
+}
+
+[data-theme="dark"] .sidebar-brand img:hover {
+  filter: drop-shadow(0 0 22px rgba(99,102,241,.75)) drop-shadow(0 0 50px rgba(99,102,241,.35));
+}
