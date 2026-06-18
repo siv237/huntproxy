@@ -272,8 +272,9 @@ const proxyCard = {
     const asn = p.asn || '';
     if (asn) {
       details.appendChild(this._routeDetail('ASN', asn + (isp ? ' ' + isp : '')));
+    } else if (isp) {
+      details.appendChild(this._routeDetail(t('proxyCard.isp'), isp));
     }
-    details.appendChild(this._routeDetail(t('proxyCard.sources'), (p.source_ids || []).join(', ') || '—'));
     section.appendChild(details);
 
     return section;
@@ -310,32 +311,42 @@ const proxyCard = {
 
   _suitability(p) {
     const section = ui.el('div', 'proxy-card-section');
-    section.appendChild(this._sectionTitle(t('proxyCard.suitability'), this._svg('thumbs-up')));
+    section.appendChild(this._sectionTitle(t('proxyCard.sourcesTitle'), this._svg('layers')));
 
-    const sr = p.success_rate || 0;
-    const lat = p.latency_avg || p.last_latency || 0;
-    const speed = p.speed_avg || 0;
-    const good = sr >= 0.9 && lat < 2 && !p.in_blacklist && !p.mitm_suspect;
-    const ok = sr >= 0.8 && lat < 4 && !p.in_blacklist && !p.mitm_suspect;
+    const sourceIds = p.source_ids || [];
+    const sourcesTotal = p.sources_total || 0;
+    const found = sourceIds.length;
+    const foundPct = sourcesTotal ? Math.round((found / sourcesTotal) * 100) : 0;
+    const foundColor = found >= 5 ? 'var(--success)' : found >= 2 ? 'var(--warning)' : 'var(--danger)';
 
-    const items = [
-      { key: 'web', label: t('proxyCard.use.web'), icon: 'globe', cls: good ? 'good' : ok ? 'warn' : 'bad' },
-      { key: 'api', label: t('proxyCard.use.api'), icon: 'code', cls: (good && p.ssl_supported && p.supports_connect) ? 'good' : (ok && p.ssl_supported) ? 'warn' : 'bad' },
-      { key: 'social', label: t('proxyCard.use.social'), icon: 'users', cls: good ? 'good' : ok ? 'warn' : 'bad' },
-      { key: 'parsing', label: t('proxyCard.use.parsing'), icon: 'search', cls: (sr >= 0.95 && !p.mitm_suspect && !p.in_blacklist) ? 'good' : (sr >= 0.85 && !p.in_blacklist) ? 'warn' : 'bad' },
-      { key: 'download', label: t('proxyCard.use.download'), icon: 'download', cls: speed > 100 ? 'good' : speed > 30 ? 'warn' : 'bad' },
-      { key: 'streaming', label: t('proxyCard.use.streaming'), icon: 'play', cls: (speed > 200 && lat < 1 && !p.mitm_suspect) ? 'good' : (speed > 80 && lat < 2) ? 'warn' : 'bad' },
-      { key: 'games', label: t('proxyCard.use.games'), icon: 'gamepad', cls: (lat < 0.1 && !p.mitm_suspect) ? 'good' : 'bad' },
-      { key: 'banking', label: t('proxyCard.use.banking'), icon: 'credit-card', cls: (good && p.ssl_supported && !p.mitm_suspect) ? 'good' : 'bad' },
-    ];
+    const blHits = p.ip_blacklist_hits || 0;
+    const blTotal = p.ip_blacklist_sources_total || 0;
+    const blPct = blTotal ? Math.round((blHits / blTotal) * 100) : 0;
+    const blColor = blHits === 0 ? 'var(--success)' : blHits <= 2 ? 'var(--warning)' : 'var(--danger)';
 
-    const tags = ui.el('div', 'proxy-card-tags');
-    items.forEach(it => {
-      const icon = this._svg(it.icon);
-      tags.appendChild(ui.el('div', `proxy-card-tag ${it.cls}`, { html: `${icon} ${it.label}` }));
-    });
-    section.appendChild(tags);
+    const wrap = ui.el('div', '', { style: 'display:flex;flex-direction:column;gap:clamp(10px,1.5cqi,16px)' });
+
+    const foundRow = this._sourceBar(t('proxyCard.foundInSources', { found, total: sourcesTotal }), `${found}/${sourcesTotal}`, foundPct, foundColor, t('proxyCard.moreIsBetter'));
+    wrap.appendChild(foundRow);
+
+    const blRow = this._sourceBar(t('proxyCard.ipBlHits', { hits: blHits, total: blTotal }), `${blHits}/${blTotal}`, blPct, blColor, t('proxyCard.lessIsBetter'));
+    wrap.appendChild(blRow);
+
+    section.appendChild(wrap);
     return section;
+  },
+
+  _sourceBar(label, value, pct, color, hint) {
+    const item = ui.el('div', '', { style: 'display:flex;flex-direction:column;gap:clamp(3px,0.4cqi,6px);min-width:0' });
+    const header = ui.el('div', '', { style: 'display:flex;justify-content:space-between;align-items:center;gap:8px;min-width:0' });
+    header.appendChild(ui.el('div', '', { style: 'font-size:clamp(10px,1.1cqi,12px);color:var(--text-secondary);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap', text: label }));
+    header.appendChild(ui.el('div', '', { style: `font-size:clamp(12px,1.4cqi,15px);font-weight:700;color:${color};flex-shrink:0`, text: value }));
+    item.appendChild(header);
+    const bar = ui.el('div', '', { style: 'height:clamp(4px,0.6cqi,6px);background:var(--surface);border-radius:3px;overflow:hidden' });
+    bar.appendChild(ui.el('div', '', { style: `width:${pct}%;height:100%;background:${color};border-radius:3px;transition:width 0.4s ease` }));
+    item.appendChild(bar);
+    item.appendChild(ui.el('div', '', { style: 'font-size:clamp(8px,0.9cqi,10px);color:var(--text-muted)', text: hint }));
+    return item;
   },
 
   _scoreBreakdown(p) {
@@ -503,6 +514,7 @@ const proxyCard = {
       play: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>',
       gamepad: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="12" x2="10" y2="12"/><line x1="8" y1="10" x2="8" y2="14"/><line x1="15" y1="13" x2="15.01" y2="13"/><line x1="18" y1="11" x2="18.01" y2="11"/><rect x="2" y="6" width="20" height="12" rx="2"/></svg>',
       'credit-card': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>',
+      layers: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>',
     };
     return icons[name] || '';
   }

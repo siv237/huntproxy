@@ -879,7 +879,12 @@ class HuntServer:
             addr = unquote(addr)
             r = self.state.ratings.get(addr)
             if r:
-                return json.dumps(r.to_dict()), 200, "application/json"
+                d = r.to_dict()
+                d["source_ids"] = self.state._addr_sources.get(r.address, [])
+                total_sources = len(self.state.get_proxy_sources())
+                d["sources_total"] = total_sources
+                d["ip_blacklist_sources_total"] = len(self.state.get_ip_blacklist_sources())
+                return json.dumps(d), 200, "application/json"
             return json.dumps({"error": "not found"}), 404, "application/json"
 
         # === Blacklist ===

@@ -260,12 +260,18 @@ class ProxySourcesMixin:
                     pass
 
     def _load_all_proxy_source_entries(self):
-            """Load all persisted proxy addresses from SQLite into memory."""
+            """Load all persisted proxy addresses from SQLite into memory.
+
+            Also migrates source_ids stored in ratings JSON into the
+            proxy_source_entries table so the DB becomes the single source
+            of truth.
+            """
             self._source_proxies = {}
             self._addr_sources = {}
             conn = self._db()
             try:
                 rows = conn.execute("SELECT source_id, address FROM proxy_source_entries").fetchall()
+                db_pairs = {(row["address"], row["source_id"]) for row in rows}
                 for row in rows:
                     sid = row["source_id"]
                     addr = row["address"]
@@ -275,6 +281,27 @@ class ProxySourcesMixin:
                     if addr not in self._addr_sources:
                         self._addr_sources[addr] = []
                     self._addr_sources[addr].append(sid)
+
+                migrated = 0
+                for r in self.ratings.values():
+                    for sid in r.source_ids:
+                        if (r.address, sid) not in db_pairs:
+                            conn.execute(
+                                "INSERT OR IGNORE INTO proxy_source_entries (source_id, address) VALUES (?, ?)",
+                                (sid, r.address),
+                            )
+                            db_pairs.add((r.address, sid))
+                            migrated += 1
+                        if r.address not in self._addr_sources:
+                            self._addr_sources[r.address] = []
+                        if sid not in self._addr_sources[r.address]:
+                            self._addr_sources[r.address].append(sid)
+                        if sid not in self._source_proxies:
+                            self._source_proxies[sid] = set()
+                        self._source_proxies[sid].add(r.address)
+                if migrated:
+                    conn.commit()
+                    logger.info(f"Migrated {migrated} source entries from ratings into DB")
                 for addr, sids in self._addr_sources.items():
                     r = self.ratings.get(addr)
                     if r:

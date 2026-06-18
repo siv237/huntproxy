@@ -131,8 +131,8 @@ class HuntState(DbMixin, EventsMixin, SnapshotMixin, HealthMixin, CheckingMixin,
                 pass
             self._load_ip_blacklist()
             self._load_state()
-            self._load_all_proxy_source_entries()
             self._load_working_file()
+            self._load_all_proxy_source_entries()
 
     @property
     def working_file(self) -> Path:
@@ -250,12 +250,6 @@ class HuntState(DbMixin, EventsMixin, SnapshotMixin, HealthMixin, CheckingMixin,
                     elif key == "country_filter":
                         self.country_filter = val
                 conn.close()
-                self._addr_sources = {}
-                for r in self.ratings.values():
-                    for sid in r.source_ids:
-                        if r.address not in self._addr_sources:
-                            self._addr_sources[r.address] = []
-                        self._addr_sources[r.address].append(sid)
                 if self.ratings:
                     logger.info(f"Loaded {len(self.ratings)} ratings from SQLite")
                     return
@@ -340,12 +334,6 @@ class HuntState(DbMixin, EventsMixin, SnapshotMixin, HealthMixin, CheckingMixin,
                         r.listen_country_code = country_code_from_name(r.listen_country)
                     self.ratings[r.address] = r
                 self._load_blacklist_file()
-                self._addr_sources = {}
-                for r in self.ratings.values():
-                    for sid in r.source_ids:
-                        if r.address not in self._addr_sources:
-                            self._addr_sources[r.address] = []
-                        self._addr_sources[r.address].append(sid)
                 logger.info(f"Loaded {len(self.ratings)} ratings from state file")
             except Exception as e:
                 logger.warning(f"State load failed: {e}")

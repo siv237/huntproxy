@@ -869,6 +869,7 @@ class CheckingMixin:
                     country=country,
                     country_code=country_code or country_code_from_name(country),
                     first_seen=time.time(),
+                    source_ids=list(self._addr_sources.get(addr, [])),
                 )
                 try:
                     p = int(addr.rsplit(":", 1)[1])
