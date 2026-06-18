@@ -1,7 +1,7 @@
 const proxyCard = {
   async show(addr) {
     const overlay = ui.el('div', 'proxy-card-overlay', {
-      style: 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px'
+      style: 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;display:flex;align-items:center;justify-content:center;overflow:auto;'
     });
     const modal = ui.el('div', 'proxy-card');
     modal.innerHTML = `<div style="padding:40px;text-align:center;color:var(--text-muted)">${t('common.loading')}</div>`;
@@ -26,6 +26,7 @@ const proxyCard = {
     modal.appendChild(content);
 
     content.appendChild(this._hero(p));
+    content.appendChild(this._securityBadges(p));
 
     const midGrid = ui.el('div', 'proxy-card-grid-3');
     midGrid.appendChild(this._performance(p));
@@ -33,12 +34,12 @@ const proxyCard = {
     midGrid.appendChild(this._network(p));
     content.appendChild(midGrid);
 
-    const bottomGrid = ui.el('div', 'proxy-card-grid');
+    const bottomGrid = ui.el('div', 'proxy-card-grid-2');
     bottomGrid.appendChild(this._timeline(p));
-    bottomGrid.appendChild(this._scoreBreakdown(p));
+    bottomGrid.appendChild(this._suitability(p));
     content.appendChild(bottomGrid);
 
-    content.appendChild(this._suitability(p));
+    content.appendChild(this._scoreBreakdown(p));
 
     modal.appendChild(this._actions(p, overlay));
   },
@@ -67,46 +68,95 @@ const proxyCard = {
     const status = this._status(p);
     const flag = ui.flag(p.country_code);
     const location = [p.country, p.city].filter(Boolean).join(', ') || '—';
-    const isp = p.isp || '';
+    const isp = p.isp || p.listen_isp || p.egress_isp || '';
+    const asn = p.asn || '';
 
     const wrap = ui.el('div', 'proxy-card-hero');
 
     const main = ui.el('div', 'proxy-card-hero-main');
-    main.appendChild(ui.el('div', `proxy-card-status ${status.cls}`, { text: status.label }));
-    main.appendChild(ui.el('div', 'proxy-card-address', { text: p.address }));
 
-    const meta = ui.el('div', 'proxy-card-meta');
-    if (flag) meta.appendChild(ui.el('span', 'flag', { text: flag, style: 'font-size:14px' }));
+    const statusRow = ui.el('div', 'proxy-card-hero-status-row');
+    statusRow.appendChild(ui.el('div', `proxy-card-status ${status.cls}`, { text: status.label }));
+    main.appendChild(statusRow);
+
+    const addrRow = ui.el('div', 'proxy-card-hero-addr-row');
+    addrRow.appendChild(ui.el('div', 'proxy-card-address', { text: p.address }));
+    const copyBtn = ui.el('button', 'proxy-card-copy-btn', { html: this._svg('copy') });
+    copyBtn.addEventListener('click', () => {
+      navigator.clipboard.writeText(p.address).then(() => app.toast(t('proxyCard.copied'))).catch(() => {});
+    });
+    addrRow.appendChild(copyBtn);
+    main.appendChild(addrRow);
+
+    const meta = ui.el('div', 'proxy-card-hero-meta');
+    if (flag) meta.appendChild(ui.el('span', 'flag', { text: flag }));
     meta.appendChild(ui.el('span', '', { text: location }));
+    if (asn) {
+      meta.appendChild(ui.el('span', 'dot', { text: '•' }));
+      meta.appendChild(ui.el('span', '', { text: asn }));
+    }
     if (isp) {
       meta.appendChild(ui.el('span', 'dot', { text: '•' }));
       meta.appendChild(ui.el('span', '', { text: isp }));
     }
-    if (p.last_check) {
-      meta.appendChild(ui.el('span', 'dot', { text: '•' }));
-      meta.appendChild(ui.el('span', '', { text: t('proxyCard.lastCheck') + ' ' + ui.ago(p.last_check) }));
+    if (p.protocol === 'http' && !p.ssl_supported) {
+      meta.appendChild(ui.el('span', 'proxy-card-type-badge', { text: t('proxyCard.publicProxy') }));
     }
     main.appendChild(meta);
 
-    const badges = ui.el('div', 'proxy-card-badges');
-    const proto = (p.protocol || 'http').toUpperCase();
-    badges.appendChild(ui.badge(proto, 'gray'));
-    if (p.ssl_supported) badges.appendChild(ui.badge('SSL', 'cyan'));
-    if (p.supports_connect) badges.appendChild(ui.badge('CONNECT', 'blue'));
-    if (p.mitm_suspect) badges.appendChild(ui.badge('MITM', 'red'));
-    main.appendChild(badges);
+    const checkRow = ui.el('div', 'proxy-card-hero-check-row');
+    if (p.last_check) {
+      checkRow.appendChild(ui.el('span', '', { html: `${this._svg('check-circle')} ${t('proxyCard.checkedAgo')} ${ui.ago(p.last_check)}` }));
+    }
+    main.appendChild(checkRow);
+
     wrap.appendChild(main);
 
     const rating = ui.el('div', 'proxy-card-rating');
     rating.appendChild(ui.el('div', 'proxy-card-rating-label', { text: t('proxyCard.rating') }));
-    const val = ui.el('div', 'proxy-card-rating-value', { text: String(score), style: `color:${scoreColor}` });
-    rating.appendChild(val);
+    const valWrap = ui.el('div', 'proxy-card-rating-value-wrap');
+    valWrap.appendChild(ui.el('div', 'proxy-card-rating-value', { text: String(score), style: `color:${scoreColor}` }));
+    valWrap.appendChild(ui.el('div', 'proxy-card-rating-max', { text: '/100' }));
+    rating.appendChild(valWrap);
+    const desc = score >= 60 ? t('proxyCard.ratingGood') : score >= 30 ? t('proxyCard.ratingAvg') : t('proxyCard.ratingBad');
+    rating.appendChild(ui.el('div', 'proxy-card-rating-desc', { text: desc }));
     const bar = ui.el('div', 'proxy-card-rating-bar');
-    bar.appendChild(ui.el('div', '', { style: `width:${score}%;background:${scoreColor}` }));
+    const segments = 10;
+    for (let i = 0; i < segments; i++) {
+      const seg = ui.el('div', 'proxy-card-rating-segment');
+      if (score >= (i + 1) * 10) {
+        seg.style.background = scoreColor;
+      }
+      bar.appendChild(seg);
+    }
     rating.appendChild(bar);
     wrap.appendChild(rating);
 
     return wrap;
+  },
+
+  _securityBadges(p) {
+    const row = ui.el('div', 'proxy-card-security-badges');
+
+    const httpsBadge = ui.el('div', `proxy-card-sec-badge ${p.ssl_supported ? 'good' : 'bad'}`);
+    httpsBadge.innerHTML = `${this._svg('lock')} HTTPS`;
+    row.appendChild(httpsBadge);
+
+    if (p.ssl_supported) {
+      const sslBadge = ui.el('div', 'proxy-card-sec-badge good');
+      sslBadge.innerHTML = `${this._svg('lock')} SSL`;
+      row.appendChild(sslBadge);
+    }
+
+    const connectBadge = ui.el('div', `proxy-card-sec-badge ${p.supports_connect ? 'good' : 'bad'}`);
+    connectBadge.innerHTML = `${this._svg('link')} CONNECT`;
+    row.appendChild(connectBadge);
+
+    const mitmBadge = ui.el('div', `proxy-card-sec-badge ${!p.mitm_suspect ? 'good' : 'bad'}`);
+    mitmBadge.innerHTML = `${this._svg('shield-check')} MITM ${!p.mitm_suspect ? t('proxyCard.notDetected') : t('proxyCard.suspected')}`;
+    row.appendChild(mitmBadge);
+
+    return row;
   },
 
   _status(p) {
@@ -119,47 +169,36 @@ const proxyCard = {
 
   _performance(p) {
     const section = ui.el('div', 'proxy-card-section');
-    section.appendChild(this._sectionTitle(t('proxyCard.performance'), this._svg('activity')));
+    section.appendChild(this._sectionTitle(t('proxyCard.performance'), this._svg('bar-chart')));
 
     const grid = ui.el('div', 'proxy-card-kpi-grid');
 
     const avgLat = p.latency_avg || 0;
     const lastLat = p.last_latency || 0;
     const latValue = avgLat ? ui.fmtLatency(avgLat) : ui.fmtLatency(lastLat);
-    const latGood = avgLat ? avgLat < 1 : lastLat < 1;
-    const latColor = latGood ? 'var(--success)' : (avgLat || lastLat) < 3 ? 'var(--warning)' : 'var(--danger)';
-    const latPct = Math.max(0, Math.min(100, 100 - ((avgLat || lastLat) * 40)));
-    grid.appendChild(this._kpi(latValue, t('proxyCard.avgLatency'), latPct, latColor));
+    grid.appendChild(this._kpi(latValue, t('proxyCard.avgLatency')));
 
     const speed = p.speed_avg || 0;
     const speedValue = speed ? speed.toFixed(0) : '—';
-    const speedUnit = speed ? 'KB/s' : '';
-    const speedPct = Math.max(0, Math.min(100, (speed / 300) * 100));
-    const speedColor = speed > 100 ? 'var(--success)' : speed > 30 ? 'var(--warning)' : 'var(--danger)';
-    grid.appendChild(this._kpi(speedValue, t('proxyCard.avgSpeed'), speedPct, speedColor, speedUnit));
+    grid.appendChild(this._kpi(speedValue, t('proxyCard.avgSpeed'), '', 'KB/s'));
 
     const sr = p.success_rate || 0;
     const srPct = Math.round(sr * 100);
-    const srColor = sr >= 0.95 ? 'var(--success)' : sr >= 0.8 ? 'var(--warning)' : 'var(--danger)';
-    grid.appendChild(this._kpi(srPct + '%', t('proxyCard.successRate'), srPct, srColor));
+    grid.appendChild(this._kpi(srPct + '%', t('proxyCard.successRate')));
 
     const checks = (p.checks_total || 0);
     const checksOk = (p.checks_ok || 0);
-    const checksPct = checks ? Math.round((checksOk / checks) * 100) : 0;
-    grid.appendChild(this._kpi(`${checksOk}/${checks}`, t('proxyCard.checks'), checksPct, 'var(--accent)'));
+    grid.appendChild(this._kpi(`${checksOk}/${checks}`, t('proxyCard.checks')));
 
     section.appendChild(grid);
     return section;
   },
 
-  _kpi(value, label, pct, color, unit = '') {
+  _kpi(value, label, unit = '') {
     const kpi = ui.el('div', 'proxy-card-kpi');
     const val = ui.el('div', 'proxy-card-kpi-value', { html: `${ui.escHtml(String(value))}${unit ? `<small>${ui.escHtml(unit)}</small>` : ''}` });
     kpi.appendChild(val);
     kpi.appendChild(ui.el('div', 'proxy-card-kpi-label', { text: label }));
-    const bar = ui.el('div', 'proxy-card-kpi-bar');
-    bar.appendChild(ui.el('div', '', { style: `width:${pct}%;background:${color}` }));
-    kpi.appendChild(bar);
     return kpi;
   },
 
@@ -168,69 +207,76 @@ const proxyCard = {
     section.appendChild(this._sectionTitle(t('proxyCard.security'), this._svg('shield')));
 
     const list = ui.el('div', 'proxy-card-checklist');
-    list.appendChild(this._check('HTTPS', p.ssl_supported, t('common.yes'), t('common.no')));
-    list.appendChild(this._check('CONNECT', p.supports_connect, t('common.yes'), t('common.no')));
-    list.appendChild(this._check('MITM', !p.mitm_suspect, t('proxyCard.notDetected'), t('proxyCard.suspected')));
-    list.appendChild(this._check(t('proxyCard.manualBlacklist'), !p.in_blacklist, t('common.no'), t('common.yes')));
-    list.appendChild(this._check(t('proxyCard.ipBlacklist'), !(p.ip_blacklist_hits > 0), p.ip_blacklist_hits ? `${p.ip_blacklist_hits} ${t('proxyCard.hits')}` : t('common.no')));
+    list.appendChild(this._checkRow('HTTPS (TLS)', p.ssl_supported, t('proxyCard.supported'), 'good'));
+    list.appendChild(this._checkRow(t('proxyCard.sslPassthrough'), p.ssl_supported, t('common.yes'), p.ssl_supported ? 'good' : 'muted'));
+    list.appendChild(this._checkRow('CONNECT', p.supports_connect, t('common.yes'), p.supports_connect ? 'good' : 'muted'));
+    list.appendChild(this._checkRow('MITM', !p.mitm_suspect, t('proxyCard.notDetected'), !p.mitm_suspect ? 'good' : 'bad'));
 
     section.appendChild(list);
     return section;
   },
 
-  _check(label, ok, yesText, noText) {
-    const cls = ok ? 'good' : 'bad';
-    const value = ok ? yesText : noText;
-    const icon = ok ? this._svg('check') : this._svg('x');
+  _checkRow(label, ok, valueText, cls) {
     const row = ui.el('div', `proxy-card-check ${cls}`);
+    const icon = cls === 'good' ? this._svg('check') : cls === 'bad' ? this._svg('x') : cls === 'warn' ? this._svg('alert') : this._svg('minus');
     const labelEl = ui.el('div', 'proxy-card-check-label', { html: `${icon} <span>${label}</span>` });
     row.appendChild(labelEl);
-    row.appendChild(ui.el('div', 'proxy-card-check-value', { text: value }));
+    row.appendChild(ui.el('div', `proxy-card-check-value ${cls}`, { text: valueText }));
     return row;
   },
 
   _network(p) {
     const section = ui.el('div', 'proxy-card-section');
-    section.appendChild(this._sectionTitle(t('proxyCard.network'), this._svg('map-pin')));
+    section.appendChild(this._sectionTitle(t('proxyCard.route'), this._svg('map-pin')));
 
-    const hasListen = !!(p.listen_country || p.listen_city);
-    const hasEgress = !!(p.egress_country || p.egress_city);
+    const route = ui.el('div', 'proxy-card-route-vertical');
+
     const listenCountry = p.listen_country || p.country || '';
     const listenCity = p.listen_city || p.city || '';
+    const listenIp = p.address ? p.address.split(':')[0] : '—';
     const egressCountry = p.egress_country || p.country || '';
     const egressCity = p.egress_city || p.city || '';
-    const listenIp = p.address ? p.address.split(':')[0] : '—';
-    const egressIp = p.egress_ip || '—';
+    const egressIp = p.egress_ip || listenIp;
 
-    const route = ui.el('div', 'proxy-card-route');
-    route.appendChild(this._routePoint(t('proxyCard.listen'), p.listen_country_code || p.country_code, listenCountry, listenCity, listenIp));
-    route.appendChild(ui.el('div', 'proxy-card-route-arrow', { text: '→' }));
-    route.appendChild(this._routePoint(t('proxyCard.egress'), p.egress_country_code || p.country_code, egressCountry, egressCity, egressIp));
+    const listenPoint = ui.el('div', 'proxy-card-route-vpoint');
+    listenPoint.appendChild(ui.el('div', 'proxy-card-route-vdot good'));
+    const listenContent = ui.el('div', 'proxy-card-route-vcontent');
+    listenContent.appendChild(ui.el('div', 'proxy-card-route-vlabel', { text: t('proxyCard.listen') }));
+    const listenLoc = ui.el('div', 'proxy-card-route-vlocation');
+    if (p.listen_country_code || p.country_code) listenLoc.appendChild(ui.el('span', 'flag', { text: ui.flag(p.listen_country_code || p.country_code) }));
+    listenLoc.appendChild(ui.el('span', '', { text: [listenCountry, listenCity].filter(Boolean).join(', ') || '—' }));
+    listenContent.appendChild(listenLoc);
+    listenContent.appendChild(ui.el('div', 'proxy-card-route-vip', { text: listenIp }));
+    listenPoint.appendChild(listenContent);
+    route.appendChild(listenPoint);
+
+    const arrow = ui.el('div', 'proxy-card-route-varrow');
+    route.appendChild(arrow);
+
+    const egressPoint = ui.el('div', 'proxy-card-route-vpoint');
+    egressPoint.appendChild(ui.el('div', 'proxy-card-route-vdot good'));
+    const egressContent = ui.el('div', 'proxy-card-route-vcontent');
+    egressContent.appendChild(ui.el('div', 'proxy-card-route-vlabel', { text: t('proxyCard.egress') }));
+    const egressLoc = ui.el('div', 'proxy-card-route-vlocation');
+    if (p.egress_country_code || p.country_code) egressLoc.appendChild(ui.el('span', 'flag', { text: ui.flag(p.egress_country_code || p.country_code) }));
+    egressLoc.appendChild(ui.el('span', '', { text: [egressCountry, egressCity].filter(Boolean).join(', ') || '—' }));
+    egressContent.appendChild(egressLoc);
+    egressContent.appendChild(ui.el('div', 'proxy-card-route-vip', { text: egressIp }));
+    egressPoint.appendChild(egressContent);
+    route.appendChild(egressPoint);
+
     section.appendChild(route);
 
     const details = ui.el('div', 'proxy-card-route-details');
     const isp = p.listen_isp || p.egress_isp || p.isp || '';
-    if (isp) {
-      details.appendChild(this._routeDetail(t('proxyCard.isp'), isp));
-    }
-    if (p.asn) {
-      details.appendChild(this._routeDetail('ASN', p.asn));
+    const asn = p.asn || '';
+    if (asn) {
+      details.appendChild(this._routeDetail('ASN', asn + (isp ? ' ' + isp : '')));
     }
     details.appendChild(this._routeDetail(t('proxyCard.sources'), (p.source_ids || []).join(', ') || '—'));
     section.appendChild(details);
 
     return section;
-  },
-
-  _routePoint(label, code, country, city, ip) {
-    const point = ui.el('div', 'proxy-card-route-point');
-    point.appendChild(ui.el('div', 'proxy-card-route-label', { text: label }));
-    const location = ui.el('div', 'proxy-card-route-location');
-    if (code) location.appendChild(ui.el('span', 'flag', { text: ui.flag(code) }));
-    location.appendChild(ui.el('span', '', { text: [country, city].filter(Boolean).join(', ') || '—' }));
-    point.appendChild(location);
-    point.appendChild(ui.el('div', 'proxy-card-route-ip', { text: ip }));
-    return point;
   },
 
   _routeDetail(key, value) {
@@ -245,7 +291,7 @@ const proxyCard = {
     section.appendChild(this._sectionTitle(t('proxyCard.timeline'), this._svg('clock')));
 
     const list = ui.el('div', 'proxy-card-timeline');
-    list.appendChild(this._timelineItem(t('proxyCard.firstSeen'), p.first_seen, 'accent'));
+    list.appendChild(this._timelineItem(t('proxyCard.discovered'), p.first_seen, 'accent'));
     list.appendChild(this._timelineItem(t('proxyCard.lastCheck'), p.last_check, p.last_status === 'ok' ? 'ok' : 'bad'));
     list.appendChild(this._timelineItem(t('proxyCard.lastOk'), p.last_ok, 'ok'));
     section.appendChild(list);
@@ -273,17 +319,19 @@ const proxyCard = {
     const ok = sr >= 0.8 && lat < 4 && !p.in_blacklist && !p.mitm_suspect;
 
     const items = [
-      { key: 'web', label: t('proxyCard.use.web'), cls: good ? 'good' : ok ? 'warn' : 'bad' },
-      { key: 'api', label: t('proxyCard.use.api'), cls: (good && p.ssl_supported && p.supports_connect) ? 'good' : (ok && p.ssl_supported) ? 'warn' : 'bad' },
-      { key: 'parsing', label: t('proxyCard.use.parsing'), cls: (sr >= 0.95 && !p.mitm_suspect && !p.in_blacklist) ? 'good' : (sr >= 0.85 && !p.in_blacklist) ? 'warn' : 'bad' },
-      { key: 'download', label: t('proxyCard.use.download'), cls: speed > 100 ? 'good' : speed > 30 ? 'warn' : 'bad' },
-      { key: 'streaming', label: t('proxyCard.use.streaming'), cls: (speed > 200 && lat < 1 && !p.mitm_suspect) ? 'good' : (speed > 80 && lat < 2) ? 'warn' : 'bad' },
-      { key: 'games', label: t('proxyCard.use.games'), cls: (lat < 0.1 && !p.mitm_suspect) ? 'good' : 'bad' },
+      { key: 'web', label: t('proxyCard.use.web'), icon: 'globe', cls: good ? 'good' : ok ? 'warn' : 'bad' },
+      { key: 'api', label: t('proxyCard.use.api'), icon: 'code', cls: (good && p.ssl_supported && p.supports_connect) ? 'good' : (ok && p.ssl_supported) ? 'warn' : 'bad' },
+      { key: 'social', label: t('proxyCard.use.social'), icon: 'users', cls: good ? 'good' : ok ? 'warn' : 'bad' },
+      { key: 'parsing', label: t('proxyCard.use.parsing'), icon: 'search', cls: (sr >= 0.95 && !p.mitm_suspect && !p.in_blacklist) ? 'good' : (sr >= 0.85 && !p.in_blacklist) ? 'warn' : 'bad' },
+      { key: 'download', label: t('proxyCard.use.download'), icon: 'download', cls: speed > 100 ? 'good' : speed > 30 ? 'warn' : 'bad' },
+      { key: 'streaming', label: t('proxyCard.use.streaming'), icon: 'play', cls: (speed > 200 && lat < 1 && !p.mitm_suspect) ? 'good' : (speed > 80 && lat < 2) ? 'warn' : 'bad' },
+      { key: 'games', label: t('proxyCard.use.games'), icon: 'gamepad', cls: (lat < 0.1 && !p.mitm_suspect) ? 'good' : 'bad' },
+      { key: 'banking', label: t('proxyCard.use.banking'), icon: 'credit-card', cls: (good && p.ssl_supported && !p.mitm_suspect) ? 'good' : 'bad' },
     ];
 
     const tags = ui.el('div', 'proxy-card-tags');
     items.forEach(it => {
-      const icon = it.cls === 'good' ? this._svg('check') : it.cls === 'warn' ? this._svg('alert') : this._svg('x');
+      const icon = this._svg(it.icon);
       tags.appendChild(ui.el('div', `proxy-card-tag ${it.cls}`, { html: `${icon} ${it.label}` }));
     });
     section.appendChild(tags);
@@ -310,41 +358,42 @@ const proxyCard = {
     if (p.in_blacklist) total = 0;
     total = Math.max(0, Math.min(100, total));
 
-    const rows = [
-      [t('proxyCard.successRate'), base, 40, 'var(--accent)'],
-      [t('proxyCard.latencyScore'), latScore, 20, 'var(--accent)'],
-      [t('proxyCard.sslConnectBonus'), sslBonus + connectBonus, 15, 'var(--success)'],
-      [t('proxyCard.speedBonus'), speedBonus, 50, 'var(--accent)'],
-      [t('proxyCard.penalties'), Math.abs(mitmPenalty) + Math.abs(speedFailPenalty), 75, 'var(--danger)', mitmPenalty < 0 || speedFailPenalty < 0],
+    const components = [
+      { label: t('proxyCard.successRate'), value: base, max: 40, color: 'var(--success)' },
+      { label: t('proxyCard.latencyScore'), value: latScore, max: 25, color: 'var(--success)' },
+      { label: 'SSL', value: sslBonus, max: 10, color: 'var(--success)' },
+      { label: 'CONNECT', value: connectBonus, max: 5, color: 'var(--success)' },
+      { label: t('proxyCard.speedBonus'), value: speedBonus, max: 10, color: 'var(--success)' },
+      { label: t('proxyCard.mitmPenalty'), value: Math.abs(mitmPenalty), max: 10, color: 'var(--danger)', negative: true },
+      { label: t('proxyCard.speedFailPenalty'), value: Math.abs(speedFailPenalty), max: 10, color: 'var(--danger)', negative: true },
     ];
-    if (hits) {
-      rows.push([t('proxyCard.ipBlacklistMultiplier'), ipMultiplier * 100, 100, 'var(--warning)']);
-    }
 
-    const grid = ui.el('div', 'proxy-card-score-grid');
-    rows.forEach(([label, value, max, color, negative]) => {
-      const pct = Math.max(0, Math.min(100, (value / max) * 100));
-      const row = ui.el('div', 'proxy-card-score-row');
-      const header = ui.el('div', 'proxy-card-score-header');
-      header.appendChild(ui.el('div', 'proxy-card-score-label', { text: label }));
-      const sign = negative ? '-' : '+';
-      const displayValue = negative ? value.toFixed(1) : value.toFixed(1);
-      header.appendChild(ui.el('div', 'proxy-card-score-value', { text: `${sign}${displayValue}`, style: `color:${color}` }));
-      row.appendChild(header);
-      const bar = ui.el('div', 'proxy-card-score-bar');
-      bar.appendChild(ui.el('div', '', { style: `width:${pct}%;background:${color}` }));
-      row.appendChild(bar);
-      grid.appendChild(row);
+    const grid = ui.el('div', 'proxy-card-score-hgrid');
+    components.forEach(c => {
+      const pct = Math.max(0, Math.min(100, (c.value / c.max) * 100));
+      const item = ui.el('div', 'proxy-card-score-hitem');
+      const header = ui.el('div', 'proxy-card-score-hheader');
+      header.appendChild(ui.el('div', 'proxy-card-score-hlabel', { text: c.label }));
+      let sign = '';
+      if (c.negative) sign = '-';
+      else if (c.value > 0) sign = '+';
+      header.appendChild(ui.el('div', 'proxy-card-score-hvalue', { text: `${sign}${c.value.toFixed(1)}`, style: `color:${c.color}` }));
+      item.appendChild(header);
+      const bar = ui.el('div', 'proxy-card-score-hbar');
+      bar.appendChild(ui.el('div', '', { style: `width:${pct}%;background:${c.color}` }));
+      item.appendChild(bar);
+      item.appendChild(ui.el('div', 'proxy-card-score-hmax', { text: `${c.value.toFixed(1)} / ${c.max}` }));
+      grid.appendChild(item);
     });
     section.appendChild(grid);
 
     const totalRow = ui.el('div', 'proxy-card-score-total');
     totalRow.appendChild(ui.el('div', 'proxy-card-score-total-label', { text: t('proxyCard.totalScore') }));
-    const totalVal = ui.el('div', 'proxy-card-score-total-value', { html: `${Math.round(total)}<small>/100</small>` });
+    const totalVal = ui.el('div', 'proxy-card-score-total-value', { html: `${Math.round(total)}<small>/100</small>`, style: `color:${total >= 60 ? 'var(--success)' : total >= 30 ? 'var(--warning)' : 'var(--danger)'}` });
     totalRow.appendChild(totalVal);
     section.appendChild(totalRow);
 
-    section.appendChild(ui.el('div', '', { style: 'font-size:11px;color:var(--text-muted);margin-top:10px;line-height:1.4', text: t('proxyCard.ratingHint') }));
+    section.appendChild(ui.el('div', 'proxy-card-rating-hint', { text: t('proxyCard.ratingHint') }));
 
     return section;
   },
@@ -353,6 +402,10 @@ const proxyCard = {
     const footer = ui.el('div', 'proxy-card-footer');
 
     const left = ui.el('div', 'proxy-card-actions');
+
+    const tagBtn = ui.el('button', 'btn btn-sm btn-secondary', { html: `${this._svg('tag')} ${t('proxyCard.tag')}` });
+    left.appendChild(tagBtn);
+
     const selectBtn = ui.el('button', 'btn btn-sm btn-primary', { text: t('proxyCard.select') });
     selectBtn.addEventListener('click', () => {
       selectBtn.disabled = true;
@@ -376,29 +429,31 @@ const proxyCard = {
     });
     left.appendChild(selectBtn);
 
-    const recheckBtn = ui.el('button', 'btn btn-sm btn-secondary', { text: t('proxyCard.recheck') });
+    const recheckBtn = ui.el('button', 'btn btn-sm btn-secondary', { html: `${this._svg('refresh')} ${t('proxyCard.recheck')}` });
     recheckBtn.addEventListener('click', () => {
       recheckBtn.disabled = true;
-      recheckBtn.textContent = t('common.loading');
+      recheckBtn.innerHTML = `${this._svg('refresh')} ${t('common.loading')}`;
       api.proxyRecheck(p.address).then(() => {
         app.toast(t('page.proxies.recheckComplete'));
         this._refresh(overlay.querySelector('.proxy-card'), p.address, overlay);
       }).catch(e => {
         recheckBtn.disabled = false;
-        recheckBtn.textContent = t('proxyCard.recheck');
+        recheckBtn.innerHTML = `${this._svg('refresh')} ${t('proxyCard.recheck')}`;
         app.toast(t('common.error', {message: e.message}), 'error');
       });
     });
     left.appendChild(recheckBtn);
 
-    const copyBtn = ui.el('button', 'btn btn-sm btn-secondary', { text: t('proxyCard.copy') });
+    const copyWrap = ui.el('div', 'proxy-card-copy-wrap');
+    const copyBtn = ui.el('button', 'btn btn-sm btn-secondary', { html: `${this._svg('copy')} ${t('proxyCard.copy')}` });
     copyBtn.addEventListener('click', () => {
       navigator.clipboard.writeText(p.address).then(() => app.toast(t('proxyCard.copied'))).catch(() => {});
     });
-    left.appendChild(copyBtn);
+    copyWrap.appendChild(copyBtn);
+    left.appendChild(copyWrap);
 
     const right = ui.el('div', 'proxy-card-actions');
-    const blBtn = ui.el('button', 'btn btn-sm btn-danger', { text: p.in_blacklist ? t('proxyCard.removeFromBlacklist') : t('proxyCard.addToBlacklist') });
+    const blBtn = ui.el('button', 'btn btn-sm btn-danger', { html: `${this._svg('x-circle')} ${p.in_blacklist ? t('proxyCard.removeFromBlacklist') : t('proxyCard.addToBlacklist')}` });
     blBtn.addEventListener('click', () => {
       blBtn.disabled = true;
       const promise = p.in_blacklist ? api.blRemove(p.address) : api.blAdd(p.address, 'manual');
@@ -423,15 +478,31 @@ const proxyCard = {
 
   _svg(name) {
     const icons = {
-      activity: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>',
+      'bar-chart': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>',
       shield: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>',
       'map-pin': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>',
       clock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
       'thumbs-up': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg>',
-      'bar-chart': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>',
       check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>',
       x: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
       alert: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
+      minus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>',
+      copy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>',
+      lock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>',
+      link: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>',
+      'shield-check': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>',
+      'check-circle': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>',
+      refresh: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>',
+      tag: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>',
+      'x-circle': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>',
+      globe: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>',
+      code: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>',
+      users: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
+      search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>',
+      download: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>',
+      play: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>',
+      gamepad: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="12" x2="10" y2="12"/><line x1="8" y1="10" x2="8" y2="14"/><line x1="15" y1="13" x2="15.01" y2="13"/><line x1="18" y1="11" x2="18.01" y2="11"/><rect x="2" y="6" width="20" height="12" rx="2"/></svg>',
+      'credit-card': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>',
     };
     return icons[name] || '';
   }

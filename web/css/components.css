@@ -604,16 +604,18 @@
 
 /* Proxy detail modal */
 .proxy-card {
-  width: 80vw;
-  height: 80vh;
-  max-width: 80vw;
-  max-height: 80vh;
+  width: 85vw;
+  height: 85vh;
+  max-width: 1100px;
+  max-height: calc(85vh - 40px);
+  margin: 20px;
   overflow: hidden;
   display: flex;
   flex-direction: column;
   background: var(--surface);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
+  box-sizing: border-box;
   container-type: size;
   container-name: proxyCard;
 }
@@ -622,16 +624,16 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 16px;
+  padding: clamp(6px, 0.8cqi, 10px) clamp(14px, 1.8cqi, 20px);
   border-bottom: 1px solid var(--border);
   background: var(--surface);
   flex-shrink: 0;
-  gap: 12px;
+  gap: clamp(10px, 1.2cqi, 14px);
   min-height: 0;
 }
 
 .proxy-card .topbar-title {
-  font-size: clamp(13px, 1.5cqi, 15px);
+  font-size: clamp(12px, 1.3cqi, 14px);
   font-weight: 600;
   color: var(--text-primary);
   white-space: nowrap;
@@ -641,44 +643,71 @@
 }
 
 .proxy-card .content {
-  overflow: hidden;
-  padding: clamp(10px, 1.5cqi, 16px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: clamp(8px, 1cqi, 12px) clamp(12px, 1.5cqi, 18px);
   min-height: 0;
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: clamp(8px, 1.2cqi, 12px);
+  gap: clamp(6px, 0.8cqi, 10px);
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
 }
 
-.proxy-card .content > * {
-  min-height: 0;
+.proxy-card .content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.proxy-card .content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.proxy-card .content::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
 }
 
 /* Hero */
 .proxy-card-hero {
   display: grid;
   grid-template-columns: 1fr auto;
-  gap: clamp(12px, 2cqi, 20px);
+  gap: clamp(10px, 1.5cqi, 20px);
   align-items: start;
   min-width: 0;
+  min-height: 0;
 }
 
 .proxy-card-hero-main {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: clamp(4px, 1cqi, 8px);
+  gap: clamp(3px, 0.4cqi, 6px);
+}
+
+.proxy-card-hero-status-row {
+  display: flex;
+  align-items: center;
+  gap: clamp(5px, 0.6cqi, 8px);
 }
 
 .proxy-card-status {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  font-size: clamp(10px, 1.2cqi, 12px);
+  gap: clamp(4px, 0.5cqi, 6px);
+  font-size: clamp(10px, 1.1cqi, 12px);
   font-weight: 600;
-  padding: 3px 8px;
+  padding: clamp(2px, 0.3cqi, 4px) clamp(8px, 1cqi, 12px);
   border-radius: 20px;
   width: fit-content;
+}
+
+.proxy-card-status::before {
+  content: '';
+  width: clamp(5px, 0.6cqi, 7px);
+  height: clamp(5px, 0.6cqi, 7px);
+  border-radius: 50%;
+  background: currentColor;
 }
 
 .proxy-card-status.good {
@@ -696,84 +725,177 @@
   color: var(--danger);
 }
 
-.proxy-card-status::before {
-  content: '';
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: currentColor;
+.proxy-card-hero-addr-row {
+  display: flex;
+  align-items: center;
+  gap: clamp(5px, 0.6cqi, 8px);
 }
 
 .proxy-card-address {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: clamp(18px, 3.5cqi, 24px);
+  font-size: clamp(18px, 2.5cqi, 26px);
   font-weight: 700;
   color: var(--text-primary);
   line-height: 1.2;
   word-break: break-all;
 }
 
-.proxy-card-meta {
+.proxy-card-copy-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: clamp(20px, 2.2cqi, 26px);
+  height: clamp(20px, 2.2cqi, 26px);
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: clamp(3px, 0.4cqi, 5px);
+  flex-shrink: 0;
+  padding: 0;
+}
+
+.proxy-card-copy-btn:hover {
+  background: var(--surface-raised);
+  color: var(--text-primary);
+}
+
+.proxy-card-copy-btn svg {
+  width: clamp(11px, 1.2cqi, 14px);
+  height: clamp(11px, 1.2cqi, 14px);
+}
+
+.proxy-card-hero-meta {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: clamp(4px, 0.5cqi, 6px);
   flex-wrap: wrap;
   font-size: clamp(11px, 1.2cqi, 13px);
   color: var(--text-secondary);
+  min-width: 0;
 }
 
-.proxy-card-meta .dot {
+.proxy-card-hero-meta .dot {
   color: var(--text-muted);
-  font-size: 9px;
+  font-size: clamp(9px, 1cqi, 11px);
 }
 
-.proxy-card-badges {
+.proxy-card-hero-meta .flag {
+  font-size: clamp(12px, 1.5cqi, 16px);
+  line-height: 1;
+}
+
+.proxy-card-type-badge {
+  font-size: clamp(9px, 1cqi, 11px);
+  padding: clamp(2px, 0.3cqi, 3px) clamp(5px, 0.7cqi, 8px);
+  border-radius: 4px;
+  background: var(--surface-raised);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+
+.proxy-card-hero-check-row {
   display: flex;
   align-items: center;
-  gap: 5px;
-  flex-wrap: wrap;
+  gap: clamp(4px, 0.5cqi, 6px);
+  font-size: clamp(10px, 1.1cqi, 12px);
+  color: var(--text-secondary);
 }
 
-.proxy-card-badges .badge {
-  font-size: 9px;
-  padding: 1px 6px;
-  border-radius: 4px;
+.proxy-card-hero-check-row svg {
+  width: clamp(11px, 1.2cqi, 14px);
+  height: clamp(11px, 1.2cqi, 14px);
+  color: var(--success);
 }
 
 .proxy-card-rating {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 3px;
+  gap: clamp(1px, 0.2cqi, 3px);
   min-width: 0;
 }
 
 .proxy-card-rating-label {
-  font-size: 10px;
+  font-size: clamp(8px, 0.9cqi, 10px);
   color: var(--text-secondary);
-  font-weight: 500;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.4px;
+  letter-spacing: clamp(0.3px, 0.05cqi, 0.6px);
+}
+
+.proxy-card-rating-value-wrap {
+  display: flex;
+  align-items: baseline;
+  gap: clamp(1px, 0.2cqi, 3px);
 }
 
 .proxy-card-rating-value {
-  font-size: clamp(28px, 5cqi, 42px);
+  font-size: clamp(32px, 4.5cqi, 48px);
   font-weight: 700;
   line-height: 1;
 }
 
-.proxy-card-rating-bar {
-  width: clamp(80px, 12cqi, 110px);
-  height: 5px;
-  background: var(--surface-raised);
-  border-radius: 3px;
-  overflow: hidden;
+.proxy-card-rating-max {
+  font-size: clamp(12px, 1.5cqi, 16px);
+  color: var(--text-muted);
+  font-weight: 500;
 }
 
-.proxy-card-rating-bar > div {
-  height: 100%;
-  border-radius: 3px;
-  transition: width 0.4s ease;
+.proxy-card-rating-desc {
+  font-size: clamp(10px, 1.1cqi, 12px);
+  color: var(--text-secondary);
+}
+
+.proxy-card-rating-bar {
+  display: flex;
+  gap: clamp(2px, 0.3cqi, 3px);
+  width: clamp(80px, 10cqi, 120px);
+  height: clamp(3px, 0.4cqi, 5px);
+}
+
+.proxy-card-rating-segment {
+  flex: 1;
+  border-radius: clamp(1px, 0.2cqi, 2px);
+  background: var(--surface-raised);
+  transition: background 0.3s ease;
+}
+
+/* Security badges row */
+.proxy-card-security-badges {
+  display: flex;
+  align-items: center;
+  gap: clamp(4px, 0.5cqi, 7px);
+  flex-wrap: wrap;
+  min-width: 0;
+  min-height: 0;
+}
+
+.proxy-card-sec-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: clamp(3px, 0.4cqi, 5px);
+  padding: clamp(3px, 0.4cqi, 5px) clamp(7px, 0.9cqi, 10px);
+  border-radius: 6px;
+  font-size: clamp(10px, 1.1cqi, 12px);
+  font-weight: 500;
+  border: 1px solid var(--border);
+  background: var(--surface-raised);
+}
+
+.proxy-card-sec-badge svg {
+  width: clamp(11px, 1.2cqi, 13px);
+  height: clamp(11px, 1.2cqi, 13px);
+}
+
+.proxy-card-sec-badge.good {
+  color: var(--success);
+  border-color: var(--success-bg);
+}
+
+.proxy-card-sec-badge.bad {
+  color: var(--danger);
+  border-color: var(--danger-bg);
 }
 
 /* Sections */
@@ -781,49 +903,49 @@
   background: var(--surface-raised);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  padding: clamp(10px, 1.5cqi, 14px);
+  padding: clamp(7px, 1cqi, 12px) clamp(9px, 1.2cqi, 13px);
   min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  min-height: 0;
-  overflow: hidden;
 }
 
 .proxy-card-section-title {
-  font-size: clamp(10px, 1.2cqi, 12px);
+  font-size: clamp(10px, 1.1cqi, 12px);
   font-weight: 600;
   color: var(--text-primary);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-bottom: clamp(8px, 1.2cqi, 12px);
+  letter-spacing: clamp(0.3px, 0.05cqi, 0.6px);
+  margin-bottom: clamp(6px, 0.8cqi, 10px);
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: clamp(4px, 0.5cqi, 6px);
   flex-shrink: 0;
 }
 
 .proxy-card-section-title svg {
-  width: clamp(12px, 1.4cqi, 14px);
-  height: clamp(12px, 1.4cqi, 14px);
+  width: clamp(11px, 1.2cqi, 13px);
+  height: clamp(11px, 1.2cqi, 13px);
   color: var(--text-muted);
 }
 
 /* KPI grid */
 .proxy-card-kpi-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: clamp(8px, 1.2cqi, 12px);
+  grid-template-columns: repeat(auto-fit, minmax(60px, 1fr));
+  gap: clamp(5px, 0.8cqi, 10px);
+  min-height: 0;
 }
 
 .proxy-card-kpi {
   display: flex;
   flex-direction: column;
-  gap: clamp(3px, 0.6cqi, 6px);
+  gap: clamp(1px, 0.2cqi, 3px);
   min-width: 0;
 }
 
 .proxy-card-kpi-value {
-  font-size: clamp(16px, 2.5cqi, 22px);
+  font-size: clamp(15px, 2cqi, 20px);
   font-weight: 700;
   color: var(--text-primary);
   line-height: 1.2;
@@ -833,44 +955,30 @@
 }
 
 .proxy-card-kpi-value small {
-  font-size: clamp(10px, 1.2cqi, 12px);
+  font-size: clamp(9px, 1cqi, 11px);
   font-weight: 500;
   color: var(--text-secondary);
-  margin-left: 2px;
+  margin-left: clamp(1px, 0.2cqi, 3px);
 }
 
 .proxy-card-kpi-label {
-  font-size: clamp(9px, 1.1cqi, 11px);
+  font-size: clamp(9px, 1cqi, 11px);
   color: var(--text-secondary);
   line-height: 1.3;
 }
 
-.proxy-card-kpi-bar {
-  height: 3px;
-  background: var(--surface);
-  border-radius: 2px;
-  overflow: hidden;
-  margin-top: 1px;
-}
-
-.proxy-card-kpi-bar > div {
-  height: 100%;
-  border-radius: 2px;
-  transition: width 0.4s ease;
-}
-
-/* Two-column grid for sections */
-.proxy-card-grid {
+/* Grids */
+.proxy-card-grid-2 {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: clamp(10px, 1.5cqi, 14px);
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: clamp(7px, 1cqi, 12px);
   min-height: 0;
 }
 
 .proxy-card-grid-3 {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: clamp(10px, 1.5cqi, 14px);
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: clamp(7px, 1cqi, 12px);
   min-height: 0;
 }
 
@@ -878,37 +986,37 @@
 .proxy-card-checklist {
   display: flex;
   flex-direction: column;
-  gap: clamp(6px, 1cqi, 9px);
-  overflow: hidden;
+  gap: clamp(3px, 0.5cqi, 6px);
+  min-width: 0;
 }
 
 .proxy-card-check {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  font-size: clamp(11px, 1.2cqi, 13px);
+  gap: clamp(5px, 0.6cqi, 8px);
+  font-size: clamp(10px, 1.1cqi, 12px);
   min-width: 0;
 }
 
 .proxy-card-check-label {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: clamp(4px, 0.5cqi, 6px);
   color: var(--text-primary);
   min-width: 0;
 }
 
 .proxy-card-check-label svg {
-  width: clamp(13px, 1.6cqi, 16px);
-  height: clamp(13px, 1.6cqi, 16px);
+  width: clamp(12px, 1.3cqi, 14px);
+  height: clamp(12px, 1.3cqi, 14px);
   flex-shrink: 0;
 }
 
 .proxy-card-check-value {
   font-weight: 500;
   flex-shrink: 0;
-  font-size: clamp(10px, 1.1cqi, 12px);
+  font-size: clamp(9px, 1cqi, 11px);
 }
 
 .proxy-card-check.good .proxy-card-check-label svg { color: var(--success); }
@@ -917,87 +1025,103 @@
 .proxy-card-check.warn .proxy-card-check-value { color: var(--warning); }
 .proxy-card-check.bad .proxy-card-check-label svg { color: var(--danger); }
 .proxy-card-check.bad .proxy-card-check-value { color: var(--danger); }
+.proxy-card-check.muted .proxy-card-check-label svg { color: var(--text-muted); }
+.proxy-card-check.muted .proxy-card-check-value { color: var(--text-muted); }
 
-/* Network route */
-.proxy-card-route {
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  gap: clamp(8px, 1.2cqi, 12px);
-  align-items: start;
-  min-width: 0;
-}
-
-.proxy-card-route-point {
+/* Network route vertical */
+.proxy-card-route-vertical {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  align-items: flex-start;
+  gap: 0;
   min-width: 0;
 }
 
-.proxy-card-route-label {
-  font-size: 9px;
+.proxy-card-route-vpoint {
+  display: flex;
+  align-items: flex-start;
+  gap: clamp(6px, 0.8cqi, 10px);
+  min-width: 0;
+}
+
+.proxy-card-route-vdot {
+  width: clamp(6px, 0.7cqi, 9px);
+  height: clamp(6px, 0.7cqi, 9px);
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-top: clamp(2px, 0.3cqi, 4px);
+  background: var(--text-muted);
+}
+
+.proxy-card-route-vdot.good { background: var(--success); }
+.proxy-card-route-vdot.bad { background: var(--danger); }
+
+.proxy-card-route-vcontent {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(1px, 0.2cqi, 3px);
+  min-width: 0;
+  flex: 1;
+}
+
+.proxy-card-route-vlabel {
+  font-size: clamp(7px, 0.8cqi, 9px);
   font-weight: 600;
   color: var(--text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: clamp(0.3px, 0.05cqi, 0.6px);
 }
 
-.proxy-card-route-location {
+.proxy-card-route-vlocation {
   display: flex;
   align-items: center;
-  gap: 4px;
-  font-size: clamp(12px, 1.4cqi, 14px);
+  gap: clamp(3px, 0.4cqi, 5px);
+  font-size: clamp(11px, 1.2cqi, 14px);
   color: var(--text-primary);
   font-weight: 500;
   min-width: 0;
 }
 
-.proxy-card-route-location .flag {
-  font-size: clamp(13px, 1.8cqi, 16px);
+.proxy-card-route-vlocation .flag {
+  font-size: clamp(13px, 1.6cqi, 16px);
   flex-shrink: 0;
 }
 
-.proxy-card-route-location span {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.proxy-card-route-ip {
+.proxy-card-route-vip {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: clamp(10px, 1.2cqi, 12px);
+  font-size: clamp(10px, 1.1cqi, 12px);
   color: var(--text-secondary);
 }
 
-.proxy-card-route-arrow {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--accent);
-  font-size: clamp(14px, 2cqi, 20px);
-  font-weight: 700;
-  padding-top: 14px;
+.proxy-card-route-varrow {
+  width: clamp(1px, 0.2cqi, 2px);
+  height: clamp(12px, 1.5cqi, 20px);
+  background: var(--border);
+  margin-left: clamp(2px, 0.3cqi, 4px);
+  margin-top: clamp(1px, 0.2cqi, 3px);
+  margin-bottom: clamp(1px, 0.2cqi, 3px);
 }
 
 .proxy-card-route-details {
-  margin-top: 8px;
-  padding-top: 8px;
+  margin-top: clamp(5px, 0.6cqi, 8px);
+  padding-top: clamp(5px, 0.6cqi, 8px);
   border-top: 1px solid var(--border);
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 4px 12px;
-  font-size: clamp(10px, 1.1cqi, 12px);
+  display: flex;
+  flex-direction: column;
+  gap: clamp(3px, 0.4cqi, 5px);
+  font-size: clamp(9px, 1cqi, 11px);
 }
 
 .proxy-card-route-detail {
   display: flex;
   justify-content: space-between;
-  gap: 6px;
+  gap: clamp(3px, 0.4cqi, 6px);
   min-width: 0;
 }
 
 .proxy-card-route-detail-key {
   color: var(--text-secondary);
+  flex-shrink: 0;
 }
 
 .proxy-card-route-detail-val {
@@ -1006,29 +1130,30 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  text-align: right;
 }
 
 /* Timeline */
 .proxy-card-timeline {
   display: flex;
   flex-direction: column;
-  gap: clamp(8px, 1.2cqi, 12px);
-  overflow: hidden;
+  gap: clamp(4px, 0.6cqi, 8px);
+  min-width: 0;
 }
 
 .proxy-card-timeline-item {
   display: flex;
   align-items: flex-start;
-  gap: 8px;
-  font-size: clamp(11px, 1.2cqi, 13px);
+  gap: clamp(6px, 0.8cqi, 10px);
+  font-size: clamp(10px, 1.1cqi, 12px);
   min-width: 0;
 }
 
 .proxy-card-timeline-dot {
-  width: 6px;
-  height: 6px;
+  width: clamp(5px, 0.6cqi, 7px);
+  height: clamp(5px, 0.6cqi, 7px);
   border-radius: 50%;
-  margin-top: 5px;
+  margin-top: clamp(3px, 0.4cqi, 5px);
   flex-shrink: 0;
   background: var(--accent);
 }
@@ -1036,6 +1161,7 @@
 .proxy-card-timeline-dot.ok { background: var(--success); }
 .proxy-card-timeline-dot.warn { background: var(--warning); }
 .proxy-card-timeline-dot.bad { background: var(--danger); }
+.proxy-card-timeline-dot.accent { background: var(--accent); }
 
 .proxy-card-timeline-text {
   flex: 1;
@@ -1044,108 +1170,123 @@
 
 .proxy-card-timeline-label {
   color: var(--text-primary);
+  font-weight: 500;
 }
 
 .proxy-card-timeline-time {
   color: var(--text-muted);
-  font-size: clamp(9px, 1.1cqi, 11px);
-  margin-top: 1px;
+  font-size: clamp(8px, 0.9cqi, 10px);
+  margin-top: clamp(1px, 0.1cqi, 2px);
 }
 
-/* Score breakdown */
-.proxy-card-score-grid {
+/* Score breakdown horizontal */
+.proxy-card-score-hgrid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: clamp(8px, 1.2cqi, 12px) clamp(10px, 1.5cqi, 16px);
-  overflow: hidden;
+  grid-template-columns: repeat(auto-fit, minmax(70px, 1fr));
+  gap: clamp(6px, 1cqi, 12px);
+  min-width: 0;
+  min-height: 0;
 }
 
-.proxy-card-score-row {
+.proxy-card-score-hitem {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: clamp(2px, 0.3cqi, 4px);
   min-width: 0;
 }
 
-.proxy-card-score-header {
+.proxy-card-score-hheader {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: clamp(10px, 1.1cqi, 12px);
+  font-size: clamp(9px, 1cqi, 11px);
   min-width: 0;
 }
 
-.proxy-card-score-label {
+.proxy-card-score-hlabel {
   color: var(--text-secondary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.proxy-card-score-value {
+.proxy-card-score-hvalue {
   color: var(--text-primary);
   font-weight: 600;
   flex-shrink: 0;
+  margin-left: clamp(4px, 0.5cqi, 8px);
 }
 
-.proxy-card-score-bar {
-  height: 4px;
+.proxy-card-score-hbar {
+  height: clamp(2px, 0.3cqi, 4px);
   background: var(--surface);
-  border-radius: 2px;
+  border-radius: clamp(1px, 0.2cqi, 2px);
   overflow: hidden;
 }
 
-.proxy-card-score-bar > div {
+.proxy-card-score-hbar > div {
   height: 100%;
-  border-radius: 2px;
+  border-radius: clamp(1px, 0.2cqi, 2px);
   transition: width 0.4s ease;
+}
+
+.proxy-card-score-hmax {
+  font-size: clamp(7px, 0.8cqi, 9px);
+  color: var(--text-muted);
 }
 
 .proxy-card-score-total {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  padding-top: 10px;
-  margin-top: 4px;
+  gap: clamp(8px, 1cqi, 12px);
+  padding-top: clamp(5px, 0.7cqi, 10px);
+  margin-top: clamp(4px, 0.5cqi, 8px);
   border-top: 1px solid var(--border);
   flex-shrink: 0;
 }
 
 .proxy-card-score-total-label {
-  font-size: clamp(12px, 1.4cqi, 14px);
+  font-size: clamp(11px, 1.3cqi, 14px);
   font-weight: 600;
   color: var(--text-primary);
 }
 
 .proxy-card-score-total-value {
-  font-size: clamp(20px, 3cqi, 28px);
+  font-size: clamp(20px, 2.5cqi, 28px);
   font-weight: 700;
-  color: var(--accent);
   line-height: 1;
 }
 
 .proxy-card-score-total-value small {
-  font-size: clamp(11px, 1.3cqi, 14px);
+  font-size: clamp(10px, 1.2cqi, 14px);
   color: var(--text-secondary);
   font-weight: 500;
-  margin-left: 2px;
+  margin-left: clamp(1px, 0.2cqi, 3px);
+}
+
+.proxy-card-rating-hint {
+  font-size: clamp(9px, 1cqi, 11px);
+  color: var(--text-muted);
+  margin-top: clamp(5px, 0.6cqi, 8px);
+  line-height: 1.4;
 }
 
 /* Suitability tags */
 .proxy-card-tags {
   display: flex;
   flex-wrap: wrap;
-  gap: clamp(6px, 1cqi, 8px);
+  gap: clamp(3px, 0.5cqi, 6px);
+  min-width: 0;
 }
 
 .proxy-card-tag {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 3px 8px;
-  border-radius: 20px;
-  font-size: clamp(10px, 1.1cqi, 12px);
+  gap: clamp(3px, 0.4cqi, 5px);
+  padding: clamp(2px, 0.3cqi, 4px) clamp(6px, 0.8cqi, 10px);
+  border-radius: clamp(12px, 1.5cqi, 18px);
+  font-size: clamp(9px, 1cqi, 11px);
   font-weight: 500;
   border: 1px solid transparent;
 }
@@ -1169,8 +1310,8 @@
 }
 
 .proxy-card-tag svg {
-  width: clamp(10px, 1.2cqi, 12px);
-  height: clamp(10px, 1.2cqi, 12px);
+  width: clamp(9px, 1cqi, 12px);
+  height: clamp(9px, 1cqi, 12px);
 }
 
 /* Footer actions */
@@ -1178,84 +1319,96 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  padding: 10px 16px;
+  gap: clamp(6px, 0.8cqi, 10px);
+  padding: clamp(6px, 0.8cqi, 10px) clamp(14px, 1.8cqi, 20px);
   border-top: 1px solid var(--border);
   background: var(--surface);
   flex-shrink: 0;
-  min-height: 0;
+  min-height: clamp(36px, 4.5cqi, 48px);
 }
 
 .proxy-card-actions {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: clamp(4px, 0.5cqi, 7px);
 }
 
 .proxy-card-actions .btn {
-  height: 30px;
-  font-size: 11px;
-  padding: 4px 10px;
+  height: clamp(28px, 3.2cqi, 34px);
+  font-size: clamp(10px, 1.1cqi, 12px);
+  padding: clamp(4px, 0.5cqi, 6px) clamp(10px, 1.2cqi, 14px);
+  display: inline-flex;
+  align-items: center;
+  gap: clamp(3px, 0.4cqi, 5px);
+}
+
+.proxy-card-actions .btn svg {
+  width: clamp(11px, 1.2cqi, 13px);
+  height: clamp(11px, 1.2cqi, 13px);
+}
+
+.proxy-card-copy-wrap {
+  position: relative;
 }
 
 /* Compact mode when the modal is short */
 @container proxyCard (max-height: 620px) {
   .proxy-card .content {
-    padding: 10px;
-    gap: 8px;
+    padding: clamp(6px, 0.8cqi, 10px);
+    gap: clamp(5px, 0.7cqi, 8px);
   }
 
   .proxy-card-address {
-    font-size: 18px;
+    font-size: clamp(16px, 2cqi, 20px);
   }
 
   .proxy-card-rating-value {
-    font-size: 26px;
+    font-size: clamp(24px, 3.5cqi, 32px);
   }
 
   .proxy-card-section {
-    padding: 10px;
+    padding: clamp(6px, 0.8cqi, 10px);
   }
 
   .proxy-card-section-title {
-    margin-bottom: 8px;
+    margin-bottom: clamp(4px, 0.5cqi, 7px);
   }
 
   .proxy-card-kpi-grid {
-    gap: 6px;
+    gap: clamp(3px, 0.4cqi, 5px);
   }
 
   .proxy-card-kpi-value {
-    font-size: 15px;
+    font-size: clamp(13px, 1.6cqi, 16px);
   }
 
   .proxy-card-check {
-    font-size: 11px;
+    font-size: clamp(9px, 1cqi, 11px);
   }
 
-  .proxy-card-route-location {
-    font-size: 12px;
+  .proxy-card-route-vlocation {
+    font-size: clamp(10px, 1.1cqi, 12px);
   }
 
   .proxy-card-timeline {
-    gap: 7px;
+    gap: clamp(3px, 0.4cqi, 5px);
   }
 
-  .proxy-card-score-grid {
-    gap: 7px 10px;
+  .proxy-card-score-hgrid {
+    gap: clamp(5px, 0.7cqi, 8px);
   }
 
   .proxy-card-score-total {
-    padding-top: 8px;
+    padding-top: clamp(5px, 0.6cqi, 8px);
   }
 
   .proxy-card-tag {
-    padding: 2px 7px;
-    font-size: 10px;
+    padding: clamp(2px, 0.3cqi, 3px) clamp(5px, 0.7cqi, 8px);
+    font-size: clamp(9px, 1cqi, 11px);
   }
 
   .proxy-card-footer {
-    padding: 8px 14px;
+    padding: clamp(6px, 0.8cqi, 10px) clamp(10px, 1.3cqi, 16px);
   }
 }
 
@@ -1265,6 +1418,9 @@
     max-width: 100vw;
     max-height: 100vh;
     border-radius: 0;
+    width: 100vw;
+    height: 100vh;
+    margin: 0;
   }
 
   .proxy-card-hero {
@@ -1274,27 +1430,20 @@
   .proxy-card-rating {
     align-items: flex-start;
     flex-direction: row;
-    gap: 12px;
+    gap: clamp(10px, 1.5cqi, 16px);
   }
 
-  .proxy-card-kpi-grid,
-  .proxy-card-grid,
-  .proxy-card-grid-3,
-  .proxy-card-score-grid {
+  .proxy-card-kpi-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .proxy-card-grid-2,
+  .proxy-card-grid-3 {
     grid-template-columns: 1fr;
   }
 
-  .proxy-card-route {
-    grid-template-columns: 1fr;
-  }
-
-  .proxy-card-route-arrow {
-    transform: rotate(90deg);
-    padding-top: 0;
-  }
-
-  .proxy-card-route-details {
-    grid-template-columns: 1fr;
+  .proxy-card-score-hgrid {
+    grid-template-columns: repeat(2, 1fr);
   }
 
   .proxy-card-footer {
@@ -1304,9 +1453,11 @@
 
   .proxy-card-actions {
     justify-content: stretch;
+    flex-wrap: wrap;
   }
 
   .proxy-card-actions .btn {
     flex: 1;
+    min-width: 0;
   }
 }
