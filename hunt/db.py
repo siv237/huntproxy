@@ -113,6 +113,14 @@ class DbMixin:
                     direct_city TEXT DEFAULT ''
                 );
                 CREATE INDEX IF NOT EXISTS idx_canary_ts ON canary_history(ts);
+                CREATE TABLE IF NOT EXISTS actions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ts REAL NOT NULL,
+                    action TEXT NOT NULL DEFAULT '',
+                    detail TEXT NOT NULL DEFAULT '',
+                    snapshot TEXT NOT NULL DEFAULT '{}'
+                );
+                CREATE INDEX IF NOT EXISTS idx_actions_ts ON actions(ts);
             """)
             conn.commit()
             for col, default in [

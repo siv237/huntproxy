@@ -344,6 +344,7 @@ class HealthMixin:
                     cutoff_events = time.time() - 30 * 86400
                     conn.execute("DELETE FROM traffic_log WHERE ts < ?", (cutoff_traffic,))
                     conn.execute("DELETE FROM events WHERE ts < ?", (cutoff_events,))
+                    conn.execute("DELETE FROM actions WHERE ts < ?", (cutoff_events,))
                     conn.commit()
                     conn.close()
                 except Exception:
@@ -367,11 +368,15 @@ class HealthMixin:
                 "last_proxy": self.last_proxy,
                 "last_country": self.last_country,
             }
+            self._log_action("health.snapshot", "before-recheck", extra={"saved": saved})
             # Pause the running hunt so its workers don't interfere with the
             # manual check. If already manually paused, leave as-is.
             hunt_was_running = bool(self.task and not self.task.done()) and not self._paused
             if hunt_was_running:
                 self.pause_hunt(manual=True)
+                self._log_action("health.pause-hunt", "paused-for-recheck")
+            ok_count = 0
+            fail_count = 0
             try:
                 # Only manual blacklist is a hard exclusion; IP-blacklisted proxies
                 # remain candidates and are ranked by their reduced score.
@@ -387,11 +392,11 @@ class HealthMixin:
                 self.failed = 0
                 self._fail_streak = 0
                 self._check_streak = 0
+                self._log_action("health.begin", f"{len(candidates)} candidates")
                 self._emit(f"Health-checking {len(candidates)} alive proxies", "info")
 
                 sem = asyncio.Semaphore(self.health_parallel)
                 lock = asyncio.Lock()
-                ok_count = fail_count = 0
 
                 # The main hunt shares self._pause_event and self._paused with us.
                 # We deliberately do not block on self._paused here because the
@@ -501,6 +506,12 @@ class HealthMixin:
                 self.downloaded = saved["downloaded"]
                 self.last_proxy = saved["last_proxy"]
                 self.last_country = saved["last_country"]
+                self._log_action("health.restore", "counters-restored", extra={
+                    "checking_total": self.checking_total,
+                    "checked": self.checked,
+                    "ok_count": ok_count,
+                    "fail_count": fail_count,
+                })
                 if hunt_was_running:
                     # Resume the main hunt's _pause_event so any of its
                     # in-flight `_validate_all` / `_health_loop` workers

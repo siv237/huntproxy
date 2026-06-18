@@ -43,6 +43,7 @@ const api = {
   countries() { return this.request('/api/countries'); },
   system() { return this.request('/api/system'); },
   activity(limit = 10) { return this.request(`/api/activity?limit=${limit}`); },
+  actions(limit = 100) { return this.request(`/api/actions?limit=${limit}`); },
   history(last = '1h') { return this.request(`/api/history?last=${last}`); },
   proxies(params = {}) {
     const q = new URLSearchParams(params).toString();

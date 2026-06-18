@@ -5,6 +5,7 @@ import ipaddress
 import json
 import time
 from hunt.blacklist import BlacklistMixin
+from hunt.actions import ActionsMixin
 from hunt.checking import CheckingMixin
 from hunt.constants import DATA_DIR, logger
 from hunt.custom_proxies import CustomProxiesMixin
@@ -21,7 +22,7 @@ from hunt.snapshot import SnapshotMixin
 from pathlib import Path
 from typing import Optional
 
-class HuntState(DbMixin, EventsMixin, SnapshotMixin, HealthMixin, CheckingMixin, BlacklistMixin, IPBlacklistMixin, ProxySourcesMixin, IPBlacklistSourcesMixin, RoutingMixin, CustomProxiesMixin):
+class HuntState(DbMixin, EventsMixin, SnapshotMixin, HealthMixin, CheckingMixin, BlacklistMixin, IPBlacklistMixin, ProxySourcesMixin, IPBlacklistSourcesMixin, RoutingMixin, CustomProxiesMixin, ActionsMixin):
     PHASE_IDLE = "idle"
 
     PHASE_DOWNLOAD = "downloading"

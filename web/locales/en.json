@@ -10,6 +10,7 @@
     "ipBlacklists": "IP Blacklists",
     "analytics": "Analytics",
     "logs": "Logs",
+    "actions": "Actions",
     "settings": "Settings",
     "routes": "Routes",
     "domainLists": "Domain Lists",
@@ -393,6 +394,15 @@
       "autoScroll": "Auto-scroll",
       "noMatching": "No matching logs",
       "lines": "{count} lines"
+    },
+    "actions": {
+      "title": "Action Log",
+      "subtitle": "Operator actions with counter snapshot",
+      "filterPlaceholder": "Filter actions...",
+      "refresh": "Refresh",
+      "live": "Live",
+      "stopLive": "Stop Live",
+      "empty": "No actions recorded yet."
     },
     "settings": {
       "title": "Settings",

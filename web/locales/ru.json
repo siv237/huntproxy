@@ -10,6 +10,7 @@
     "ipBlacklists": "IP-блэклисты",
     "analytics": "Аналитика",
     "logs": "Логи",
+    "actions": "Действия",
     "settings": "Настройки",
     "routes": "Маршруты",
     "domainLists": "Списки доменов",
@@ -393,6 +394,15 @@
       "autoScroll": "Авто-прокрутка",
       "noMatching": "Нет подходящих логов",
       "lines": "{count} строк"
+    },
+    "actions": {
+      "title": "Лог действий",
+      "subtitle": "Операторские действия со снимком счётчиков",
+      "filterPlaceholder": "Фильтр действий...",
+      "refresh": "Обновить",
+      "live": "Вживую",
+      "stopLive": "Стоп",
+      "empty": "Действий пока не записано."
     },
     "settings": {
       "title": "Настройки",

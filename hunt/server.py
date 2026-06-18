@@ -558,18 +558,22 @@ class HuntServer:
 
         if path == "/api/hunt/start" and method == "POST":
             ok = self.state.start_hunt()
+            self.state._log_action("hunt.start", "ok" if ok else "already-running")
             return json.dumps({"ok": ok, "error": None if ok else "already running"}), 200, "application/json"
 
         if path == "/api/hunt/stop" and method == "POST":
+            self.state._log_action("hunt.stop")
             self.state.stop_hunt()
             return json.dumps({"ok": True}), 200, "application/json"
 
         if path == "/api/hunt/pause" and method == "POST":
             ok = self.state.pause_hunt(manual=True)
+            self.state._log_action("hunt.pause", "ok" if ok else "not-running")
             return json.dumps({"ok": ok, "error": None if ok else "not running or already paused"}), 200, "application/json"
 
         if path == "/api/hunt/resume" and method == "POST":
             ok = self.state.resume_hunt(manual=True)
+            self.state._log_action("hunt.resume", "ok" if ok else "not-paused")
             return json.dumps({"ok": ok, "error": None if ok else "not paused or manual pause requires manual resume"}), 200, "application/json"
 
         if path == "/api/blacklist/add" and method == "POST":
@@ -577,7 +581,9 @@ class HuntServer:
                 data = json.loads(body or b"{}")
             except Exception:
                 data = {}
-            self.state.blacklist_add(data.get("address", ""), data.get("reason", ""))
+            addr = data.get("address", "")
+            self.state.blacklist_add(addr, data.get("reason", ""))
+            self.state._log_action("blacklist.add", addr)
             return json.dumps({"ok": True}), 200, "application/json"
 
         if path == "/api/blacklist/remove" and method == "POST":
@@ -585,7 +591,9 @@ class HuntServer:
                 data = json.loads(body or b"{}")
             except Exception:
                 data = {}
-            self.state.blacklist_remove(data.get("address", ""))
+            addr = data.get("address", "")
+            self.state.blacklist_remove(addr)
+            self.state._log_action("blacklist.remove", addr)
             return json.dumps({"ok": True}), 200, "application/json"
 
         # === Proxy routes ===
@@ -604,10 +612,12 @@ class HuntServer:
         if path.startswith("/api/proxy/start"):
             qs = _qs(raw_path)
             port = int(qs.get("port", 17277))
+            self.state._log_action("proxy.start", str(port))
             await self.proxy.start(port)
             return json.dumps(self.proxy.get_status()), 200, "application/json"
 
         if path == "/api/proxy/stop":
+            self.state._log_action("proxy.stop")
             await self.proxy.stop()
             self.state._save_state()
             return json.dumps({"ok": True}), 200, "application/json"
@@ -620,10 +630,12 @@ class HuntServer:
             port = int(qs.get("port", 17278))
             self.state._socks5_port = port
             self.state._save_state()
+            self.state._log_action("socks5.start", str(port))
             await self.socks5.start(port)
             return json.dumps(self.socks5.get_status()), 200, "application/json"
 
         if path == "/api/socks5/stop":
+            self.state._log_action("socks5.stop")
             await self.socks5.stop()
             return json.dumps({"ok": True}), 200, "application/json"
 
@@ -634,6 +646,7 @@ class HuntServer:
             self.state._proxy_active_addr = self.proxy.active_proxy_addr
             self.state._proxy_direct_mode = self.proxy.direct_mode
             self.state._save_state()
+            self.state._log_action("proxy.select", address or "none")
             return json.dumps({"ok": True, "address": address}), 200, "application/json"
 
         if path == "/api/proxy/next":
@@ -650,12 +663,15 @@ class HuntServer:
                 self.proxy.select(next_proxy.address)
                 self.state._proxy_active_addr = self.proxy.active_proxy_addr
                 self.state._save_state()
+                self.state._log_action("proxy.next", next_proxy.address)
                 return json.dumps({"ok": True, "address": next_proxy.address}), 200, "application/json"
+            self.state._log_action("proxy.next", "no-other")
             return json.dumps({"ok": False, "error": "no other alive proxy"}), 200, "application/json"
 
         if path.startswith("/api/proxy/recheck"):
             qs = _qs(raw_path)
             address = qs.get("address", "").strip()
+            self.state._log_action("proxy.recheck", address or "no-addr")
             if address:
                 host, port_str = address.rsplit(":", 1)
                 port = int(port_str)
@@ -727,6 +743,11 @@ class HuntServer:
             qs = _qs(raw_path)
             limit = int(qs.get("limit", 10))
             return json.dumps(self.state.get_activity(limit)), 200, "application/json"
+
+        if path.startswith("/api/actions"):
+            qs = _qs(raw_path)
+            limit = int(qs.get("limit", 100))
+            return json.dumps(self.state.get_actions(limit)), 200, "application/json"
 
         if path.startswith("/api/history"):
             qs = _qs(raw_path)
@@ -885,6 +906,7 @@ class HuntServer:
             self.state._emit(f"Cleared {len(dead_addrs)} dead proxies", "warn")
             self.state._save_state()
             self.state._save_working_file()
+            self.state._log_action("clear_dead", f"{len(dead_addrs)} proxies")
             return json.dumps({"ok": True, "cleared": len(dead_addrs)}), 200, "application/json"
 
         if path.startswith("/api/export") and method == "POST":
@@ -913,7 +935,9 @@ class HuntServer:
         if path.startswith("/api/health/start") and method == "POST":
             try:
                 if self.state._health_running:
+                    self.state._log_action("health.start", "already-running")
                     return json.dumps({"ok": False, "error": "already_running"}), 409, "application/json"
+                self.state._log_action("health.start", "recheck-all")
                 asyncio.create_task(self.state._health_check())
                 return json.dumps({"ok": True}), 200, "application/json"
             except Exception as e:
