@@ -45,6 +45,10 @@ class Socks5Runner:
             self._server = None
         if self._task and not self._task.done():
             self._task.cancel()
+            try:
+                await self._task
+            except asyncio.CancelledError:
+                pass
         self.state._emit("SOCKS5 proxy server stopped", "info")
 
     async def _run(self):
@@ -125,6 +129,8 @@ class Socks5Runner:
                 bi, bo = 0, 0
             dur = time.monotonic() - t0
             self._log(peer, target_host, "ok", " → ".join(chain), bytes_in=bi, bytes_out=bo, duration=dur)
+        except asyncio.CancelledError:
+            pass
         except Exception as e:
             dur = time.monotonic() - t0
             self._log(peer, target_host, f"err: {e}", duration=dur)

@@ -70,6 +70,10 @@ class ProxyRunner:
             self._server = None
         if self._task and not self._task.done():
             self._task.cancel()
+            try:
+                await self._task
+            except asyncio.CancelledError:
+                pass
         self.state._emit("Proxy server stopped", "info")
 
     async def _run(self):
@@ -136,6 +140,8 @@ class ProxyRunner:
                 self._log(peer, target_host, "ok", " → ".join(chain), bytes_in=bi, bytes_out=bo, duration=dur)
             else:
                 await self._handle_http_forward(reader, writer, method, parts[1], peer, t0)
+        except asyncio.CancelledError:
+            pass
         except Exception as e:
             dur = time.monotonic() - t0
             self._log(peer, target_host, f"err: {e}", duration=dur)
@@ -606,11 +612,23 @@ class ProxyRunner:
                     else:
                         bytes_out += n
                     w.write(data); await w.drain()
+            except asyncio.CancelledError:
+                pass
             except: pass
             finally:
                 try: w.close()
                 except: pass
-        await asyncio.gather(pipe(client_reader, upstream_writer, "c2u"), pipe(upstream_reader, client_writer, "u2c"))
+        t1 = asyncio.ensure_future(pipe(client_reader, upstream_writer, "c2u"))
+        t2 = asyncio.ensure_future(pipe(upstream_reader, client_writer, "u2c"))
+        try:
+            done, pending = await asyncio.wait({t1, t2}, return_when=asyncio.FIRST_COMPLETED)
+            for t in pending:
+                t.cancel()
+            await asyncio.gather(*pending, return_exceptions=True)
+        except asyncio.CancelledError:
+            t1.cancel(); t2.cancel()
+            await asyncio.gather(t1, t2, return_exceptions=True)
+            raise
         return bytes_in, bytes_out
 
     def _log(self, peer, target, status, upstream="", bytes_in=0, bytes_out=0, duration=0.0):
