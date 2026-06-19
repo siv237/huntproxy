@@ -401,7 +401,14 @@
       "reverse": "Newest first",
       "autoScroll": "Auto-scroll",
       "noMatching": "No matching logs",
-      "lines": "{count} lines"
+      "lines": "{count} lines",
+      "typeInfo": "Info",
+      "typeWarn": "Warn",
+      "typeError": "Error",
+      "typeOk": "OK",
+      "typeProgress": "Progress",
+      "typeBlacklist": "Blacklist",
+      "typePhase": "Phase"
     },
     "actions": {
       "title": "Action Log",

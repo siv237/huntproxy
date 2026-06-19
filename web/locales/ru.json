@@ -401,7 +401,14 @@
       "reverse": "Сначала новые",
       "autoScroll": "Авто-прокрутка",
       "noMatching": "Нет подходящих логов",
-      "lines": "{count} строк"
+      "lines": "{count} строк",
+      "typeInfo": "Инфо",
+      "typeWarn": "Предупр",
+      "typeError": "Ошибка",
+      "typeOk": "OK",
+      "typeProgress": "Прогресс",
+      "typeBlacklist": "Блэклист",
+      "typePhase": "Фаза"
     },
     "actions": {
       "title": "Лог действий",

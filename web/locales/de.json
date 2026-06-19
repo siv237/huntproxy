@@ -371,7 +371,14 @@
       "noMatching": "Keine übereinstimmenden Protokolle",
       "lines": "{count} Zeilen",
       "autoScroll": "Auto-scroll",
-      "reverse": "Newest first"
+      "reverse": "Newest first",
+      "typeInfo": "Info",
+      "typeWarn": "Warn",
+      "typeError": "Fehler",
+      "typeOk": "OK",
+      "typeProgress": "Fortschritt",
+      "typeBlacklist": "Blacklist",
+      "typePhase": "Phase"
     },
     "settings": {
       "title": "Einstellungen",

@@ -94,6 +94,25 @@ class SnapshotMixin:
                 result.append({"country": name, "country_code": code, "count": count, "pct": round(count / total * 100, 1)})
             return result
 
+    def get_events(self, limit: int = 200, event_type: str | None = None) -> list:
+            try:
+                conn = self._stats_db()
+                if event_type:
+                    rows = conn.execute(
+                        "SELECT ts, seq, type, msg FROM events WHERE type = ? ORDER BY id DESC LIMIT ?",
+                        (event_type, limit),
+                    ).fetchall()
+                else:
+                    rows = conn.execute(
+                        "SELECT ts, seq, type, msg FROM events ORDER BY id DESC LIMIT ?",
+                        (limit,),
+                    ).fetchall()
+                conn.close()
+                return [{"ts": r["ts"], "seq": r["seq"], "type": r["type"], "msg": r["msg"]} for r in rows]
+            except Exception as e:
+                logger.error("get_events: %s", e)
+                return []
+
     def get_activity(self, limit: int = 10) -> list:
             def _icon(kind, msg):
                 if "validated" in msg.lower(): return "validated"

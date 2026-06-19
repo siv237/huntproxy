@@ -371,7 +371,14 @@
       "noMatching": "Sin registros coincidentes",
       "lines": "{count} líneas",
       "autoScroll": "Auto-scroll",
-      "reverse": "Newest first"
+      "reverse": "Newest first",
+      "typeInfo": "Info",
+      "typeWarn": "Aviso",
+      "typeError": "Error",
+      "typeOk": "OK",
+      "typeProgress": "Progreso",
+      "typeBlacklist": "Lista negra",
+      "typePhase": "Fase"
     },
     "settings": {
       "title": "Ajustes",

@@ -1006,16 +1006,10 @@ class HuntServer:
         # === Logs ===
         if path.startswith("/api/logs"):
             qs = _qs(raw_path)
-            limit = int(qs.get("limit", 50))
-            log_file = DATA_DIR / "huntproxy.log"
-            lines = []
-            if log_file.exists():
-                try:
-                    with open(log_file) as f:
-                        lines = f.readlines()[-limit:]
-                except Exception:
-                    pass
-            return json.dumps({"lines": [l.rstrip() for l in lines]}), 200, "application/json"
+            limit = int(qs.get("limit", 200))
+            event_type = qs.get("type", "")
+            events = self.state.get_events(limit, event_type or None)
+            return json.dumps({"events": events}), 200, "application/json"
 
         # === Downloads ===
         if path.startswith("/api/downloads/count") and method == "GET":

@@ -371,7 +371,14 @@
       "noMatching": "无匹配日志",
       "lines": "{count}行",
       "autoScroll": "Auto-scroll",
-      "reverse": "Newest first"
+      "reverse": "Newest first",
+      "typeInfo": "信息",
+      "typeWarn": "警告",
+      "typeError": "错误",
+      "typeOk": "OK",
+      "typeProgress": "进度",
+      "typeBlacklist": "黑名单",
+      "typePhase": "阶段"
     },
     "settings": {
       "title": "设置",

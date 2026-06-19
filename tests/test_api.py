@@ -61,6 +61,50 @@ class TestApiHunt:
         assert data.get("ok") is True
 
 
+class TestApiLogs:
+    @pytest.mark.asyncio
+    async def test_logs_returns_events(self, http_client, api_server):
+        _, state = api_server
+        # Emit some events so the events table has data
+        state._emit("test info message", "info")
+        state._emit("test warn message", "warn")
+        state._emit("test error message", "error")
+        resp = await http_client("GET", "/api/logs?limit=10")
+        status, data = json_body(resp)
+        assert status == 200
+        assert "events" in data
+        assert isinstance(data["events"], list)
+        assert len(data["events"]) > 0
+        ev = data["events"][0]
+        assert "ts" in ev
+        assert "seq" in ev
+        assert "type" in ev
+        assert "msg" in ev
+
+    @pytest.mark.asyncio
+    async def test_logs_type_filter(self, http_client, api_server):
+        _, state = api_server
+        state._emit("info event", "info")
+        state._emit("warn event", "warn")
+        state._emit("error event", "error")
+        resp = await http_client("GET", "/api/logs?limit=50&type=warn")
+        status, data = json_body(resp)
+        assert status == 200
+        assert "events" in data
+        types = {ev["type"] for ev in data["events"]}
+        assert types == {"warn"}
+
+    @pytest.mark.asyncio
+    async def test_logs_limit(self, http_client, api_server):
+        _, state = api_server
+        for i in range(10):
+            state._emit(f"bulk event {i}", "info")
+        resp = await http_client("GET", "/api/logs?limit=3")
+        status, data = json_body(resp)
+        assert status == 200
+        assert len(data["events"]) <= 3
+
+
 class TestApiBlacklist:
     @pytest.mark.asyncio
     async def test_blacklist_add_and_remove(self, http_client, api_server):

@@ -371,7 +371,14 @@
       "noMatching": "Aucun journal correspondant",
       "lines": "{count} lignes",
       "autoScroll": "Auto-scroll",
-      "reverse": "Newest first"
+      "reverse": "Newest first",
+      "typeInfo": "Info",
+      "typeWarn": "Avert",
+      "typeError": "Erreur",
+      "typeOk": "OK",
+      "typeProgress": "Progrès",
+      "typeBlacklist": "Liste noire",
+      "typePhase": "Phase"
     },
     "settings": {
       "title": "Paramètres",
