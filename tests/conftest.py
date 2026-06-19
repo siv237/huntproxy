@@ -145,6 +145,7 @@ _GROUPS = {
     "ip_blacklist": "IP Blacklist",
     "locales": "Locales",
     "navigation": "Navigation",
+    "api_consistency": "API Consistency",
     "proxy_check": "Proxy Checking",
     "proxy_rating": "Proxy Rating / Scoring",
     "proxy_server": "Proxy / SOCKS Server",
