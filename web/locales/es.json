@@ -7,6 +7,7 @@
     "proxyControl": "Control de Proxis",
     "proxyPool": "Grupo de Proxis",
     "blacklist": "Lista Negra",
+    "favorites": "Favoritos",
     "ipBlacklists": "IP Blacklists",
     "analytics": "Analíticas",
     "logs": "Registros",
@@ -323,6 +324,13 @@
       "failedToLoad": "Error al cargar la lista negra",
       "proxyAddress": "Dirección del proxi (ip:puerto):",
       "reasonOptional": "Motivo (opcional):"
+    },
+    "favorites": {
+      "title": "Favoritos",
+      "subtitle": "Proxis destacados, protegidos de la limpieza",
+      "searchPlaceholder": "Buscar proxi favorito...",
+      "empty": "Sin favoritos. Haz clic en la estrella en la tarjeta del proxi para añadir.",
+      "count": "{count} favoritos"
     },
     "analytics": {
       "title": "Analíticas",

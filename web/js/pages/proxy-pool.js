@@ -443,9 +443,10 @@ router.register('proxy-pool', (container) => {
           const hasDiff = p.listen_country && p.egress_country && p.listen_country !== p.egress_country;
           const srvFlag = ui.flag(p.listen_country_code || p.country_code) || '—';
           const exitFlag = hasDiff ? (ui.flag(p.egress_country_code || p.country_code) || '') : '';
+          const favStar = p.is_favorite ? '<svg width="11" height="11" style="vertical-align:-2px;color:var(--warning);margin-right:2px"><use href="#icon-star"/></svg>' : '';
           return [
             `<span style="color:var(--text-muted)">${i+1}</span>`,
-            `<span class="addr proxy-address-link" data-card-addr="${ui.escHtml(p.address)}" style="font-size:10px;cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px">${proxyUrl(p)}</span>`,
+            `<span class="addr proxy-address-link" data-card-addr="${ui.escHtml(p.address)}" style="font-size:10px;cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px">${favStar}${proxyUrl(p)}</span>`,
             srvFlag,
             exitFlag,
             p.ssl_supported ? '<span style="color:#06b6d4;font-weight:600;font-size:10px">✓</span>' : '<span style="color:var(--text-muted)">—</span>',
@@ -497,9 +498,10 @@ router.register('proxy-pool', (container) => {
         const hasDiff = p.listen_country && p.egress_country && p.listen_country !== p.egress_country;
         const srvFlag = ui.flag(p.listen_country_code || p.country_code) || '—';
         const exitFlag = hasDiff ? (ui.flag(p.egress_country_code || p.country_code) || '') : '';
+        const favStar = p.is_favorite ? '<svg width="11" height="11" style="vertical-align:-2px;color:var(--warning);margin-right:2px"><use href="#icon-star"/></svg>' : '';
         return [
           `<span style="color:var(--text-muted)">${i+1}</span>`,
-          `<span class="addr proxy-address-link" data-card-addr="${ui.escHtml(p.address)}" style="font-size:10px;cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px">${proxyUrl(p)}</span>`,
+          `<span class="addr proxy-address-link" data-card-addr="${ui.escHtml(p.address)}" style="font-size:10px;cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px">${favStar}${proxyUrl(p)}</span>`,
           srvFlag,
           exitFlag,
           p.ssl_supported ? '<span style="color:#06b6d4;font-weight:600;font-size:10px">✓</span>' : '<span style="color:var(--text-muted)">—</span>',

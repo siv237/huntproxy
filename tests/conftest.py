@@ -140,6 +140,7 @@ _GROUPS = {
     "blacklist": "Blacklist",
     "custom_proxies": "Custom Proxies",
     "domain_lists": "Domain Lists / Routing",
+    "favorites": "Favorites",
     "health_restore": "Health Restore",
     "ip_blacklist": "IP Blacklist",
     "proxy_check": "Proxy Checking",

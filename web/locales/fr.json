@@ -7,6 +7,7 @@
     "proxyControl": "Contrôle Proxy",
     "proxyPool": "Pool de Proxys",
     "blacklist": "Liste noire",
+    "favorites": "Favoris",
     "ipBlacklists": "IP Blacklists",
     "analytics": "Analyses",
     "logs": "Journaux",
@@ -323,6 +324,13 @@
       "failedToLoad": "Échec du chargement de la liste noire",
       "proxyAddress": "Adresse du proxy (ip:port) :",
       "reasonOptional": "Raison (optionnelle) :"
+    },
+    "favorites": {
+      "title": "Favoris",
+      "subtitle": "Proxys étoilés, protégés du nettoyage",
+      "searchPlaceholder": "Rechercher un proxy favori...",
+      "empty": "Aucun favori. Cliquez l'étoile dans la carte proxy pour ajouter.",
+      "count": "{count} favoris"
     },
     "analytics": {
       "title": "Analyses",

@@ -414,8 +414,21 @@ const proxyCard = {
 
     const left = ui.el('div', 'proxy-card-actions');
 
-    const tagBtn = ui.el('button', 'btn btn-sm btn-secondary', { html: `${this._svg('tag')} ${t('proxyCard.tag')}` });
-    left.appendChild(tagBtn);
+    const favBtn = ui.el('button', `btn btn-sm ${p.is_favorite ? 'btn-primary' : 'btn-secondary'}`, { html: `${this._svg('star')} ${p.is_favorite ? t('proxyCard.favorited') : t('proxyCard.favorite')}` });
+    if (p.is_favorite) favBtn.classList.add('active');
+    favBtn.addEventListener('click', () => {
+      favBtn.disabled = true;
+      const promise = p.is_favorite ? api.favRemove(p.address) : api.favAdd(p.address);
+      promise.then(() => {
+        app.toast(p.is_favorite ? t('proxyCard.removedFromFavorites') : t('proxyCard.addedToFavorites'));
+        p.is_favorite = !p.is_favorite;
+        this._refresh(overlay.querySelector('.proxy-card'), p.address, overlay);
+      }).catch(e => {
+        favBtn.disabled = false;
+        app.toast(t('common.error', {message: e.message}), 'error');
+      });
+    });
+    left.appendChild(favBtn);
 
     const selectBtn = ui.el('button', 'btn btn-sm btn-primary', { text: t('proxyCard.select') });
     selectBtn.addEventListener('click', () => {
@@ -505,6 +518,7 @@ const proxyCard = {
       'check-circle': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>',
       refresh: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>',
       tag: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>',
+      star: '<svg viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>',
       'x-circle': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>',
       globe: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>',
       code: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>',

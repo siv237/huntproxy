@@ -37,6 +37,9 @@ const api = {
   socks5Stop() { return this.request('/api/socks5/stop', 'POST'); },
   blAdd(addr, reason) { return this.request('/api/blacklist/add', 'POST', { address: addr, reason }); },
   blRemove(addr) { return this.request('/api/blacklist/remove', 'POST', { address: addr }); },
+  favAdd(addr) { return this.request('/api/favorites/add', 'POST', { address: addr }); },
+  favRemove(addr) { return this.request('/api/favorites/remove', 'POST', { address: addr }); },
+  favorites() { return this.request('/api/favorites'); },
   setCountry(code) { return this.request(`/api/settings/country_filter?code=${encodeURIComponent(code)}`, 'POST'); },
 
   // New endpoints (Phase 1+)

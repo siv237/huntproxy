@@ -225,9 +225,10 @@ router.register('hunt', (container) => {
       else flags.push('<span style="color:var(--text-muted)">HTTP</span>');
       if (p.mitm_suspect) flags.push('<span style="color:var(--danger);font-weight:600">MITM!</span>');
       const proto = p.protocol || 'http';
+      const favStar = p.is_favorite ? '<svg width="11" height="11" style="vertical-align:-2px;color:var(--warning);margin-right:2px"><use href="#icon-star"/></svg>' : '';
       return [
         `<span style="color:var(--text-muted)">${i+1}</span>`,
-        `<span class="addr proxy-address-link" data-card-addr="${ui.escHtml(p.address)}" style="font-size:10px;cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px">${p.address}</span>`,
+        `<span class="addr proxy-address-link" data-card-addr="${ui.escHtml(p.address)}" style="font-size:10px;cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px">${favStar}${p.address}</span>`,
         ui.flag(p.country_code) || '—',
         p.last_latency ? p.last_latency.toFixed(2) + 's' : '—',
         p.latency_avg ? p.latency_avg.toFixed(2) + 's' : '—',

@@ -20,6 +20,7 @@ class ProxyRating:
     first_seen: float = 0.0
     in_blacklist: bool = False
     blacklist_reason: str = ""
+    is_favorite: bool = False
     ip_blacklist_reason: str = ""  # auto-set when egress IP is in a downloaded IP blacklist
     ip_blacklist_hits: int = 0  # number of IP blacklist sources matching the egress IP
     ip_blacklist_sources: list = field(default_factory=list)  # matching source ids
@@ -134,6 +135,7 @@ class ProxyRating:
             "first_seen": self.first_seen,
             "in_blacklist": self.in_blacklist,
             "blacklist_reason": self.blacklist_reason,
+            "is_favorite": self.is_favorite,
             "ip_blacklist_reason": self.ip_blacklist_reason,
             "ip_blacklist_hits": self.ip_blacklist_hits,
             "ip_blacklist_sources": self.ip_blacklist_sources,

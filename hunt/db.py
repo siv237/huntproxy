@@ -275,6 +275,9 @@ class DbMixin:
                     address TEXT PRIMARY KEY,
                     reason TEXT NOT NULL DEFAULT ''
                 );
+                CREATE TABLE IF NOT EXISTS favorites (
+                    address TEXT PRIMARY KEY
+                );
                 CREATE TABLE IF NOT EXISTS runtime_state (
                     key TEXT PRIMARY KEY,
                     value TEXT NOT NULL

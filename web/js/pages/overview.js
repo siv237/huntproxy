@@ -233,6 +233,7 @@ router.register('overview', (container) => {
     const addrLink = ui.el('span', '', { style: 'font-family:monospace;font-weight:700;color:var(--accent);font-size:12px;cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%', text: det.address });
     addrLink.addEventListener('click', () => { if (window.proxyCard) window.proxyCard.show(det.address); });
     addrRow.appendChild(addrLink);
+    if (det.is_favorite) addrRow.appendChild(ui.el('span', '', { style: 'color:var(--warning);font-size:12px;margin-left:2px', html: '<svg width="12" height="12"><use href="#icon-star"/></svg>' }));
     addrRow.appendChild(ui.el('span', '', { style: 'color:var(--accent);font-weight:600;font-size:11px', text: mode }));
     if (det.ssl_supported) addrRow.appendChild(ui.el('span', '', { style: 'color:#06b6d4;font-weight:600;font-size:10px;border:1px solid #06b6d4;border-radius:3px;padding:0 3px', text: 'SSL' }));
     addrRow.appendChild(ui.el('span', '', { style: `color:${ok ? 'var(--success)' : 'var(--danger)'};font-size:14px`, text: ok ? '●' : '○' }));
@@ -462,10 +463,11 @@ router.register('overview', (container) => {
     };
     const rows = (proxies || []).map((p, i) => {
       const isSel = activeAddr === p.address;
+      const favStar = p.is_favorite ? '<svg width="11" height="11" style="vertical-align:-2px;color:var(--warning);margin-right:2px"><use href="#icon-star"/></svg>' : '';
       return [
         `<span style="color:var(--text-muted);font-size:11px">${i + 1}</span>`,
         `<span class="flag">${ui.flag(p.country_code)}</span> <span style="font-size:11px">${ui.escHtml(p.country || '')}</span>`,
-        `<span class="addr proxy-address-link" data-card-addr="${ui.escHtml(p.address)}" style="cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px">${ui.escHtml(p.address)}</span>`,
+        `<span class="addr proxy-address-link" data-card-addr="${ui.escHtml(p.address)}" style="cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px">${favStar}${ui.escHtml(p.address)}</span>`,
         p.ssl_supported ? '<span style="color:#06b6d4;font-weight:600;font-size:10px">SSL</span>' : '<span style="color:var(--text-muted)">—</span>',
         p.last_latency ? p.last_latency.toFixed(2) + 's' : '—',
         p.speed_avg ? p.speed_avg.toFixed(0) + 'KB/s' : '—',

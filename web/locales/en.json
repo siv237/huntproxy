@@ -7,6 +7,7 @@
     "proxyControl": "Proxy Control",
     "proxyPool": "Proxy Pool",
     "blacklist": "Blacklist",
+    "favorites": "Favorites",
     "ipBlacklists": "IP Blacklists",
     "analytics": "Analytics",
     "logs": "Logs",
@@ -170,7 +171,6 @@
       "poolProgress": "Pool Progress",
       "checked": "Checked",
       "working": "Working",
-      "blacklist": "Blacklist",
       "topRatedAlive": "Top Rated Alive",
       "alive": "{count} alive",
       "huntLog": "Hunt Log",
@@ -333,6 +333,13 @@
       "failedToLoad": "Failed to load blacklist",
       "proxyAddress": "Proxy address (ip:port):",
       "reasonOptional": "Reason (optional):"
+    },
+    "favorites": {
+      "title": "Favorites",
+      "subtitle": "Your starred proxies, protected from cleanup",
+      "searchPlaceholder": "Search favorite proxy...",
+      "empty": "No favorite proxies yet. Click the star in a proxy card to add.",
+      "count": "{count} favorites"
     },
     "ipBlacklists": {
       "title": "IP Blacklists",
@@ -679,6 +686,10 @@
     "last30checks": "Last 30 checks",
     "errors": "Errors",
     "tag": "Tag",
+    "favorite": "Favorite",
+    "favorited": "Favorited",
+    "addedToFavorites": "Added to favorites",
+    "removedFromFavorites": "Removed from favorites",
     "suitability": "Recommendations",
     "ratingHint": "Rating is used only for sorting proxies and does not guarantee performance in every scenario.",
     "use": {

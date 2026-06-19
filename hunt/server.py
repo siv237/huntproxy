@@ -596,6 +596,31 @@ class HuntServer:
             self.state._log_action("blacklist.remove", addr)
             return json.dumps({"ok": True}), 200, "application/json"
 
+        if path == "/api/favorites/add" and method == "POST":
+            try:
+                data = json.loads(body or b"{}")
+            except Exception:
+                data = {}
+            addr = data.get("address", "")
+            self.state.favorite_add(addr)
+            self.state._log_action("favorites.add", addr)
+            return json.dumps({"ok": True}), 200, "application/json"
+
+        if path == "/api/favorites/remove" and method == "POST":
+            try:
+                data = json.loads(body or b"{}")
+            except Exception:
+                data = {}
+            addr = data.get("address", "")
+            self.state.favorite_remove(addr)
+            self.state._log_action("favorites.remove", addr)
+            return json.dumps({"ok": True}), 200, "application/json"
+
+        if path == "/api/favorites" and method == "GET":
+            favs = [r for r in self.state.ratings.values() if r.is_favorite]
+            favs.sort(key=lambda r: r.score, reverse=True)
+            return json.dumps([r.to_dict() for r in favs]), 200, "application/json"
+
         # === Proxy routes ===
         if path == "/api/proxy/status":
             return json.dumps(self.proxy.get_status()), 200, "application/json"
@@ -905,7 +930,8 @@ class HuntServer:
 
         # === Actions ===
         if path.startswith("/api/clear_dead") and method == "POST":
-            dead_addrs = [a for a, r in self.state.ratings.items() if r.last_status == "failed"]
+            dead_addrs = [a for a, r in self.state.ratings.items()
+                          if r.last_status == "failed" and not r.is_favorite]
             for a in dead_addrs:
                 del self.state.ratings[a]
             self.state._emit(f"Cleared {len(dead_addrs)} dead proxies", "warn")

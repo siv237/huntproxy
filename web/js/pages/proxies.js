@@ -137,9 +137,10 @@ router.register('proxies', (container) => {
     const up = (p.checks_ok || 0) + '/' + (p.checks_total || 0);
     const score = Math.round(p.score || 0);
     const flag = ui.flag(p.country_code);
+    const favStar = p.is_favorite ? '<svg width="12" height="12" style="vertical-align:-2px;color:var(--warning);margin-right:2px"><use href="#icon-star"/></svg>' : '';
 
     return [
-      `<span class="proxy-address-link" data-card-addr="${ui.escHtml(p.address)}" style="font-size:12px;font-family:monospace;color:var(--text-primary);cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px">${ui.escHtml(p.address)}</span>`,
+      `<span class="proxy-address-link" data-card-addr="${ui.escHtml(p.address)}" style="font-size:12px;font-family:monospace;color:var(--text-primary);cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px">${favStar}${ui.escHtml(p.address)}</span>`,
       `<span style="font-size:12px">${flag} ${ui.escHtml(p.country || '—')}</span>`,
       `<span style="font-size:11px;color:var(--text-muted)">${proto}</span>`,
       ssl,

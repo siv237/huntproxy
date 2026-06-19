@@ -7,6 +7,7 @@
     "proxyControl": "代理控制",
     "proxyPool": "代理池",
     "blacklist": "黑名单",
+    "favorites": "收藏",
     "ipBlacklists": "IP 黑名单",
     "analytics": "分析",
     "logs": "日志",
@@ -323,6 +324,13 @@
       "failedToLoad": "加载黑名单失败",
       "proxyAddress": "代理地址（ip:port）：",
       "reasonOptional": "原因（可选）："
+    },
+    "favorites": {
+      "title": "收藏",
+      "subtitle": "星标代理，受保护不被清理",
+      "searchPlaceholder": "搜索收藏代理...",
+      "empty": "暂无收藏。点击代理卡片中的星星即可添加。",
+      "count": "{count} 个收藏"
     },
     "analytics": {
       "title": "分析",

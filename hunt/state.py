@@ -5,6 +5,7 @@ import ipaddress
 import json
 import time
 from hunt.blacklist import BlacklistMixin
+from hunt.favorites import FavoritesMixin
 from hunt.actions import ActionsMixin
 from hunt.backup import BackupMixin
 from hunt.checking import CheckingMixin
@@ -23,7 +24,7 @@ from hunt.snapshot import SnapshotMixin
 from pathlib import Path
 from typing import Optional
 
-class HuntState(DbMixin, EventsMixin, SnapshotMixin, HealthMixin, CheckingMixin, BlacklistMixin, IPBlacklistMixin, ProxySourcesMixin, IPBlacklistSourcesMixin, RoutingMixin, CustomProxiesMixin, ActionsMixin, BackupMixin):
+class HuntState(DbMixin, EventsMixin, SnapshotMixin, HealthMixin, CheckingMixin, BlacklistMixin, IPBlacklistMixin, ProxySourcesMixin, IPBlacklistSourcesMixin, RoutingMixin, CustomProxiesMixin, ActionsMixin, BackupMixin, FavoritesMixin):
     PHASE_IDLE = "idle"
 
     PHASE_DOWNLOAD = "downloading"
@@ -41,6 +42,7 @@ class HuntState(DbMixin, EventsMixin, SnapshotMixin, HealthMixin, CheckingMixin,
             DATA_DIR.mkdir(parents=True, exist_ok=True)
             self.ratings: dict[str, ProxyRating] = {}
             self.blacklist: dict[str, str] = {}
+            self.favorites: set[str] = set()
             self._geo_cache: dict[str, dict] = {}
 
             # IP blacklist (downloaded lists of banned exit IPs / CIDRs)
@@ -202,6 +204,7 @@ class HuntState(DbMixin, EventsMixin, SnapshotMixin, HealthMixin, CheckingMixin,
                         ip_blacklist_sources=d.get("ip_blacklist_sources", []),
                         in_blacklist=d.get("in_blacklist", False),
                         blacklist_reason=d.get("blacklist_reason", ""),
+                        is_favorite=d.get("is_favorite", False),
                     )
                     if not r.egress_country_code and r.egress_country:
                         r.egress_country_code = country_code_from_name(r.egress_country)
@@ -217,6 +220,12 @@ class HuntState(DbMixin, EventsMixin, SnapshotMixin, HealthMixin, CheckingMixin,
                     if addr in self.ratings:
                         self.ratings[addr].in_blacklist = True
                         self.ratings[addr].blacklist_reason = self.blacklist[addr]
+                # favorites from DB
+                self.favorites.clear()
+                for row in conn.execute("SELECT address FROM favorites"):
+                    self.favorites.add(row["address"])
+                    if row["address"] in self.ratings:
+                        self.ratings[row["address"]].is_favorite = True
                 # runtime state from DB
                 for row in conn.execute("SELECT key, value FROM runtime_state"):
                     if row["key"] == "proxy_runner":
@@ -256,6 +265,12 @@ class HuntState(DbMixin, EventsMixin, SnapshotMixin, HealthMixin, CheckingMixin,
                         "INSERT INTO blacklist (address, reason) VALUES (?, ?)",
                         (addr, reason or ""),
                     )
+                # favorites
+                conn.execute("DELETE FROM favorites")
+                conn.executemany(
+                    "INSERT OR REPLACE INTO favorites (address) VALUES (?)",
+                    [(addr,) for addr in self.favorites],
+                )
                 # runtime state
                 conn.execute("DELETE FROM runtime_state")
                 runtime = [

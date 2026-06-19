@@ -17,6 +17,10 @@ BACKUP_GROUPS = {
         "label": "Manual blacklist",
         "tables": [("state", "blacklist")],
     },
+    "favorites": {
+        "label": "Favorites",
+        "tables": [("state", "favorites")],
+    },
     "ip_blacklist": {
         "label": "Downloaded IP blacklist",
         "tables": [("state", "ip_blacklist_entries"), ("state", "ip_blacklist_sources")],
