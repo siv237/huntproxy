@@ -144,6 +144,7 @@ _GROUPS = {
     "health_restore": "Health Restore",
     "ip_blacklist": "IP Blacklist",
     "locales": "Locales",
+    "navigation": "Navigation",
     "proxy_check": "Proxy Checking",
     "proxy_rating": "Proxy Rating / Scoring",
     "proxy_server": "Proxy / SOCKS Server",

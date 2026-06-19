@@ -13,6 +13,7 @@ const router = {
     'ip-blacklists': ['page.ipBlacklists.title', 'page.ipBlacklists.subtitle'],
     analytics: ['page.analytics.title', 'page.analytics.subtitle'],
     logs: ['page.logs.title', 'page.logs.subtitle'],
+    actions: ['page.actions.title', 'page.actions.subtitle'],
     settings: ['page.settings.title', 'page.settings.subtitle'],
     routes: ['page.routes.title', 'page.routes.subtitle'],
     'domain-lists': ['page.domainLists.title', 'page.domainLists.subtitle'],
