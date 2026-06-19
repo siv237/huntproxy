@@ -690,6 +690,7 @@
     "suitability": "Recommendations",
     "supported": "Supported",
     "notSupported": "Not supported",
+    "notMeasured": "Failed to measure",
     "suspected": "Suspected",
     "tag": "Tag",
     "timeline": "Timeline",

@@ -674,6 +674,7 @@
     "unknown": "Unknown",
     "supported": "Supported",
     "notSupported": "Not supported",
+    "notMeasured": "Failed to measure",
     "isp": "ISP",
     "publicProxy": "Public Proxy",
     "checkedAgo": "Checked",

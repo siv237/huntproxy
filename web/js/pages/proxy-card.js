@@ -189,10 +189,11 @@ const proxyCard = {
       `${t('proxyCard.p95')} ${checks.p95 ? ui.fmtLatency(checks.p95) : '—'}`));
 
     const speed = checks.avg_speed || p.speed_avg || 0;
-    const speedValue = speed ? speed.toFixed(0) : '—';
-    grid.appendChild(this._kpiWithSpark(speedValue, t('proxyCard.avgSpeed'), 'KB/s',
+    const speedValue = speed ? speed.toFixed(0) : t('proxyCard.notMeasured');
+    grid.appendChild(this._kpiWithSpark(speedValue, t('proxyCard.avgSpeed'), speed ? 'KB/s' : '',
       this._sparklinePoints(checkList, 'speed'), 'var(--accent)',
-      `${t('proxyCard.maxSpeed')} ${checks.max_speed ? checks.max_speed.toFixed(0) + ' KB/s' : '—'}`));
+      `${t('proxyCard.maxSpeed')} ${checks.max_speed ? checks.max_speed.toFixed(0) + ' KB/s' : '—'}`,
+      speed ? 'var(--text-primary)' : 'var(--danger)'));
 
     const sr = checks.success_rate || p.success_rate || 0;
     const srPct = Math.round(sr * 100);
@@ -229,9 +230,10 @@ const proxyCard = {
     return checks.map(c => c.ok ? 1 : 0);
   },
 
-  _kpiWithSpark(value, label, unit, points, color, sub) {
+  _kpiWithSpark(value, label, unit, points, color, sub, valueColor) {
     const kpi = ui.el('div', 'proxy-card-kpi');
-    const val = ui.el('div', 'proxy-card-kpi-value', { html: `${ui.escHtml(String(value))}${unit ? `<small>${ui.escHtml(unit)}</small>` : ''}` });
+    const valStyle = valueColor ? `style="color:${valueColor}"` : '';
+    const val = ui.el('div', 'proxy-card-kpi-value', { html: `${ui.escHtml(String(value))}${unit ? `<small>${ui.escHtml(unit)}</small>` : ''}`, style: valStyle || undefined });
     kpi.appendChild(val);
     kpi.appendChild(ui.el('div', 'proxy-card-kpi-label', { text: label }));
     if (points && points.length >= 2) {

@@ -674,6 +674,7 @@
     "unknown": "Неизвестно",
     "supported": "Поддерживается",
     "notSupported": "Не поддерживается",
+    "notMeasured": "Не удалось замерить",
     "isp": "Провайдер",
     "publicProxy": "Public Proxy",
     "checkedAgo": "Проверено",
