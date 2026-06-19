@@ -171,6 +171,7 @@
       "poolProgress": "Pool Progress",
       "checked": "Checked",
       "working": "Working",
+      "blacklist": "Blacklist",
       "topRatedAlive": "Top Rated Alive",
       "alive": "{count} alive",
       "huntLog": "Hunt Log",

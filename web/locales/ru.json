@@ -171,6 +171,7 @@
       "poolProgress": "Прогресс пула",
       "checked": "Проверено",
       "working": "Рабочие",
+      "blacklist": "Чёрный список",
       "topRatedAlive": "Лучшие живые",
       "alive": "{count} живых",
       "huntLog": "Журнал охоты",

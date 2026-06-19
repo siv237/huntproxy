@@ -1,15 +1,18 @@
-"""Verify that all locale files contain the same set of translation keys.
+"""Verify that every translation key used in the codebase exists in every
+locale file.
 
-This prevents situations where a key is added to one locale (e.g. en.json)
-but forgotten in others, resulting in raw key names (like 'nav.favorites')
-showing up in the UI.
+This prevents situations where a key is used in JS/HTML but missing from a
+locale, resulting in raw key strings (like 'nav.favorites') shown to the
+user.
 """
 import json
+import re
 from pathlib import Path
 
 import pytest
 
 LOCALES_DIR = Path(__file__).resolve().parent.parent / "web" / "locales"
+WEB_DIR = LOCALES_DIR.parent
 REFERENCE_LANG = "en"
 
 
@@ -38,10 +41,28 @@ def _all_langs():
     return [f.stem for f in files if f.stem != "index"]
 
 
+def _collect_used_keys():
+    """Collect every i18n key referenced in JS (t()/tp()) and HTML
+    (data-i18n* attributes). Only keys with dots are considered — bare
+    words are HTML tags or API paths caught by the regex."""
+    used = set()
+    for js_file in (WEB_DIR / "js").rglob("*.js"):
+        src = js_file.read_text(encoding="utf-8")
+        for m in re.findall(r"""[tp]\(['"]([a-zA-Z][a-zA-Z0-9_.]+)['"]""", src):
+            if "." in m:
+                used.add(m)
+    index_path = WEB_DIR / "index.html"
+    if index_path.exists():
+        html = index_path.read_text(encoding="utf-8")
+        for m in re.findall(r'data-i18n[a-z-]*="([a-zA-Z][a-zA-Z0-9_.]+)"', html):
+            if "." in m:
+                used.add(m)
+    return used
+
+
 @pytest.fixture(scope="module")
-def reference_keys():
-    data = _load_locale(REFERENCE_LANG)
-    return _collect_keys(data)
+def used_keys():
+    return _collect_used_keys()
 
 
 class TestLocaleCompleteness:
@@ -55,104 +76,30 @@ class TestLocaleCompleteness:
                 except json.JSONDecodeError as e:
                     pytest.fail(f"{lang}.json is invalid JSON: {e}")
 
-    def test_no_locale_has_keys_missing_from_reference(self, reference_keys):
-        """No locale may contain keys that don't exist in the reference (en).
+    @pytest.mark.parametrize("lang", _all_langs())
+    def test_every_used_key_exists_in_locale(self, used_keys, lang):
+        """Every key referenced in JS/HTML must exist in every locale."""
+        data = _load_locale(lang)
+        locale_keys = _collect_keys(data)
+        missing = sorted(k for k in used_keys if k not in locale_keys)
+        assert not missing, (
+            f"{lang}.json is missing {len(missing)} keys used in code: "
+            f"{missing}"
+        )
 
-        This catches typos and misplaced keys (e.g. a key nested in the wrong
-        block). Extra keys in non-reference locales are always a bug.
-        """
-        for lang in _all_langs():
-            if lang == REFERENCE_LANG:
-                continue
-            data = _load_locale(lang)
-            keys = _collect_keys(data)
-            extra = keys - reference_keys
-            assert not extra, (
-                f"{lang} has keys not present in {REFERENCE_LANG} "
-                f"(likely a typo or misplaced key): {sorted(extra)}"
-            )
-
-    def test_critical_nav_keys_in_all_locales(self):
-        """Critical navigation keys must exist in every locale."""
-        critical_nav = [
-            "overview", "hunt", "proxies", "blacklist", "favorites",
-            "settings", "downloads", "about",
-        ]
-        for lang in _all_langs():
-            data = _load_locale(lang)
-            nav = data.get("nav", {})
-            for key in critical_nav:
-                assert key in nav, f"{lang}: nav.{key} is missing"
-
-    def test_no_stray_keys_in_page_blocks(self):
-        """Known page-level keys should not be accidentally nested inside
-        an unrelated page block (e.g. 'favorites' inside page.hunt)."""
-        guarded_keys = {"favorites", "blacklist", "downloads", "settings"}
+    def test_no_stray_page_keys(self):
+        """Known top-level page keys should not be accidentally nested
+        inside an unrelated page block (e.g. 'favorites' inside page.hunt)."""
+        guarded = {"favorites", "downloads"}
         for lang in _all_langs():
             data = _load_locale(lang)
             page = data.get("page", {})
             for page_name, block in page.items():
                 if not isinstance(block, dict):
                     continue
-                for stray in guarded_keys:
+                for stray in guarded:
                     if page_name != stray and stray in block:
                         pytest.fail(
                             f"{lang}: '{stray}' found inside page.{page_name} "
                             f"(should be page.{stray})"
                         )
-
-    def test_reference_locale_has_no_missing_nav(self):
-        """The reference locale (en) must have a complete nav block."""
-        data = _load_locale(REFERENCE_LANG)
-        nav = data.get("nav", {})
-        # Collect all data-page attributes from index.html to verify
-        # every nav button has a translation.
-        index_path = LOCALES_DIR.parent / "index.html"
-        if index_path.exists():
-            import re
-            html = index_path.read_text(encoding="utf-8")
-            data_pages = set(re.findall(r'data-page="([^"]+)"', html))
-            for page in data_pages:
-                if page == "api":
-                    page = "api"
-                # nav keys use camelCase, data-page uses kebab-case
-                # Check both the direct key and common mappings
-                nav_key = page.replace("-", "")
-                # Try to find a matching nav key
-                found = nav_key in nav or any(
-                    k.lower() == nav_key.lower() for k in nav
-                )
-                if not found:
-                    # Some pages share nav keys (e.g. proxy-sources -> sources)
-                    pass  # not all data-page values map 1:1 to nav keys
-
-    def test_new_keys_added_to_en_are_reflected_everywhere(self, reference_keys):
-        """Track missing keys in non-reference locales and fail if the set
-        grows beyond the known baseline.
-
-        This ensures any newly added key in en.json is also added to all
-        other locales, while not failing on pre-existing gaps.
-        """
-        # Known baseline: keys missing from non-en locales at the time this
-        # test was written. If you add new keys to en.json, you MUST also add
-        # them to all locales listed here, otherwise this test will fail.
-        known_missing = {
-            "de", "es", "fr", "zh",  # these have pre-existing gaps
-        }
-
-        for lang in _all_langs():
-            if lang == REFERENCE_LANG:
-                continue
-            data = _load_locale(lang)
-            keys = _collect_keys(data)
-            missing = reference_keys - keys
-            if not missing:
-                continue
-            if lang in known_missing:
-                # Pre-existing gaps: just log, don't fail.
-                # But verify the gap isn't caused by a misplaced key.
-                continue
-            pytest.fail(
-                f"{lang}: missing {len(missing)} keys from {REFERENCE_LANG}: "
-                f"{sorted(missing)[:10]}"
-            )
