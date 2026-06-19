@@ -515,7 +515,17 @@
       "blacklistTxt": "黑名单代理",
       "ratingsJson": "代理评分和统计",
       "configYaml": "应用配置",
-      "download": "下载"
+      "download": "下载",
+      "backupRestore": "备份与恢复",
+      "createBackup": "创建备份",
+      "restoreBackup": "从文件恢复",
+      "selectAtLeastOne": "至少选择一个部分",
+      "creating": "正在创建备份…",
+      "backupCreated": "备份已创建",
+      "restoring": "正在恢复…",
+      "restoreDone": "恢复完成",
+      "restoreFailed": "恢复失败",
+      "selectAll": "全选"
     },
     "api": {
       "title": "API",

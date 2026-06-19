@@ -2,16 +2,42 @@
 
 import sqlite3
 
+
+class _SharedConn:
+    """Wrapper that proxies a persistent sqlite3 connection but ignores
+    close() calls from callers, so the underlying connection is reused and
+    SQLite WAL/shm files are not constantly created and removed."""
+
+    def __init__(self, conn: sqlite3.Connection):
+        self._conn = conn
+
+    def __getattr__(self, name):
+        return getattr(self._conn, name)
+
+    def close(self):
+        pass
+
+
 class DbMixin:
     def _stats_db(self) -> sqlite3.Connection:
-            conn = sqlite3.connect(str(self._db_path))
-            conn.row_factory = sqlite3.Row
+            raw = getattr(self, "_stats_conn", None)
+            if raw is not None and self._db_path.exists():
+                return _SharedConn(raw)
+            if raw is not None:
+                try:
+                    raw.close()
+                except Exception:
+                    pass
+                self._stats_conn = None
+            raw = sqlite3.connect(str(self._db_path), check_same_thread=False)
+            raw.row_factory = sqlite3.Row
             try:
-                conn.execute("PRAGMA journal_mode=WAL")
+                raw.execute("PRAGMA journal_mode=WAL")
             except Exception:
                 pass
-            self._ensure_stats_db(conn)
-            return conn
+            self._ensure_stats_db(raw)
+            self._stats_conn = raw
+            return _SharedConn(raw)
 
     def _ensure_stats_db(self, conn: sqlite3.Connection):
             """Recreate stats tables if they are missing (e.g. after the DB file was deleted)."""
@@ -25,14 +51,24 @@ class DbMixin:
                 pass
 
     def _db(self) -> sqlite3.Connection:
-            conn = sqlite3.connect(str(self._state_db_path))
-            conn.row_factory = sqlite3.Row
+            raw = getattr(self, "_state_conn", None)
+            if raw is not None and self._state_db_path.exists():
+                return _SharedConn(raw)
+            if raw is not None:
+                try:
+                    raw.close()
+                except Exception:
+                    pass
+                self._state_conn = None
+            raw = sqlite3.connect(str(self._state_db_path), check_same_thread=False)
+            raw.row_factory = sqlite3.Row
             try:
-                conn.execute("PRAGMA journal_mode=WAL")
+                raw.execute("PRAGMA journal_mode=WAL")
             except Exception:
                 pass
-            self._ensure_state_db(conn)
-            return conn
+            self._ensure_state_db(raw)
+            self._state_conn = raw
+            return _SharedConn(raw)
 
     def _ensure_state_db(self, conn: sqlite3.Connection):
             """Recreate state tables if they are missing (e.g. after the DB file was deleted)."""

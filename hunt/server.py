@@ -984,15 +984,22 @@ class HuntServer:
             return json.dumps({"lines": [l.rstrip() for l in lines]}), 200, "application/json"
 
         # === Downloads ===
+        if path.startswith("/api/downloads/count") and method == "GET":
+            counts = self.state.get_download_counts()
+            return json.dumps(counts), 200, "application/json"
+
         if path.startswith("/api/download/"):
             filename = path[len("/api/download/"):]
             filename = unquote(filename)
-            if filename not in ("working.txt", "blacklist.txt", "ip_blacklist.txt", "ratings.json", "config.yaml"):
+            allowed = ("working.txt", "blacklist.txt", "ip_blacklist.txt", "ratings.json", "config.yaml")
+            if filename not in allowed:
                 return json.dumps({"error": "forbidden"}), 403, "application/json"
-            target = DATA_DIR / filename if filename != "config.yaml" else CONFIG_PATH
-            if not target.exists():
+            try:
+                data = self.state.generate_download(filename)
+            except FileNotFoundError:
                 return json.dumps({"error": "not found"}), 404, "application/json"
-            data = target.read_bytes()
+            except Exception as e:
+                return json.dumps({"error": str(e)}), 500, "application/json"
             ct = "application/octet-stream"
             if filename.endswith(".txt"):
                 ct = "text/plain; charset=utf-8"
@@ -1001,6 +1008,42 @@ class HuntServer:
             elif filename.endswith(".yaml"):
                 ct = "text/yaml"
             return data, 200, ct
+
+        # === Backup / Restore ===
+        if path.startswith("/api/backup/groups") and method == "GET":
+            return json.dumps({"groups": self.state.get_backup_groups()}), 200, "application/json"
+
+        if path.startswith("/api/backup") and method == "POST":
+            try:
+                payload = json.loads(body or b"{}")
+                groups = payload.get("groups", [])
+                if not groups:
+                    return json.dumps({"error": "no groups selected"}), 400, "application/json"
+                data = self.state.create_backup(groups)
+                self.state._log_action("backup", f"groups: {','.join(groups)}")
+                ts = time.strftime("%Y%m%d_%H%M%S")
+                return data, 200, "application/json"
+            except Exception as e:
+                return json.dumps({"error": str(e)}), 500, "application/json"
+
+        if path.startswith("/api/restore") and method == "POST":
+            try:
+                payload = json.loads(body or b"{}")
+                groups = payload.get("groups", [])
+                backup_data = payload.get("data", "")
+                if not groups:
+                    return json.dumps({"error": "no groups selected"}), 400, "application/json"
+                if not backup_data:
+                    return json.dumps({"error": "no backup data"}), 400, "application/json"
+                result = self.state.restore_backup(
+                    backup_data.encode() if isinstance(backup_data, str) else backup_data,
+                    groups,
+                )
+                if result.get("ok"):
+                    self.state._log_action("restore", f"groups: {','.join(groups)}")
+                return json.dumps(result), 200 if result.get("ok") else 400, "application/json"
+            except Exception as e:
+                return json.dumps({"error": str(e)}), 500, "application/json"
 
         # === Proxy Control / Traffic stubs (Phase 2) ===
         if path.startswith("/api/traffic/live"):

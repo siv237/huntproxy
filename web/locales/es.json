@@ -515,7 +515,17 @@
       "blacklistTxt": "Proxis en lista negra",
       "ratingsJson": "Clasificaciones y estadísticas de proxis",
       "configYaml": "Configuración de la aplicación",
-      "download": "Descargar"
+      "download": "Descargar",
+      "backupRestore": "Copia de seguridad y restauración",
+      "createBackup": "Crear copia de seguridad",
+      "restoreBackup": "Restaurar desde archivo",
+      "selectAtLeastOne": "Seleccione al menos una sección",
+      "creating": "Creando copia de seguridad…",
+      "backupCreated": "Copia de seguridad creada",
+      "restoring": "Restaurando…",
+      "restoreDone": "Restauración completada",
+      "restoreFailed": "Error en la restauración",
+      "selectAll": "Seleccionar todo"
     },
     "api": {
       "title": "API",

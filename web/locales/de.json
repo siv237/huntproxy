@@ -515,7 +515,17 @@
       "blacklistTxt": "Proxys auf der schwarzen Liste",
       "ratingsJson": "Proxy-Bewertungen und Statistiken",
       "configYaml": "Anwendungskonfiguration",
-      "download": "Herunterladen"
+      "download": "Herunterladen",
+      "backupRestore": "Sicherung & Wiederherstellung",
+      "createBackup": "Sicherung erstellen",
+      "restoreBackup": "Aus Datei wiederherstellen",
+      "selectAtLeastOne": "Wählen Sie mindestens einen Abschnitt",
+      "creating": "Sicherung wird erstellt…",
+      "backupCreated": "Sicherung erstellt",
+      "restoring": "Wird wiederhergestellt…",
+      "restoreDone": "Wiederherstellung abgeschlossen",
+      "restoreFailed": "Wiederherstellung fehlgeschlagen",
+      "selectAll": "Alle auswählen"
     },
     "api": {
       "title": "API",

@@ -124,4 +124,17 @@ const api = {
   canaryStatus() { return this.request('/api/canary/status'); },
   canaryHistory(hours = 24) { return this.request(`/api/canary/history?hours=${hours}`); },
   canarySetHosts(hosts) { return this.request('/api/canary/hosts', 'POST', { canary_hosts: hosts }); },
+
+  // Downloads & Backup
+  downloadCounts() { return this.request('/api/downloads/count'); },
+  backupGroups() { return this.request('/api/backup/groups'); },
+  async createBackup(groups) {
+    const res = await fetch('/api/backup', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ groups }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.blob();
+  },
+  restoreBackup(groups, data) { return this.request('/api/restore', 'POST', { groups, data }); },
 };

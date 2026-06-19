@@ -569,7 +569,17 @@
       "ipBlacklistTxt": "Downloaded IP blacklist entries",
       "ratingsJson": "Proxy ratings and statistics",
       "configYaml": "Application configuration",
-      "download": "Download"
+      "download": "Download",
+      "backupRestore": "Backup & Restore",
+      "createBackup": "Create Backup",
+      "restoreBackup": "Restore from File",
+      "selectAtLeastOne": "Select at least one section",
+      "creating": "Creating backup…",
+      "backupCreated": "Backup created",
+      "restoring": "Restoring…",
+      "restoreDone": "Restore complete",
+      "restoreFailed": "Restore failed",
+      "selectAll": "Select all"
     },
     "api": {
       "title": "API",
