@@ -915,7 +915,10 @@ class HuntServer:
             return json.dumps({"ok": True, "cleared": len(dead_addrs)}), 200, "application/json"
 
         if path.startswith("/api/export") and method == "POST":
-            data = self.state.working_file.read_text() if self.state.working_file.exists() else ""
+            alive = [r for r in self.state.ratings.values()
+                     if r.last_status == "ok" and not r.in_blacklist]
+            alive.sort(key=lambda r: r.score, reverse=True)
+            data = "\n".join(f"{r.address}  {r.country}  {r.last_latency:.3f}" for r in alive)
             return json.dumps({"ok": True, "data": data}), 200, "application/json"
 
         if path.startswith("/api/import") and method == "POST":

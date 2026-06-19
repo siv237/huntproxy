@@ -12,5 +12,5 @@ if ! .venv/bin/python -c "import pytest, pytest_asyncio" 2>/dev/null; then
     .venv/bin/pip install pytest pytest-asyncio
 fi
 
-# Run all pytest tests with verbose output and any warnings shown.
-.venv/bin/python -m pytest tests/ -v "$@"
+# Run pytest: live grouped report via os.write (bypasses all pytest output).
+.venv/bin/python -m pytest tests/ -p no:terminal -p no:capture "$@" 2>/dev/null

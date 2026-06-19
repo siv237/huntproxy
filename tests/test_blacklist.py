@@ -67,7 +67,11 @@ class TestBlacklist:
         addr = "1.2.3.4:8080"
         r = hunt.ProxyRating(address=addr, last_status="ok", checks_total=1, checks_ok=1)
         state.ratings[addr] = r
-        (tmp_data_dir / "blacklist.txt").write_text(f"{addr}  test reason\n")
+        # Insert directly into the DB blacklist table
+        conn = state._db()
+        conn.execute("INSERT INTO blacklist (address, reason) VALUES (?, ?)", (addr, "test reason"))
+        conn.commit()
+        conn.close()
         state._load_blacklist_file()
         assert state.blacklist[addr] == "test reason"
         assert r.in_blacklist is True

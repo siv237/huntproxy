@@ -46,7 +46,6 @@ class HuntState(DbMixin, EventsMixin, SnapshotMixin, HealthMixin, CheckingMixin,
             self.ip_blacklist_entries: dict[str, list[dict]] = {}  # ip/cidr -> [{source_id, source_name, reason}, ...]
             self.ip_blacklist_exact: set[str] = set()
             self.ip_blacklist_networks: list[ipaddress.IPv4Network | ipaddress.IPv6Network] = []
-            self.ip_blacklist_file: Path = DATA_DIR / "ip_blacklist.txt"
             self._fetching_ip_blacklists: bool = False
             self.phase: str = self.PHASE_IDLE
             self.phase_started: float = 0.0
@@ -138,14 +137,6 @@ class HuntState(DbMixin, EventsMixin, SnapshotMixin, HealthMixin, CheckingMixin,
     def working_file(self) -> Path:
             return DATA_DIR / "working.txt"
 
-    @property
-    def blacklist_file(self) -> Path:
-            return DATA_DIR / "blacklist.txt"
-
-    @property
-    def state_file(self) -> Path:
-            return DATA_DIR / "ratings.json"
-
     SPEED_SERVERS = [
             ("speedtest.tele2.net", "/512KB.zip", 524288),
             ("speedtest.tele2.net", "/1MB.zip", 1048576),
@@ -204,7 +195,6 @@ class HuntState(DbMixin, EventsMixin, SnapshotMixin, HealthMixin, CheckingMixin,
                         listen_country_code=d.get("listen_country_code", ""),
                         listen_city=d.get("listen_city", ""),
                         listen_isp=d.get("listen_isp", ""),
-                        source_ids=d.get("source_ids", []),
                         ssl_supported=d.get("ssl_supported", False),
                         ip_blacklist_reason=d.get("ip_blacklist_reason", ""),
                         ip_blacklist_hits=d.get("ip_blacklist_hits", 0),
@@ -217,124 +207,34 @@ class HuntState(DbMixin, EventsMixin, SnapshotMixin, HealthMixin, CheckingMixin,
                     if not r.listen_country_code and r.listen_country:
                         r.listen_country_code = country_code_from_name(r.listen_country)
                     self.ratings[r.address] = r
-                # blacklist
+
+                # blacklist from DB
                 self.blacklist.clear()
-                rows = list(conn.execute("SELECT address, reason FROM blacklist"))
-                if rows:
-                    for row in rows:
-                        self.blacklist[row["address"]] = row["reason"] or ""
-                else:
-                    self._load_blacklist_file()
-                # runtime state
+                for row in conn.execute("SELECT address, reason FROM blacklist"):
+                    addr = row["address"]
+                    self.blacklist[addr] = row["reason"] or ""
+                    if addr in self.ratings:
+                        self.ratings[addr].in_blacklist = True
+                        self.ratings[addr].blacklist_reason = self.blacklist[addr]
+                # runtime state from DB
                 for row in conn.execute("SELECT key, value FROM runtime_state"):
-                    key = row["key"]
-                    val = row["value"]
-                    if key == "proxy_runner":
-                        try:
-                            pr = json.loads(val)
-                            self._proxy_direct_mode = pr.get("direct_mode", False)
-                            self._proxy_active_addr = pr.get("active_proxy_addr")
-                            self._socks5_port = pr.get("socks5_port", 17278)
-                        except Exception:
-                            pass
-                    elif key == "services":
-                        try:
-                            services = json.loads(val)
-                            self._hunt_running = services.get("hunt_running", False)
-                            self._proxy_running = services.get("proxy_running", False)
-                            self._proxy_port = services.get("proxy_port", 17277)
-                            self._socks5_running = services.get("socks5_running", False)
-                            self._socks5_port = services.get("socks5_port", 17278)
-                        except Exception:
-                            pass
-                    elif key == "country_filter":
-                        self.country_filter = val
+                    if row["key"] == "proxy_runner":
+                        pr = json.loads(row["value"])
+                        self._proxy_direct_mode = pr.get("direct_mode", False)
+                        self._proxy_active_addr = pr.get("active_proxy_addr")
+                        self._socks5_port = pr.get("socks5_port", 17278)
+                    elif row["key"] == "services":
+                        services = json.loads(row["value"])
+                        self._hunt_running = services.get("hunt_running", False)
+                        self._proxy_running = services.get("proxy_running", False)
+                        self._proxy_port = services.get("proxy_port", 17277)
+                        self._socks5_running = services.get("socks5_running", False)
+                        self._socks5_port = services.get("socks5_port", 17278)
+                    elif row["key"] == "country_filter":
+                        self.country_filter = row["value"] or ""
                 conn.close()
                 if self.ratings:
                     logger.info(f"Loaded {len(self.ratings)} ratings from SQLite")
-                    return
-            except Exception as e:
-                logger.warning(f"SQLite state load failed: {e}")
-
-            # Fallback to legacy ratings.json
-            sf = self.state_file
-            if not sf.exists():
-                return
-            try:
-                data = json.loads(sf.read_text())
-                if isinstance(data, dict):
-                    proxies = data.get("proxies", [])
-                    pr = data.get("proxy_runner", {})
-                    self._proxy_direct_mode = pr.get("direct_mode", False)
-                    self._proxy_active_addr = pr.get("active_proxy_addr")
-                    self._socks5_port = pr.get("socks5_port", 17278)
-                    services = data.get("services", {})
-                    self._hunt_running = services.get("hunt_running", False)
-                    self._proxy_running = services.get("proxy_running", False)
-                    self._proxy_port = services.get("proxy_port", 17277)
-                    self._socks5_running = services.get("socks5_running", False)
-                    self._socks5_port = services.get("socks5_port", 17278)
-                elif isinstance(data, list):
-                    proxies = data
-                else:
-                    return
-                for d in proxies:
-                    checks_ok = d.get("checks_ok", 0)
-                    stored_avg = d.get("latency_avg", 0)
-                    last_latency = d.get("last_latency", 0)
-                    latency_sum = d.get("latency_sum", stored_avg * checks_ok)
-                    latency_count = d.get("latency_count", checks_ok)
-                    if latency_count:
-                        if abs(latency_sum / latency_count - stored_avg) > 0.001:
-                            latency_sum = stored_avg * latency_count
-                        if stored_avg == 0 and last_latency > 0:
-                            latency_sum = last_latency * latency_count
-                    r = ProxyRating(
-                        address=d["address"],
-                        country=d.get("country", ""),
-                        country_code=d.get("country_code", ""),
-                        protocol=d.get("protocol", "http"),
-                        latency_sum=latency_sum,
-                        latency_count=latency_count,
-                        last_latency=last_latency,
-                        checks_total=d.get("checks_total", 0),
-                        checks_ok=checks_ok,
-                        last_check=d.get("last_check", 0),
-                        last_ok=d.get("last_ok", 0),
-                        last_status=d.get("last_status", "untested"),
-                        first_seen=d.get("first_seen", 0),
-                        supports_connect=d.get("supports_connect", False),
-                        mitm_suspect=d.get("mitm_suspect", False),
-                        last_speed=d.get("last_speed", 0.0),
-                        speed_sum=d.get("speed_sum", 0),
-                        speed_count=d.get("speed_count", 0),
-                        speed_fails=d.get("speed_fails", 0),
-                        egress_http_ip=d.get("egress_http_ip", ""),
-                        egress_http_country=d.get("egress_http_country", ""),
-                        egress_ip=d.get("egress_ip", ""),
-                        egress_city=d.get("egress_city", ""),
-                        egress_isp=d.get("egress_isp", ""),
-                        egress_country=d.get("egress_country", ""),
-                        egress_country_code=d.get("egress_country_code", ""),
-                        listen_country=d.get("listen_country", ""),
-                        listen_country_code=d.get("listen_country_code", ""),
-                        listen_city=d.get("listen_city", ""),
-                        listen_isp=d.get("listen_isp", ""),
-                        source_ids=d.get("source_ids", []),
-                        ssl_supported=d.get("ssl_supported", False),
-                        ip_blacklist_reason=d.get("ip_blacklist_reason", ""),
-                        ip_blacklist_hits=d.get("ip_blacklist_hits", 0),
-                        ip_blacklist_sources=d.get("ip_blacklist_sources", []),
-                        in_blacklist=d.get("in_blacklist", False),
-                        blacklist_reason=d.get("blacklist_reason", ""),
-                    )
-                    if not r.egress_country_code and r.egress_country:
-                        r.egress_country_code = country_code_from_name(r.egress_country)
-                    if not r.listen_country_code and r.listen_country:
-                        r.listen_country_code = country_code_from_name(r.listen_country)
-                    self.ratings[r.address] = r
-                self._load_blacklist_file()
-                logger.info(f"Loaded {len(self.ratings)} ratings from state file")
             except Exception as e:
                 logger.warning(f"State load failed: {e}")
 
@@ -381,57 +281,51 @@ class HuntState(DbMixin, EventsMixin, SnapshotMixin, HealthMixin, CheckingMixin,
                 conn.close()
             except Exception as e:
                 logger.warning(f"SQLite state save failed: {e}")
-            # Keep legacy files as human-readable exports
-            try:
-                data = {
-                    "proxies": [r.to_dict() for r in self.ratings.values()],
-                    "proxy_runner": {
-                        "direct_mode": getattr(self, '_proxy_direct_mode', False),
-                        "active_proxy_addr": getattr(self, '_proxy_active_addr', None),
-                        "socks5_port": getattr(self, '_socks5_port', 17278),
-                    },
-                    "services": {
-                        "hunt_running": getattr(self, '_hunt_running', False),
-                        "proxy_running": getattr(self, '_proxy_running', False),
-                        "proxy_port": getattr(self, '_proxy_port', 17277),
-                        "socks5_running": getattr(self, '_socks5_running', False),
-                        "socks5_port": getattr(self, '_socks5_port', 17278),
-                    }
-                }
-                with open(self.state_file, "w") as f:
-                    json.dump(data, f, indent=2)
-                self._save_blacklist()
-            except Exception as e:
-                logger.warning(f"Legacy state export failed: {e}")
 
     def _load_working_file(self):
-            if not self.working_file.exists():
-                return
-            count = 0
-            loaded = set()
-            file_mtime = self.working_file.stat().st_mtime
-            with open(self.working_file) as f:
-                for line in f:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    parts = line.split()
-                    addr = parts[0]
-                    lat_str = parts[-1] if len(parts) > 2 else "0"
-                    try:
-                        float(lat_str)
-                    except ValueError:
-                        lat_str = "0"
-                        country = " ".join(parts[1:]) if len(parts) > 1 else ""
-                    else:
-                        country = " ".join(parts[1:-1]) if len(parts) > 2 else (parts[1] if len(parts) > 1 else "")
+            """Load working proxies from DB. One-time migration from working.txt."""
+            try:
+                conn = self._db()
+                db_count = conn.execute("SELECT COUNT(*) as c FROM working_proxies").fetchone()["c"]
+                if db_count == 0 and self.working_file.exists():
+                    # One-time migration from legacy working.txt
+                    entries = []
+                    with open(self.working_file) as f:
+                        for line in f:
+                            line = line.strip()
+                            if not line:
+                                continue
+                            parts = line.split()
+                            addr = parts[0]
+                            lat_str = parts[-1] if len(parts) > 2 else "0"
+                            try:
+                                float(lat_str)
+                            except ValueError:
+                                lat_str = "0"
+                                country = " ".join(parts[1:]) if len(parts) > 1 else ""
+                            else:
+                                country = " ".join(parts[1:-1]) if len(parts) > 2 else (parts[1] if len(parts) > 1 else "")
+                            try:
+                                lat = float(lat_str)
+                            except ValueError:
+                                lat = 0.0
+                            entries.append((addr, country, lat, 0.0))
+                    if entries:
+                        conn.executemany(
+                            "INSERT OR IGNORE INTO working_proxies (address, country, latency, score) VALUES (?,?,?,?)",
+                            entries,
+                        )
+                        conn.commit()
+                        logger.info(f"Migrated {len(entries)} working proxies from working.txt to DB")
+                        db_count = len(entries)
+                count = 0
+                loaded = set()
+                for row in conn.execute("SELECT address, country, latency FROM working_proxies"):
+                    addr = row["address"]
                     if addr in self.ratings or addr in self.blacklist:
                         continue
-                    last_latency = 0.0
-                    try:
-                        last_latency = float(lat_str)
-                    except ValueError:
-                        pass
+                    last_latency = row["latency"] or 0.0
+                    country = row["country"] or ""
                     r = ProxyRating(
                         address=addr,
                         country=country,
@@ -452,22 +346,30 @@ class HuntState(DbMixin, EventsMixin, SnapshotMixin, HealthMixin, CheckingMixin,
                     self.ratings[addr] = r
                     loaded.add(addr)
                     count += 1
-            if loaded:
-                self._working_file_loaded = loaded
-                self._working_file_mtime = file_mtime
-            if count:
-                logger.info(f"Loaded {count} proxies from working.txt")
+                conn.close()
+                if loaded:
+                    self._working_file_loaded = loaded
+                if count:
+                    logger.info(f"Loaded {count} working proxies from DB")
+            except Exception as e:
+                logger.warning(f"Working file load failed: {e}")
 
     def _save_working_file(self):
-            """Write alive (non-blacklisted) proxies to working.txt, atomic.
+            """Save alive (non-blacklisted) proxies to DB.
 
             Only the operator-curated manual blacklist is a hard exclusion;
             downloaded IP blacklist matches only lower the score."""
             alive = [r for r in self.ratings.values()
                      if r.last_status == "ok" and not r.in_blacklist]
             alive.sort(key=lambda r: r.score, reverse=True)
-            tmp = self.working_file.with_suffix(".tmp")
-            with open(tmp, "w") as f:
-                for r in alive:
-                    f.write(f"{r.address}  {r.country}  {r.last_latency:.3f}\n")
-            tmp.rename(self.working_file)
+            try:
+                conn = self._db()
+                conn.execute("DELETE FROM working_proxies")
+                conn.executemany(
+                    "INSERT OR IGNORE INTO working_proxies (address, country, latency, score) VALUES (?,?,?,?)",
+                    [(r.address, r.country, r.last_latency, r.score) for r in alive],
+                )
+                conn.commit()
+                conn.close()
+            except Exception as e:
+                logger.warning(f"Working file save failed: {e}")

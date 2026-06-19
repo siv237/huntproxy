@@ -133,26 +133,15 @@ class IPBlacklistMixin:
                     r.ip_blacklist_sources = []
 
     def _load_ip_blacklist(self):
-            """Load downloaded IP blacklist entries from SQLite into memory.
-            Falls back to the legacy flat file if the DB table is empty.
-            """
+            """Load downloaded IP blacklist entries from SQLite into memory."""
             try:
                 conn = self._db()
                 count = conn.execute("SELECT COUNT(*) as c FROM ip_blacklist_entries").fetchone()["c"]
                 conn.close()
                 if count > 0:
                     self._load_ip_blacklist_from_db(accumulate=False)
-                    return
             except Exception as e:
                 logger.error("load_ip_blacklist db check: %s", e)
-            # Legacy flat-file fallback
-            if not self.ip_blacklist_file.exists():
-                return
-            try:
-                text = self.ip_blacklist_file.read_text()
-                self._parse_ip_blacklist(text, "disk", source_name="disk", accumulate=False)
-            except Exception as e:
-                logger.error("load_ip_blacklist: %s", e)
 
     def _load_ip_blacklist_from_db(self, accumulate: bool = False):
             """Load all persisted IP blacklist entries from SQLite into memory."""
@@ -225,12 +214,5 @@ class IPBlacklistMixin:
                     pass
 
     def _save_ip_blacklist(self):
-            """Write downloaded IP blacklist entries to data/ip_blacklist.txt."""
-            with open(self.ip_blacklist_file, "w") as f:
-                f.write("# huntproxy downloaded IP blacklist (egress IP checks)\n")
-                total_sources = sum(len(metas) for metas in self.ip_blacklist_entries.values())
-                f.write(f"# entries: {len(self.ip_blacklist_entries)} sources: {total_sources}\n")
-                for entry, metas in sorted(self.ip_blacklist_entries.items()):
-                    names = [m.get("source_name") or m.get("source_id") for m in metas]
-                    reason = ", ".join(names) if names else ""
-                    f.write(f"{entry}  {reason}\n")
+            """No-op: IP blacklist entries are persisted to DB via replace/delete methods."""
+            pass

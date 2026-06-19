@@ -243,6 +243,12 @@ class DbMixin:
                     key TEXT PRIMARY KEY,
                     value TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS working_proxies (
+                    address TEXT PRIMARY KEY,
+                    country TEXT NOT NULL DEFAULT '',
+                    latency REAL NOT NULL DEFAULT 0,
+                    score REAL NOT NULL DEFAULT 0
+                );
             """)
             conn.commit()
             if close_after:

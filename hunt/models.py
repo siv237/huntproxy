@@ -150,6 +150,5 @@ class ProxyRating:
             "listen_country_code": self.listen_country_code,
             "listen_city": self.listen_city,
             "listen_isp": self.listen_isp,
-            "source_ids": self.source_ids,
             "ssl_supported": self.ssl_supported,
         }

@@ -1,5 +1,6 @@
 """Functional split of the huntproxy backend."""
 
+from hunt.constants import logger
 
 
 class BlacklistMixin:
@@ -35,24 +36,29 @@ class BlacklistMixin:
             self._emit(f"Removed from blacklist: {address}", "info")
 
     def _load_blacklist_file(self):
-            bf = self.blacklist_file
-            if bf.exists():
-                try:
-                    for line in bf.read_text().splitlines():
-                        line = line.strip()
-                        if not line or line.startswith("#"):
-                            continue
-                        parts = line.split(maxsplit=1)
-                        addr = parts[0]
-                        self.blacklist[addr] = parts[1] if len(parts) > 1 else ""
-                        if addr in self.ratings:
-                            self.ratings[addr].in_blacklist = True
-                            self.ratings[addr].blacklist_reason = self.blacklist[addr]
-                except Exception:
-                    pass
+            """Load blacklist from DB (called as fallback if not loaded in _load_state)."""
+            try:
+                conn = self._db()
+                for row in conn.execute("SELECT address, reason FROM blacklist"):
+                    addr = row["address"]
+                    self.blacklist[addr] = row["reason"] or ""
+                    if addr in self.ratings:
+                        self.ratings[addr].in_blacklist = True
+                        self.ratings[addr].blacklist_reason = self.blacklist[addr]
+                conn.close()
+            except Exception as e:
+                logger.error(f"load_blacklist db: {e}")
 
     def _save_blacklist(self):
-            with open(self.blacklist_file, "w") as f:
-                f.write("# huntproxy blacklist (operator-curated, NOT dead proxies)\n")
-                for addr, reason in sorted(self.blacklist.items()):
-                    f.write(f"{addr}  {reason}\n")
+            """Save blacklist to DB."""
+            try:
+                conn = self._db()
+                conn.execute("DELETE FROM blacklist")
+                conn.executemany(
+                    "INSERT INTO blacklist (address, reason) VALUES (?, ?)",
+                    [(addr, reason or "") for addr, reason in self.blacklist.items()],
+                )
+                conn.commit()
+                conn.close()
+            except Exception as e:
+                logger.error(f"save_blacklist db: {e}")

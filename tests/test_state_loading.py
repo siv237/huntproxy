@@ -4,21 +4,25 @@ import sqlite3
 import time
 
 
+def _insert_rating(state, d):
+    """Insert a rating dict into the DB so _load_state can read it."""
+    conn = state._db()
+    conn.execute("INSERT OR REPLACE INTO ratings (address, data) VALUES (?, ?)",
+                 (d["address"], json.dumps(d)))
+    conn.commit()
+    conn.close()
+
+
 class TestStateLoading:
     def test_load_state_repairs_zero_latency_avg(self, state, tmp_data_dir):
-        data = {
-            "proxies": [
-                {
-                    "address": "1.2.3.4:8080",
-                    "last_status": "ok",
-                    "checks_total": 1,
-                    "checks_ok": 1,
-                    "last_latency": 0.66,
-                    "latency_avg": 0.0,
-                }
-            ]
-        }
-        (tmp_data_dir / "ratings.json").write_text(json.dumps(data))
+        _insert_rating(state, {
+            "address": "1.2.3.4:8080",
+            "last_status": "ok",
+            "checks_total": 1,
+            "checks_ok": 1,
+            "last_latency": 0.66,
+            "latency_avg": 0.0,
+        })
         state._load_state()
         r = state.ratings["1.2.3.4:8080"]
         assert r.latency_avg == 0.66
@@ -26,21 +30,16 @@ class TestStateLoading:
         assert r.latency_count == 1
 
     def test_load_state_uses_stored_latency_sum_and_count(self, state, tmp_data_dir):
-        data = {
-            "proxies": [
-                {
-                    "address": "1.2.3.4:8080",
-                    "last_status": "ok",
-                    "checks_total": 3,
-                    "checks_ok": 3,
-                    "last_latency": 0.5,
-                    "latency_avg": 0.6,
-                    "latency_sum": 1.8,
-                    "latency_count": 3,
-                }
-            ]
-        }
-        (tmp_data_dir / "ratings.json").write_text(json.dumps(data))
+        _insert_rating(state, {
+            "address": "1.2.3.4:8080",
+            "last_status": "ok",
+            "checks_total": 3,
+            "checks_ok": 3,
+            "last_latency": 0.5,
+            "latency_avg": 0.6,
+            "latency_sum": 1.8,
+            "latency_count": 3,
+        })
         state._load_state()
         r = state.ratings["1.2.3.4:8080"]
         assert r.latency_avg == 0.6
@@ -48,41 +47,31 @@ class TestStateLoading:
         assert r.latency_count == 3
 
     def test_load_state_repairs_inconsistent_sum(self, state, tmp_data_dir):
-        data = {
-            "proxies": [
-                {
-                    "address": "1.2.3.4:8080",
-                    "last_status": "ok",
-                    "checks_total": 2,
-                    "checks_ok": 2,
-                    "last_latency": 0.5,
-                    "latency_avg": 0.7,
-                    "latency_sum": 0.1,
-                    "latency_count": 2,
-                }
-            ]
-        }
-        (tmp_data_dir / "ratings.json").write_text(json.dumps(data))
+        _insert_rating(state, {
+            "address": "1.2.3.4:8080",
+            "last_status": "ok",
+            "checks_total": 2,
+            "checks_ok": 2,
+            "last_latency": 0.5,
+            "latency_avg": 0.7,
+            "latency_sum": 0.1,
+            "latency_count": 2,
+        })
         state._load_state()
         r = state.ratings["1.2.3.4:8080"]
         assert r.latency_avg == 0.7
         assert r.latency_sum == 1.4
 
     def test_load_state_preserves_speed_history(self, state, tmp_data_dir):
-        data = {
-            "proxies": [
-                {
-                    "address": "1.2.3.4:8080",
-                    "last_status": "ok",
-                    "checks_total": 2,
-                    "checks_ok": 2,
-                    "speed_sum": 200.0,
-                    "speed_count": 2,
-                    "speed_avg": 100.0,
-                }
-            ]
-        }
-        (tmp_data_dir / "ratings.json").write_text(json.dumps(data))
+        _insert_rating(state, {
+            "address": "1.2.3.4:8080",
+            "last_status": "ok",
+            "checks_total": 2,
+            "checks_ok": 2,
+            "speed_sum": 200.0,
+            "speed_count": 2,
+            "speed_avg": 100.0,
+        })
         state._load_state()
         r = state.ratings["1.2.3.4:8080"]
         assert r.speed_sum == 200.0
@@ -112,7 +101,6 @@ class TestStateLoading:
         state.ratings["1.2.3.4:8080"] = r
         state.blacklist_add("9.9.9.9:8080", "bad actor")
         state._save_state()
-        (tmp_data_dir / "ratings.json").unlink()
         state2 = hunt.HuntState({"ip_blacklists": {"enabled": False}})
         state2._load_state()
         assert "1.2.3.4:8080" in state2.ratings
@@ -179,14 +167,12 @@ class TestDbRecovery:
 class TestStaleRevalidation:
     def test_revalidate_stale_proxies_from_working_file(self, state, tmp_data_dir):
         import asyncio
-        import os
         wf = tmp_data_dir / "working.txt"
         wf.write_text("1.2.3.4:8080 US 0.66\n")
-        # Make the working file older than an hour so proxies are considered stale.
-        old_time = time.time() - 7200
-        os.utime(wf, (old_time, old_time))
         state._load_working_file()
         r = state.ratings["1.2.3.4:8080"]
+        # Make last_check old enough to be considered stale
+        r.last_check = time.time() - 7200
         assert r.checks_total == 1
         asyncio.run(state._revalidate_stale_proxies())
         # The re-check will fail because 1.2.3.4 is unreachable, but it will

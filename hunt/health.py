@@ -523,85 +523,78 @@ class HealthMixin:
                 self._health_running = False
 
     async def _revalidate_stale_proxies(self):
-        """Re-check proxies that are stale at startup.
+            """Re-check proxies that are stale at startup.
 
-        Proxies from the main working.txt list are re-checked if the file is
-        older than an hour. Any other alive proxy whose last check is older
-        than an hour is also re-checked.
-        """
-        now = time.time()
-        stale_threshold = now - 3600
-        candidates = []
-        loaded = getattr(self, '_working_file_loaded', set())
-        loaded_mtime = getattr(self, '_working_file_mtime', now)
-        working_file_stale = now - loaded_mtime > 3600
-        for addr in list(self.ratings.keys()):
-            r = self.ratings[addr]
-            if r.in_blacklist:
-                continue
-            if r.last_check < stale_threshold:
-                candidates.append(r)
-            elif working_file_stale and addr in loaded:
-                candidates.append(r)
-        if not candidates:
-            return
-        self._emit(f"Re-validating {len(candidates)} stale proxies at startup", "info")
-        sem = asyncio.Semaphore(self.health_parallel)
-        lock = asyncio.Lock()
-        ok_count = fail_count = 0
+            Any alive proxy whose last check is older than an hour is re-checked.
+            """
+            now = time.time()
+            stale_threshold = now - 3600
+            candidates = []
+            for addr in list(self.ratings.keys()):
+                r = self.ratings[addr]
+                if r.in_blacklist:
+                    continue
+                if r.last_check < stale_threshold:
+                    candidates.append(r)
+            if not candidates:
+                return
+            self._emit(f"Re-validating {len(candidates)} stale proxies at startup", "info")
+            sem = asyncio.Semaphore(self.health_parallel)
+            lock = asyncio.Lock()
+            ok_count = fail_count = 0
 
-        async def check(r: ProxyRating):
-            nonlocal ok_count, fail_count
-            async with sem:
-                http_task = asyncio.create_task(self._check_proxy(r.address))
-                ssl_task = asyncio.create_task(self._check_ssl(r.address))
-                results = await asyncio.gather(http_task, ssl_task, return_exceptions=True)
-                if isinstance(results[0], Exception):
-                    ok, country, supports_connect, mitm_suspect, egress, listen, http_latency, cc, fast_fail = False, "", False, False, {}, {}, 0.0, "", False
-                else:
-                    ok, country, supports_connect, mitm_suspect, egress, listen, http_latency, cc, fast_fail = results[0]
-                if isinstance(results[1], Exception):
-                    ssl_ok, ssl_country, ssl_cc, ssl_egress, ssl_latency, ssl_supports_connect = False, "", "", {}, 0.0, False
-                else:
-                    ssl_ok, ssl_country, ssl_cc, ssl_egress, ssl_latency, ssl_supports_connect = results[1]
-                if not ok and ssl_ok:
-                    ok = True
-                    country = ssl_country
-                    cc = ssl_cc
-                    egress = ssl_egress
-                    http_latency = ssl_latency
-                    supports_connect = ssl_supports_connect
-                elif ok and ssl_ok:
-                    if not egress and ssl_egress:
-                        egress = ssl_egress
-                    if not supports_connect and ssl_supports_connect:
-                        supports_connect = ssl_supports_connect
-                # Non-SOCKS proxies must support CONNECT to be useful for HTTPS.
-                if ok and not self._is_socks_addr(r.address) and not supports_connect:
-                    ok = False
-                speed = 0.0
-                if ok:
-                    host, port_str = r.address.rsplit(":", 1)
-                    is_socks = port_str.isdigit() and int(port_str) in (1080, 10808, 9050, 4145)
-                    use_ssl = ssl_ok and not is_socks
-                    try:
-                        speed = await self._measure_speed(host, int(port_str), is_socks,
-                                                           use_ssl=use_ssl, supports_connect=supports_connect)
-                    except Exception:
-                        speed = 0.0
-                async with lock:
-                    self._check_streak += 1
-                    if ok:
-                        ok_count += 1
-                        self._fail_streak = 0
+            async def check(r: ProxyRating):
+                nonlocal ok_count, fail_count
+                async with sem:
+                    http_task = asyncio.create_task(self._check_proxy(r.address))
+                    ssl_task = asyncio.create_task(self._check_ssl(r.address))
+                    results = await asyncio.gather(http_task, ssl_task, return_exceptions=True)
+                    if isinstance(results[0], Exception):
+                        ok, country, supports_connect, mitm_suspect, egress, listen, http_latency, cc, fast_fail = False, "", False, False, {}, {}, 0.0, "", False
                     else:
-                        fail_count += 1
-                        self._fail_streak += 1
-                    self._update_rating(r.address, ok, country, http_latency, supports_connect, mitm_suspect, egress, listen, speed, country_code=cc, ssl_supported=ssl_ok)
+                        ok, country, supports_connect, mitm_suspect, egress, listen, http_latency, cc, fast_fail = results[0]
+                    if isinstance(results[1], Exception):
+                        ssl_ok, ssl_country, ssl_cc, ssl_egress, ssl_latency, ssl_supports_connect = False, "", "", {}, 0.0, False
+                    else:
+                        ssl_ok, ssl_country, ssl_cc, ssl_egress, ssl_latency, ssl_supports_connect = results[1]
+                    if not ok and ssl_ok:
+                        ok = True
+                        country = ssl_country
+                        cc = ssl_cc
+                        egress = ssl_egress
+                        http_latency = ssl_latency
+                        supports_connect = ssl_supports_connect
+                    elif ok and ssl_ok:
+                        if not egress and ssl_egress:
+                            egress = ssl_egress
+                        if not supports_connect and ssl_supports_connect:
+                            supports_connect = ssl_supports_connect
+                    # Non-SOCKS proxies must support CONNECT to be useful for HTTPS.
+                    if ok and not self._is_socks_addr(r.address) and not supports_connect:
+                        ok = False
+                    speed = 0.0
+                    if ok:
+                        host, port_str = r.address.rsplit(":", 1)
+                        is_socks = port_str.isdigit() and int(port_str) in (1080, 10808, 9050, 4145)
+                        use_ssl = ssl_ok and not is_socks
+                        try:
+                            speed = await self._measure_speed(host, int(port_str), is_socks,
+                                                               use_ssl=use_ssl, supports_connect=supports_connect)
+                        except Exception:
+                            speed = 0.0
+                    async with lock:
+                        self._check_streak += 1
+                        if ok:
+                            ok_count += 1
+                            self._fail_streak = 0
+                        else:
+                            fail_count += 1
+                            self._fail_streak += 1
+                        self._update_rating(r.address, ok, country, http_latency, supports_connect, mitm_suspect, egress, listen, speed, country_code=cc, ssl_supported=ssl_ok)
 
-        tasks = [asyncio.create_task(check(r)) for r in candidates]
-        await asyncio.gather(*tasks, return_exceptions=True)
-        self._save_state()
-        self._save_working_file()
-        self._rating_updates_since_save = 0
-        self._emit(f"Startup re-validation done: {ok_count} ok, {fail_count} failed", "ok")
+            tasks = [asyncio.create_task(check(r)) for r in candidates]
+            await asyncio.gather(*tasks, return_exceptions=True)
+            self._save_state()
+            self._save_working_file()
+            self._rating_updates_since_save = 0
+            self._emit(f"Startup re-validation done: {ok_count} ok, {fail_count} failed", "ok")
