@@ -147,6 +147,35 @@ class SnapshotMixin:
                 logger.error("DB get_history: %s", e)
                 return []
 
+    def get_proxy_checks(self, address: str, limit: int = 30) -> dict:
+            try:
+                conn = self._stats_db()
+                rows = conn.execute(
+                    "SELECT ts, latency, speed, ok FROM proxy_checks WHERE address=? ORDER BY ts DESC LIMIT ?",
+                    (address, limit)
+                ).fetchall()
+                conn.close()
+            except Exception as e:
+                logger.error("DB get_proxy_checks: %s", e)
+                return {"checks": [], "p95": 0.0, "max_speed": 0.0, "errors": 0, "count": 0}
+            checks = [dict(r) for r in rows]
+            checks.reverse()
+            latencies = sorted(r["latency"] for r in checks if r["latency"] > 0)
+            speeds = [r["speed"] for r in checks if r["speed"] > 0]
+            errors = sum(1 for r in checks if not r["ok"])
+            p95 = 0.0
+            if latencies:
+                idx = max(0, int(len(latencies) * 0.95) - 1)
+                p95 = round(latencies[idx], 3)
+            max_speed = round(max(speeds), 1) if speeds else 0.0
+            return {
+                "checks": checks,
+                "p95": p95,
+                "max_speed": max_speed,
+                "errors": errors,
+                "count": len(checks),
+            }
+
     def get_live_traffic(self) -> dict:
             """Return total traffic bytes (last 24h) and request count."""
             cutoff = time.time() - 86400

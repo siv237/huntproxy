@@ -3,6 +3,7 @@
 import asyncio
 import json
 import time
+from hunt.constants import logger
 from hunt.geo import country_code_from_name
 from hunt.models import ProxyRating
 
@@ -857,6 +858,19 @@ class CheckingMixin:
                 "egress_country": data.get("country", ""),
             }
 
+    def _record_proxy_check(self, addr: str, ts: float, latency: float,
+                                  speed: float, ok: bool):
+            try:
+                conn = self._stats_db()
+                conn.execute(
+                    "INSERT INTO proxy_checks (address, ts, latency, speed, ok) VALUES (?,?,?,?,?)",
+                    (addr, ts, latency, speed, 1 if ok else 0),
+                )
+                conn.commit()
+                conn.close()
+            except Exception as e:
+                logger.error("record proxy check: %s", e)
+
     def _update_rating(self, addr: str, ok: bool, country: str, latency: float,
                             supports_connect: bool = False, mitm_suspect: bool = False,
                             egress: dict = None, listen: dict = None,
@@ -879,6 +893,7 @@ class CheckingMixin:
                         r.protocol = "socks4"
                 except ValueError:
                     pass
+            was_working = r.checks_ok > 0
             r.checks_total += 1
             r.last_check = time.time()
             r.last_latency = latency
@@ -925,6 +940,8 @@ class CheckingMixin:
             self.ratings[addr] = r
             if r.egress_ip:
                 self._apply_ip_blacklist_to_proxy(addr, r.egress_ip)
+            if ok or was_working:
+                self._record_proxy_check(addr, r.last_check, latency, speed, ok)
             self._rating_updates_since_save += 1
             if self._rating_updates_since_save >= 25:
                 self._save_state()

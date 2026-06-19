@@ -684,7 +684,7 @@
     "statusAvailable": "Status: available",
     "p95": "P95",
     "maxSpeed": "Max speed",
-    "last30checks": "Last 30 checks",
+    "lastChecks": "Last {count} checks",
     "errors": "Errors",
     "tag": "Tag",
     "favorite": "Favorite",

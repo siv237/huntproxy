@@ -157,6 +157,15 @@ class DbMixin:
                     snapshot TEXT NOT NULL DEFAULT '{}'
                 );
                 CREATE INDEX IF NOT EXISTS idx_actions_ts ON actions(ts);
+                CREATE TABLE IF NOT EXISTS proxy_checks (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    address TEXT NOT NULL,
+                    ts REAL NOT NULL,
+                    latency REAL DEFAULT 0,
+                    speed REAL DEFAULT 0,
+                    ok INTEGER NOT NULL DEFAULT 0
+                );
+                CREATE INDEX IF NOT EXISTS idx_proxy_checks_addr_ts ON proxy_checks(address, ts DESC);
             """)
             conn.commit()
             for col, default in [

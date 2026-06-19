@@ -11,13 +11,15 @@ const proxyCard = {
 
     try {
       const p = await api.proxyDetail(addr);
-      this._render(modal, p, overlay);
+      let checksData = null;
+      try { checksData = await api.proxyChecks(addr, 30); } catch (e) { checksData = { checks: [], p95: 0, max_speed: 0, errors: 0, count: 0 }; }
+      this._render(modal, p, checksData, overlay);
     } catch (e) {
       modal.innerHTML = `<div style="padding:40px;color:var(--danger)">${t('common.error', {message: ui.escHtml(e.message)})}</div>`;
     }
   },
 
-  _render(modal, p, overlay) {
+  _render(modal, p, checksData, overlay) {
     modal.innerHTML = '';
 
     modal.appendChild(this._topBar(p, overlay));
@@ -29,7 +31,7 @@ const proxyCard = {
     content.appendChild(this._securityBadges(p));
 
     const midGrid = ui.el('div', 'proxy-card-grid-3');
-    midGrid.appendChild(this._performance(p));
+    midGrid.appendChild(this._performance(p, checksData));
     midGrid.appendChild(this._security(p));
     midGrid.appendChild(this._network(p));
     content.appendChild(midGrid);
@@ -46,8 +48,11 @@ const proxyCard = {
 
   _refresh(modal, addr, overlay) {
     modal.innerHTML = `<div style="padding:40px;text-align:center;color:var(--text-muted)">${t('common.loading')}</div>`;
-    api.proxyDetail(addr).then(p => {
-      this._render(modal, p, overlay);
+    Promise.all([
+      api.proxyDetail(addr),
+      api.proxyChecks(addr, 30).catch(() => ({ checks: [], p95: 0, max_speed: 0, errors: 0, count: 0 })),
+    ]).then(([p, checksData]) => {
+      this._render(modal, p, checksData, overlay);
     }).catch(e => {
       modal.innerHTML = `<div style="padding:40px;color:var(--danger)">${t('common.error', {message: ui.escHtml(e.message)})}</div>`;
     });
@@ -167,31 +172,94 @@ const proxyCard = {
     return { cls: 'good', label: t('proxyCard.status.ready') };
   },
 
-  _performance(p) {
+  _performance(p, checksData) {
     const section = ui.el('div', 'proxy-card-section');
     section.appendChild(this._sectionTitle(t('proxyCard.performance'), this._svg('bar-chart')));
 
     const grid = ui.el('div', 'proxy-card-kpi-grid');
 
+    const checks = checksData || { checks: [], p95: 0, max_speed: 0, errors: 0, count: 0 };
+    const checkList = checks.checks || [];
+
     const avgLat = p.latency_avg || 0;
     const lastLat = p.last_latency || 0;
     const latValue = avgLat ? ui.fmtLatency(avgLat) : ui.fmtLatency(lastLat);
-    grid.appendChild(this._kpi(latValue, t('proxyCard.avgLatency')));
+    grid.appendChild(this._kpiWithSpark(latValue, t('proxyCard.avgLatency'), 's',
+      this._sparklinePoints(checkList, 'latency'), 'var(--success)',
+      `${t('proxyCard.p95')} ${checks.p95 ? ui.fmtLatency(checks.p95) : '—'}`));
 
     const speed = p.speed_avg || 0;
     const speedValue = speed ? speed.toFixed(0) : '—';
-    grid.appendChild(this._kpi(speedValue, t('proxyCard.avgSpeed'), '', 'KB/s'));
+    grid.appendChild(this._kpiWithSpark(speedValue, t('proxyCard.avgSpeed'), 'KB/s',
+      this._sparklinePoints(checkList, 'speed'), 'var(--accent)',
+      `${t('proxyCard.maxSpeed')} ${checks.max_speed ? checks.max_speed.toFixed(0) + ' KB/s' : '—'}`));
 
     const sr = p.success_rate || 0;
     const srPct = Math.round(sr * 100);
-    grid.appendChild(this._kpi(srPct + '%', t('proxyCard.successRate')));
+    grid.appendChild(this._kpiWithSpark(srPct + '%', t('proxyCard.successRate'), '',
+      this._sparklineSuccessPoints(checkList), 'var(--success)',
+      `${t('proxyCard.lastChecks', { count: checks.count || 0 })}`));
 
-    const checks = (p.checks_total || 0);
+    const totalChecks = (p.checks_total || 0);
     const checksOk = (p.checks_ok || 0);
-    grid.appendChild(this._kpi(`${checksOk}/${checks}`, t('proxyCard.checks')));
+    grid.appendChild(this._kpiWithSpark(`${checksOk}/${totalChecks}`, t('proxyCard.checks'), '',
+      this._sparklineOkPoints(checkList), 'var(--success)',
+      `${t('proxyCard.errors')} ${checks.errors || 0}`));
 
     section.appendChild(grid);
     return section;
+  },
+
+  _sparklinePoints(checks, field) {
+    return checks.map(c => c[field] || 0).filter(v => v > 0);
+  },
+
+  _sparklineSuccessPoints(checks) {
+    if (!checks.length) return [];
+    const result = [];
+    for (let i = 0; i < checks.length; i++) {
+      const ok = checks[i].ok ? 1 : 0;
+      const win = checks.slice(Math.max(0, i - 4), i + 1);
+      result.push(win.reduce((a, c) => a + (c.ok ? 1 : 0), 0) / win.length);
+    }
+    return result;
+  },
+
+  _sparklineOkPoints(checks) {
+    return checks.map(c => c.ok ? 1 : 0);
+  },
+
+  _kpiWithSpark(value, label, unit, points, color, sub) {
+    const kpi = ui.el('div', 'proxy-card-kpi');
+    const val = ui.el('div', 'proxy-card-kpi-value', { html: `${ui.escHtml(String(value))}${unit ? `<small>${ui.escHtml(unit)}</small>` : ''}` });
+    kpi.appendChild(val);
+    kpi.appendChild(ui.el('div', 'proxy-card-kpi-label', { text: label }));
+    if (points && points.length >= 2) {
+      kpi.appendChild(this._sparklineSvg(points, color));
+    }
+    if (sub) {
+      kpi.appendChild(ui.el('div', 'proxy-card-kpi-sub', { text: sub }));
+    }
+    return kpi;
+  },
+
+  _sparklineSvg(points, color) {
+    const w = 100, h = 28;
+    const min = Math.min(...points, 0);
+    const max = Math.max(...points, 0.001);
+    const range = max - min || 1;
+    const n = points.length;
+    const stepX = w / (n - 1);
+    const coords = points.map((v, i) => {
+      const x = i * stepX;
+      const y = h - ((v - min) / range) * (h - 4) - 2;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    });
+    const linePath = `M${coords.join(' L')}`;
+    const areaPath = `M0,${h} L${coords.join(' L')} L${w},${h} Z`;
+    const svg = `<svg class="proxy-card-sparkline" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"><path class="area" d="${areaPath}" style="fill:${color}"/><path d="${linePath}" style="stroke:${color}"/></svg>`;
+    const wrap = ui.el('div', 'proxy-card-sparkline-wrap', { html: svg });
+    return wrap;
   },
 
   _kpi(value, label, unit = '') {

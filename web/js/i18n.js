@@ -33,7 +33,7 @@ const i18n = {
   async loadLang(lang) {
     if (this._loaded[lang]) return;
     try {
-      const res = await fetch(`/locales/${lang}.json?v=6`);
+      const res = await fetch(`/locales/${lang}.json?v=7`);
       if (!res.ok) throw new Error(res.status);
       this._translations[lang] = await res.json();
       this._loaded[lang] = true;
@@ -53,7 +53,7 @@ const i18n = {
   async _discoverLangs() {
     if (this._knownLangs) return;
     try {
-      const res = await fetch('/locales/index.json?v=6');
+      const res = await fetch('/locales/index.json?v=7');
       if (res.ok) {
         this._knownLangs = await res.json();
         return;

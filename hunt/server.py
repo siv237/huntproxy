@@ -899,6 +899,14 @@ class HuntServer:
                 "proxies": proxy_list,
             }), 200, "application/json"
 
+        if path.startswith("/api/proxy-checks/") and method == "GET":
+            addr = path[len("/api/proxy-checks/"):]
+            addr = unquote(addr)
+            qs = _qs(raw_path)
+            limit = int(qs.get("limit", 30))
+            data = self.state.get_proxy_checks(addr, limit)
+            return json.dumps(data), 200, "application/json"
+
         if path.startswith("/api/proxy/") and method == "GET":
             addr = path[len("/api/proxy/"):]
             addr = unquote(addr)

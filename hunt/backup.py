@@ -61,6 +61,10 @@ BACKUP_GROUPS = {
         "label": "Canary history",
         "tables": [("stats", "canary_history")],
     },
+    "proxy_checks": {
+        "label": "Proxy check history",
+        "tables": [("stats", "proxy_checks")],
+    },
 }
 
 

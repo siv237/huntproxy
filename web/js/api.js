@@ -53,6 +53,7 @@ const api = {
     return this.request(`/api/proxies?${q}`);
   },
   proxyDetail(addr) { return this.request(`/api/proxy/${encodeURIComponent(addr)}`); },
+  proxyChecks(addr, limit = 30) { return this.request(`/api/proxy-checks/${encodeURIComponent(addr)}?limit=${limit}`); },
   blacklist(params = {}) {
     const q = new URLSearchParams(params).toString();
     return this.request(`/api/blacklist?${q}`);

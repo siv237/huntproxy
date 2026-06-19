@@ -637,7 +637,7 @@
     "ipBlacklist": "IP blacklist",
     "ipBlacklistMultiplier": "IP blacklist multiplier",
     "isp": "ISP",
-    "last30checks": "Last 30 checks",
+    "lastChecks": "Last {count} checks",
     "lastCheck": "Last check",
     "lastLatency": "Last latency",
     "lastOk": "Last OK",
