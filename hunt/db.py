@@ -276,6 +276,24 @@ class DbMixin:
                 );
                 CREATE INDEX IF NOT EXISTS idx_ip_bl_entry ON ip_blacklist_entries(entry);
                 CREATE INDEX IF NOT EXISTS idx_ip_bl_source ON ip_blacklist_entries(source_id);
+                CREATE TABLE IF NOT EXISTS blocklist_sources (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    country TEXT NOT NULL DEFAULT '',
+                    direction TEXT NOT NULL DEFAULT 'inside',
+                    list_type TEXT NOT NULL DEFAULT 'ip',
+                    url TEXT NOT NULL,
+                    download_proxy TEXT NOT NULL DEFAULT '',
+                    enabled INTEGER NOT NULL DEFAULT 1,
+                    priority INTEGER NOT NULL DEFAULT 0,
+                    last_fetched_at REAL NOT NULL DEFAULT 0,
+                    last_fetch_status TEXT NOT NULL DEFAULT '',
+                    last_fetch_count INTEGER NOT NULL DEFAULT 0,
+                    last_fetch_error TEXT NOT NULL DEFAULT '',
+                    total_fetched INTEGER NOT NULL DEFAULT 0,
+                    created_at REAL NOT NULL DEFAULT 0,
+                    updated_at REAL NOT NULL DEFAULT 0
+                );
                 CREATE TABLE IF NOT EXISTS ratings (
                     address TEXT PRIMARY KEY,
                     data TEXT NOT NULL
@@ -299,5 +317,20 @@ class DbMixin:
                 );
             """)
             conn.commit()
+            self._migrate_state_db_columns(conn)
             if close_after:
                 conn.close()
+
+    def _migrate_state_db_columns(self, conn):
+            """Add columns that may be missing in older databases."""
+            migrations = [
+                ("blocklist_sources", "download_proxy", "TEXT NOT NULL DEFAULT ''"),
+            ]
+            for table, column, coldef in migrations:
+                try:
+                    cols = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+                    if column not in cols:
+                        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {coldef}")
+                        conn.commit()
+                except Exception:
+                    pass

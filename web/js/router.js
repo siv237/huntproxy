@@ -11,6 +11,7 @@ const router = {
     blacklist: ['page.blacklist.title', 'page.blacklist.subtitle'],
     favorites: ['page.favorites.title', 'page.favorites.subtitle'],
     'ip-blacklists': ['page.ipBlacklists.title', 'page.ipBlacklists.subtitle'],
+    'blocklists': ['page.blocklists.title', 'page.blocklists.subtitle'],
     analytics: ['page.analytics.title', 'page.analytics.subtitle'],
     logs: ['page.logs.title', 'page.logs.subtitle'],
     actions: ['page.actions.title', 'page.actions.subtitle'],

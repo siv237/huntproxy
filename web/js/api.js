@@ -114,6 +114,15 @@ const api = {
   },
   ipBlacklistMatches() { return this.request('/api/ip-blacklist/matches'); },
 
+  // Country Blocklists
+  blocklists() { return this.request('/api/blocklists'); },
+  blocklistGet(id) { return this.request(`/api/blocklists/${encodeURIComponent(id)}`); },
+  blocklistCreate(data) { return this.request('/api/blocklists', 'POST', data); },
+  blocklistUpdate(id, data) { return this.request(`/api/blocklists/${encodeURIComponent(id)}`, 'POST', data); },
+  blocklistDelete(id) { return this.request(`/api/blocklists/${encodeURIComponent(id)}`, 'DELETE'); },
+  blocklistToggle(id) { return this.request(`/api/blocklists/${encodeURIComponent(id)}/toggle`, 'POST'); },
+  blocklistFetch() { return this.request('/api/blocklists/fetch', 'POST'); },
+
   // Custom Proxies
   customProxies() { return this.request('/api/custom-proxies'); },
   customProxyGet(id) { return this.request(`/api/custom-proxies/${encodeURIComponent(id)}`); },

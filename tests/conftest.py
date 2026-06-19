@@ -138,6 +138,7 @@ _GROUPS = {
     "actions": "Actions / Snapshots",
     "api": "API",
     "blacklist": "Blacklist",
+    "blocklists": "Country Blocklists",
     "custom_proxies": "Custom Proxies",
     "domain_lists": "Domain Lists / Routing",
     "favorites": "Favorites",

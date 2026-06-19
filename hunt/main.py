@@ -48,6 +48,9 @@ async def amain(config: dict):
     if state.ip_blacklist_enabled:
         asyncio.create_task(state._ip_blacklist_loop())
 
+    # Start periodic country blocklist refresh
+    asyncio.create_task(state._blocklist_loop())
+
     print("=" * 56)
     print(f"  huntproxy HUNT — web UI: http://{host}:{port}/")
     print(f"  data dir: {DATA_DIR}")

@@ -1444,6 +1444,62 @@ class HuntServer:
             matches = self.state.get_ip_blacklist_matches()
             return json.dumps({"matches": matches, "total": len(matches)}), 200, "application/json"
 
+        # === Country Blocklists API ===
+        if path == "/api/blocklists" and method == "GET":
+            sources = self.state.get_blocklist_sources()
+            return json.dumps({"sources": sources}), 200, "application/json"
+
+        if path == "/api/blocklists" and method == "POST":
+            try:
+                data = json.loads(body or b"{}")
+            except Exception:
+                data = {}
+            result = self.state.create_blocklist_source(data)
+            if result:
+                return json.dumps({"ok": True, "source": result}), 200, "application/json"
+            return json.dumps({"ok": False, "error": "id, name and url are required"}), 400, "application/json"
+
+        if path == "/api/blocklists/fetch" and method == "POST":
+            if getattr(self.state, '_fetching_blocklists', False):
+                return json.dumps({"ok": False, "error": "fetch already in progress"}), 409, "application/json"
+            try:
+                results = await self.state._download_blocklists()
+                total = sum(results.values())
+                return json.dumps({"ok": True, "total_entries": total, "sources": [{"id": k, "count": v} for k, v in results.items()]}), 200, "application/json"
+            except Exception as e:
+                logger.error("blocklists/fetch: %s", e)
+                return json.dumps({"ok": False, "error": str(e)}), 500, "application/json"
+
+        if path.startswith("/api/blocklists/") and not path.endswith("/toggle") and not path.endswith("/fetch"):
+            source_id = unquote(path[len("/api/blocklists/"):])
+            if method == "GET":
+                result = self.state.get_blocklist_source(source_id)
+                if result:
+                    return json.dumps(result), 200, "application/json"
+                return json.dumps({"error": "not found"}), 404, "application/json"
+            elif method == "POST":
+                try:
+                    data = json.loads(body or b"{}")
+                except Exception:
+                    data = {}
+                result = self.state.update_blocklist_source(source_id, data)
+                if result:
+                    return json.dumps({"ok": True, "source": result}), 200, "application/json"
+                return json.dumps({"ok": False, "error": "not found"}), 404, "application/json"
+            elif method == "DELETE":
+                ok = self.state.delete_blocklist_source(source_id)
+                if ok:
+                    return json.dumps({"ok": True}), 200, "application/json"
+                return json.dumps({"ok": False, "error": "not found"}), 404, "application/json"
+
+        if path.endswith("/toggle") and path.startswith("/api/blocklists/"):
+            source_id = unquote(path[len("/api/blocklists/"):-len("/toggle")])
+            if method == "POST":
+                result = self.state.toggle_blocklist_source(source_id)
+                if result:
+                    return json.dumps({"ok": True, "source": result}), 200, "application/json"
+                return json.dumps({"ok": False, "error": "not found"}), 404, "application/json"
+
         # === Custom Proxies API ===
         if path == "/api/custom-proxies" and method == "GET":
             proxies = self.state.get_custom_proxies()

@@ -84,6 +84,11 @@ class HealthMixin:
                 total_ip_bl = sum(ip_bl_results.values())
                 self._emit(f"Downloaded {total_ip_bl} IP blacklist entries from {len(ip_bl_results)} sources", "info")
 
+                self._emit("Downloading country blocklists...", "info")
+                bl_results = await self._download_blocklists()
+                total_bl = sum(bl_results.values())
+                self._emit(f"Downloaded {total_bl} blocklist entries from {len(bl_results)} sources", "info")
+
                 self.phase = self.PHASE_VALIDATE
                 self.phase_started = time.time()
                 self.checking_total = len(raw)

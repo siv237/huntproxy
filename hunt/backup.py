@@ -25,6 +25,10 @@ BACKUP_GROUPS = {
         "label": "Downloaded IP blacklist",
         "tables": [("state", "ip_blacklist_entries"), ("state", "ip_blacklist_sources")],
     },
+    "blocklists": {
+        "label": "Country blocklists",
+        "tables": [("state", "blocklist_sources")],
+    },
     "proxy_sources": {
         "label": "Proxy sources",
         "tables": [("state", "proxy_sources"), ("state", "proxy_source_entries")],

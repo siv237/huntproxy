@@ -8,6 +8,7 @@ from hunt.blacklist import BlacklistMixin
 from hunt.favorites import FavoritesMixin
 from hunt.actions import ActionsMixin
 from hunt.backup import BackupMixin
+from hunt.blocklists import BlocklistsMixin
 from hunt.checking import CheckingMixin
 from hunt.constants import DATA_DIR, logger
 from hunt.custom_proxies import CustomProxiesMixin
@@ -24,7 +25,7 @@ from hunt.snapshot import SnapshotMixin
 from pathlib import Path
 from typing import Optional
 
-class HuntState(DbMixin, EventsMixin, SnapshotMixin, HealthMixin, CheckingMixin, BlacklistMixin, IPBlacklistMixin, ProxySourcesMixin, IPBlacklistSourcesMixin, RoutingMixin, CustomProxiesMixin, ActionsMixin, BackupMixin, FavoritesMixin):
+class HuntState(DbMixin, EventsMixin, SnapshotMixin, HealthMixin, CheckingMixin, BlacklistMixin, IPBlacklistMixin, ProxySourcesMixin, IPBlacklistSourcesMixin, BlocklistsMixin, RoutingMixin, CustomProxiesMixin, ActionsMixin, BackupMixin, FavoritesMixin):
     PHASE_IDLE = "idle"
 
     PHASE_DOWNLOAD = "downloading"
@@ -123,6 +124,8 @@ class HuntState(DbMixin, EventsMixin, SnapshotMixin, HealthMixin, CheckingMixin,
             self._migrate_sources()
             self._seed_default_ip_blacklist_sources()
             self._migrate_ip_blacklist_sources()
+            self._seed_default_blocklists()
+            self._migrate_blocklists()
             try:
                 conn = self._stats_db()
                 row = conn.execute("SELECT MAX(ts) as last_ts FROM history").fetchone()
