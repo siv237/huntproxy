@@ -998,6 +998,72 @@
   stroke: none;
 }
 
+/* Check history 72h bar */
+.proxy-card-checkhist {
+  margin-top: clamp(6px, 1cqi, 10px);
+  display: flex;
+  flex-direction: column;
+  gap: clamp(3px, 0.5cqi, 6px);
+}
+
+.proxy-card-checkhist-bar {
+  display: flex;
+  gap: 1px;
+  height: clamp(10px, 1.4cqi, 16px);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.proxy-card-checkhist-seg {
+  flex: 1 1 0;
+  min-width: 0;
+  border-radius: 1px;
+}
+
+.proxy-card-checkhist-seg.ok {
+  background: var(--success);
+}
+
+.proxy-card-checkhist-seg.err {
+  background: var(--danger);
+}
+
+.proxy-card-checkhist-seg.none {
+  background: var(--surface);
+}
+
+.proxy-card-checkhist-legend {
+  display: flex;
+  gap: clamp(6px, 1cqi, 12px);
+  flex-wrap: wrap;
+}
+
+.proxy-card-checkhist-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: clamp(8px, 0.85cqi, 10px);
+  color: var(--text-muted);
+}
+
+.proxy-card-checkhist-dot {
+  width: clamp(6px, 0.8cqi, 8px);
+  height: clamp(6px, 0.8cqi, 8px);
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.proxy-card-checkhist-dot.ok { background: var(--success); }
+.proxy-card-checkhist-dot.err { background: var(--danger); }
+.proxy-card-checkhist-dot.none { background: var(--surface); }
+
+.proxy-card-checkhist-axis {
+  display: flex;
+  justify-content: space-between;
+  font-size: clamp(7px, 0.8cqi, 9px);
+  color: var(--text-muted);
+}
+
 /* Grids */
 .proxy-card-grid-2 {
   display: grid;

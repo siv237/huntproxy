@@ -208,7 +208,63 @@ const proxyCard = {
       `${t('proxyCard.errors')} ${checks.errors || 0}`));
 
     section.appendChild(grid);
+
+    if (checkList.length >= 1) {
+      section.appendChild(this._checkHistory24h(checkList));
+    }
+
     return section;
+  },
+
+  _checkHistory24h(checkList) {
+    const now = Date.now() / 1000;
+    const hours = 72;
+    const cutoff = now - hours * 3600;
+    const segments = 72;
+    const segDur = (hours * 3600) / segments;
+    const buckets = new Array(segments).fill(null);
+
+    for (const c of checkList) {
+      if (c.ts < cutoff) continue;
+      const idx = Math.floor((c.ts - cutoff) / segDur);
+      if (idx >= 0 && idx < segments) {
+        if (buckets[idx] === null) {
+          buckets[idx] = c.ok ? 'ok' : 'err';
+        } else if (buckets[idx] === 'ok' && !c.ok) {
+          buckets[idx] = 'err';
+        }
+      }
+    }
+
+    const wrap = ui.el('div', 'proxy-card-checkhist');
+
+    const bar = ui.el('div', 'proxy-card-checkhist-bar');
+    for (let i = 0; i < segments; i++) {
+      const seg = ui.el('div', `proxy-card-checkhist-seg ${buckets[i] || 'none'}`);
+      bar.appendChild(seg);
+    }
+    wrap.appendChild(bar);
+
+    const legend = ui.el('div', 'proxy-card-checkhist-legend');
+    legend.appendChild(this._legendDot('ok', t('proxyCard.legendOk')));
+    legend.appendChild(this._legendDot('none', t('proxyCard.legendNone')));
+    legend.appendChild(this._legendDot('err', t('proxyCard.legendErr')));
+    wrap.appendChild(legend);
+
+    const axis = ui.el('div', 'proxy-card-checkhist-axis');
+    axis.appendChild(ui.el('span', '', { text: t('proxyCard.h72ago') }));
+    axis.appendChild(ui.el('span', '', { text: t('proxyCard.h36ago') }));
+    axis.appendChild(ui.el('span', '', { text: t('proxyCard.now') }));
+    wrap.appendChild(axis);
+
+    return wrap;
+  },
+
+  _legendDot(cls, label) {
+    const item = ui.el('div', 'proxy-card-checkhist-legend-item');
+    item.appendChild(ui.el('span', `proxy-card-checkhist-dot ${cls}`));
+    item.appendChild(ui.el('span', '', { text: label }));
+    return item;
   },
 
   _sparklinePoints(checks, field) {
