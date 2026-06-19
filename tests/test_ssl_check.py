@@ -4,9 +4,8 @@ import hunt
 
 
 class TestCheckSsl:
-    def test_check_ssl_refused_port(self):
+    def test_check_ssl_refused_port(self, state):
         async def run():
-            state = hunt.HuntState({"ip_blacklists": {"enabled": False}})
             ok, country, country_code, egress, latency, supports_connect = await state._check_ssl("127.0.0.1:1")
             assert ok is False
             assert country == ""

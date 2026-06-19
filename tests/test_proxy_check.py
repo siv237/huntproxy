@@ -44,15 +44,13 @@ class FakeHttpProxyServer:
 
 
 class TestCheckProxyHttp:
-    def test_check_proxy_http_ok(self):
+    def test_check_proxy_http_ok(self, state):
         resp = b'{"query":"1.2.3.4","country":"United States","countryCode":"US","city":"New York","isp":"Test ISP"}'
         proxy = FakeHttpProxyServer(resp)
 
         async def run():
             await proxy.start()
             try:
-                state = hunt.HuntState({"ip_blacklists": {"enabled": False}})
-                # Mock CONNECT check to avoid needing a second target server
                 async def fake_connect(host, port, is_socks):
                     return True, False
                 state._check_proxy_connect = fake_connect
@@ -72,14 +70,13 @@ class TestCheckProxyHttp:
 
         asyncio.run(run())
 
-    def test_check_proxy_http_non_us_filtered(self):
+    def test_check_proxy_http_non_us_filtered(self, state):
         resp = b'{"query":"5.6.7.8","country":"Germany","countryCode":"DE","city":"Berlin","isp":"Test ISP"}'
         proxy = FakeHttpProxyServer(resp)
 
         async def run():
             await proxy.start()
             try:
-                state = hunt.HuntState({"ip_blacklists": {"enabled": False}})
                 async def fake_connect(host, port, is_socks):
                     return True, False
                 state._check_proxy_connect = fake_connect
@@ -95,14 +92,13 @@ class TestCheckProxyHttp:
 
         asyncio.run(run())
 
-    def test_check_proxy_http_country_filter(self):
+    def test_check_proxy_http_country_filter(self, state):
         resp = b'{"query":"1.2.3.4","country":"United States","countryCode":"US","city":"New York","isp":"Test ISP"}'
         proxy = FakeHttpProxyServer(resp)
 
         async def run():
             await proxy.start()
             try:
-                state = hunt.HuntState({"ip_blacklists": {"enabled": False}})
                 async def fake_connect(host, port, is_socks):
                     return True, False
                 state._check_proxy_connect = fake_connect
@@ -118,13 +114,12 @@ class TestCheckProxyHttp:
 
         asyncio.run(run())
 
-    def test_check_proxy_http_bad_ip_api_response(self):
+    def test_check_proxy_http_bad_ip_api_response(self, state):
         proxy = FakeHttpProxyServer(b"not json")
 
         async def run():
             await proxy.start()
             try:
-                state = hunt.HuntState({"ip_blacklists": {"enabled": False}})
                 ok, country, supports_connect, mitm_suspect, egress, listen, latency, country_code, fast_fail = await state._check_proxy(
                     f"127.0.0.1:{proxy.port}"
                 )
@@ -135,10 +130,8 @@ class TestCheckProxyHttp:
 
         asyncio.run(run())
 
-    def test_check_proxy_http_refused_port(self):
+    def test_check_proxy_http_refused_port(self, state):
         async def run():
-            state = hunt.HuntState({"ip_blacklists": {"enabled": False}})
-            # Pick a port that is almost certainly not listening
             ok, country, supports_connect, mitm_suspect, egress, listen, latency, country_code, fast_fail = await state._check_proxy(
                 "127.0.0.1:1"
             )
@@ -147,14 +140,13 @@ class TestCheckProxyHttp:
 
         asyncio.run(run())
 
-    def test_check_proxy_http_no_connect_is_failed(self):
+    def test_check_proxy_http_no_connect_is_failed(self, state):
         resp = b'{"query":"1.2.3.4","country":"United States","countryCode":"US","city":"New York","isp":"Test ISP"}'
         proxy = FakeHttpProxyServer(resp)
 
         async def run():
             await proxy.start()
             try:
-                state = hunt.HuntState({"ip_blacklists": {"enabled": False}})
                 async def fake_connect(host, port, is_socks):
                     return False, False
                 state._check_proxy_connect = fake_connect

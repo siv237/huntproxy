@@ -237,6 +237,7 @@ class _LiveReporter:
 def pytest_configure(config):
     config._live = _LiveReporter()
     config.pluginmanager.register(config._live)
+    config.addinivalue_line("markers", "slow: marks tests as slow (deselect with '-m \"not slow\"')")
 
 
 

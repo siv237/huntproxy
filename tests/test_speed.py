@@ -74,24 +74,24 @@ def _generate_self_signed_cert(tmpdir):
     return cert, key
 
 
+@pytest.fixture
+def cert_tmpdir(tmp_path):
+    cert, key = _generate_self_signed_cert(str(tmp_path))
+    return cert, key, str(tmp_path)
+
+
 class TestSpeedMeasurement:
-    def test_speed_single_direct(self):
+    def test_speed_single_direct(self, state):
         body = b"x" * 102400
         server = LocalSpeedServer(body)
 
         async def run():
             await server.start()
             try:
-                state = hunt.HuntState({"ip_blacklists": {"enabled": False}})
                 speed = await state._speed_single(
-                    server.host,
-                    server.port,
-                    is_socks=False,
-                    srv_host="example.com",
-                    srv_path="/file",
-                    expected_size=len(body),
-                    use_ssl=False,
-                    supports_connect=False,
+                    server.host, server.port, is_socks=False,
+                    srv_host="example.com", srv_path="/file",
+                    expected_size=len(body), use_ssl=False, supports_connect=False,
                 )
                 assert speed > 0.0
             finally:
@@ -99,8 +99,7 @@ class TestSpeedMeasurement:
 
         asyncio.run(run())
 
-    def test_measure_speed_returns_first_positive(self):
-        state = hunt.HuntState({"ip_blacklists": {"enabled": False}})
+    def test_measure_speed_returns_first_positive(self, state):
         state.SPEED_SERVERS = [
             ("example.com", "/file1", 1024),
             ("example.com", "/file2", 1024),
@@ -123,22 +122,16 @@ class TestSpeedMeasurement:
 
         asyncio.run(run())
 
-    def test_speed_single_returns_zero_for_non_200(self):
+    def test_speed_single_returns_zero_for_non_200(self, state):
         server = LocalSpeedServer(b"")
 
         async def run():
             await server.start()
             try:
-                state = hunt.HuntState({"ip_blacklists": {"enabled": False}})
                 speed = await state._speed_single(
-                    server.host,
-                    server.port,
-                    is_socks=False,
-                    srv_host="example.com",
-                    srv_path="/missing",
-                    expected_size=1024,
-                    use_ssl=False,
-                    supports_connect=False,
+                    server.host, server.port, is_socks=False,
+                    srv_host="example.com", srv_path="/missing",
+                    expected_size=1024, use_ssl=False, supports_connect=False,
                 )
                 assert speed == 0.0
             finally:
@@ -146,63 +139,45 @@ class TestSpeedMeasurement:
 
         asyncio.run(run())
 
-    def test_speed_single_https_direct(self):
-        tmpdir = tempfile.mkdtemp()
-        try:
-            cert, key = _generate_self_signed_cert(tmpdir)
-            body = b"x" * 102400
-            server = LocalHttpsSpeedServer(body, cert, key)
+    @pytest.mark.slow
+    def test_speed_single_https_direct(self, state, cert_tmpdir):
+        cert, key, _ = cert_tmpdir
+        body = b"x" * 102400
+        server = LocalHttpsSpeedServer(body, cert, key)
 
-            async def run():
-                await server.start()
-                try:
-                    state = hunt.HuntState({"ip_blacklists": {"enabled": False}})
-                    speed = await state._speed_single(
-                        server.host,
-                        server.port,
-                        is_socks=False,
-                        srv_host="example.com",
-                        srv_path="/file",
-                        expected_size=len(body),
-                        use_ssl=True,
-                        supports_connect=False,
-                    )
-                    assert speed > 0.0
-                finally:
-                    await server.stop()
+        async def run():
+            await server.start()
+            try:
+                speed = await state._speed_single(
+                    server.host, server.port, is_socks=False,
+                    srv_host="example.com", srv_path="/file",
+                    expected_size=len(body), use_ssl=True, supports_connect=False,
+                )
+                assert speed > 0.0
+            finally:
+                await server.stop()
 
-            asyncio.run(run())
-        finally:
-            shutil.rmtree(tmpdir, ignore_errors=True)
+        asyncio.run(run())
 
-    def test_speed_single_https_with_connect_fallback(self):
-        tmpdir = tempfile.mkdtemp()
-        try:
-            cert, key = _generate_self_signed_cert(tmpdir)
-            body = b"x" * 102400
-            server = LocalHttpsSpeedServer(body, cert, key)
+    @pytest.mark.slow
+    def test_speed_single_https_with_connect_fallback(self, state, cert_tmpdir):
+        cert, key, _ = cert_tmpdir
+        body = b"x" * 102400
+        server = LocalHttpsSpeedServer(body, cert, key)
 
-            async def run():
-                await server.start()
-                try:
-                    state = hunt.HuntState({"ip_blacklists": {"enabled": False}})
-                    speed = await state._speed_single(
-                        server.host,
-                        server.port,
-                        is_socks=False,
-                        srv_host="example.com",
-                        srv_path="/file",
-                        expected_size=len(body),
-                        use_ssl=True,
-                        supports_connect=True,
-                    )
-                    assert speed > 0.0
-                finally:
-                    await server.stop()
+        async def run():
+            await server.start()
+            try:
+                speed = await state._speed_single(
+                    server.host, server.port, is_socks=False,
+                    srv_host="example.com", srv_path="/file",
+                    expected_size=len(body), use_ssl=True, supports_connect=True,
+                )
+                assert speed > 0.0
+            finally:
+                await server.stop()
 
-            asyncio.run(run())
-        finally:
-            shutil.rmtree(tmpdir, ignore_errors=True)
+        asyncio.run(run())
 
 
 class LocalHttpsProxyServer:
@@ -272,63 +247,50 @@ class LocalHttpsProxyServer:
 
 
 class TestHttpsProxyConnect:
-    def test_speed_single_ssl_proxy_requires_connect(self):
-        tmpdir = tempfile.mkdtemp()
-        try:
-            cert, key = _generate_self_signed_cert(tmpdir)
-            body = b"x" * 102400
-            target = LocalSpeedServer(body)
-            proxy = LocalHttpsProxyServer(cert, key)
+    @pytest.mark.slow
+    def test_speed_single_ssl_proxy_requires_connect(self, state, cert_tmpdir):
+        cert, key, _ = cert_tmpdir
+        body = b"x" * 102400
+        target = LocalSpeedServer(body)
+        proxy = LocalHttpsProxyServer(cert, key)
 
-            async def run():
-                await target.start()
-                proxy.target_host = target.host
-                proxy.target_port = target.port
-                await proxy.start()
-                try:
-                    state = hunt.HuntState({"ip_blacklists": {"enabled": False}})
-                    state.SPEED_SERVERS = [("example.com", "/file", len(body))]
-                    speed = await state._speed_single(
-                        proxy.host,
-                        proxy.port,
-                        is_socks=False,
-                        srv_host="example.com",
-                        srv_path="/file",
-                        expected_size=len(body),
-                        use_ssl=True,
-                        supports_connect=True,
-                    )
-                    assert speed > 0.0
-                finally:
-                    await proxy.stop()
-                    await target.stop()
+        async def run():
+            await target.start()
+            proxy.target_host = target.host
+            proxy.target_port = target.port
+            await proxy.start()
+            try:
+                state.SPEED_SERVERS = [("example.com", "/file", len(body))]
+                speed = await state._speed_single(
+                    proxy.host, proxy.port, is_socks=False,
+                    srv_host="example.com", srv_path="/file",
+                    expected_size=len(body), use_ssl=True, supports_connect=True,
+                )
+                assert speed > 0.0
+            finally:
+                await proxy.stop()
+                await target.stop()
 
-            asyncio.run(run())
-        finally:
-            shutil.rmtree(tmpdir, ignore_errors=True)
+        asyncio.run(run())
 
-    def test_check_ssl_detects_connect_support(self):
-        tmpdir = tempfile.mkdtemp()
-        try:
-            cert, key = _generate_self_signed_cert(tmpdir)
-            json_body = json.dumps({"country": "Testland", "countryCode": "TL", "query": "1.2.3.4", "city": "Test", "isp": "Test"}).encode()
-            target = LocalSpeedServer(json_body)
-            proxy = LocalHttpsProxyServer(cert, key)
+    @pytest.mark.slow
+    def test_check_ssl_detects_connect_support(self, state, cert_tmpdir):
+        cert, key, _ = cert_tmpdir
+        json_body = json.dumps({"country": "Testland", "countryCode": "TL", "query": "1.2.3.4", "city": "Test", "isp": "Test"}).encode()
+        target = LocalSpeedServer(json_body)
+        proxy = LocalHttpsProxyServer(cert, key)
 
-            async def run():
-                await target.start()
-                proxy.target_host = target.host
-                proxy.target_port = target.port
-                await proxy.start()
-                try:
-                    state = hunt.HuntState({"ip_blacklists": {"enabled": False}})
-                    ok, country, country_code, egress, latency, supports_connect = await state._check_ssl(f"{proxy.host}:{proxy.port}")
-                    assert ok is True
-                    assert supports_connect is True
-                finally:
-                    await proxy.stop()
-                    await target.stop()
+        async def run():
+            await target.start()
+            proxy.target_host = target.host
+            proxy.target_port = target.port
+            await proxy.start()
+            try:
+                ok, country, country_code, egress, latency, supports_connect = await state._check_ssl(f"{proxy.host}:{proxy.port}")
+                assert ok is True
+                assert supports_connect is True
+            finally:
+                await proxy.stop()
+                await target.stop()
 
-            asyncio.run(run())
-        finally:
-            shutil.rmtree(tmpdir, ignore_errors=True)
+        asyncio.run(run())
