@@ -163,15 +163,22 @@ class SnapshotMixin:
             latencies = sorted(r["latency"] for r in checks if r["latency"] > 0)
             speeds = [r["speed"] for r in checks if r["speed"] > 0]
             errors = sum(1 for r in checks if not r["ok"])
+            ok_count = len(checks) - errors
             p95 = 0.0
             if latencies:
                 idx = max(0, int(len(latencies) * 0.95) - 1)
                 p95 = round(latencies[idx], 3)
             max_speed = round(max(speeds), 1) if speeds else 0.0
+            avg_speed = round(sum(speeds) / len(speeds), 1) if speeds else 0.0
+            avg_latency = round(sum(latencies) / len(latencies), 3) if latencies else 0.0
+            success_rate = round(ok_count / len(checks), 3) if checks else 0.0
             return {
                 "checks": checks,
                 "p95": p95,
                 "max_speed": max_speed,
+                "avg_speed": avg_speed,
+                "avg_latency": avg_latency,
+                "success_rate": success_rate,
                 "errors": errors,
                 "count": len(checks),
             }

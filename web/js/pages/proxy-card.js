@@ -178,23 +178,23 @@ const proxyCard = {
 
     const grid = ui.el('div', 'proxy-card-kpi-grid');
 
-    const checks = checksData || { checks: [], p95: 0, max_speed: 0, errors: 0, count: 0 };
+    const checks = checksData || { checks: [], p95: 0, max_speed: 0, avg_speed: 0, avg_latency: 0, success_rate: 0, errors: 0, count: 0 };
     const checkList = checks.checks || [];
 
-    const avgLat = p.latency_avg || 0;
+    const avgLat = checks.avg_latency || p.latency_avg || 0;
     const lastLat = p.last_latency || 0;
     const latValue = avgLat ? ui.fmtLatency(avgLat) : ui.fmtLatency(lastLat);
     grid.appendChild(this._kpiWithSpark(latValue, t('proxyCard.avgLatency'), 's',
       this._sparklinePoints(checkList, 'latency'), 'var(--success)',
       `${t('proxyCard.p95')} ${checks.p95 ? ui.fmtLatency(checks.p95) : '—'}`));
 
-    const speed = p.speed_avg || 0;
+    const speed = checks.avg_speed || p.speed_avg || 0;
     const speedValue = speed ? speed.toFixed(0) : '—';
     grid.appendChild(this._kpiWithSpark(speedValue, t('proxyCard.avgSpeed'), 'KB/s',
       this._sparklinePoints(checkList, 'speed'), 'var(--accent)',
       `${t('proxyCard.maxSpeed')} ${checks.max_speed ? checks.max_speed.toFixed(0) + ' KB/s' : '—'}`));
 
-    const sr = p.success_rate || 0;
+    const sr = checks.success_rate || p.success_rate || 0;
     const srPct = Math.round(sr * 100);
     grid.appendChild(this._kpiWithSpark(srPct + '%', t('proxyCard.successRate'), '',
       this._sparklineSuccessPoints(checkList), 'var(--success)',
