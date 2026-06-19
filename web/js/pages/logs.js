@@ -2,7 +2,7 @@ router.register('logs', (container) => {
   let state = {
     events: [],
     filter: '',
-    type: 'all',
+    types: [],
     reverse: true,
     autoScroll: true,
   };
@@ -33,6 +33,17 @@ router.register('logs', (container) => {
     return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   }
 
+  const typeBtns = {};
+
+  function syncTypeBtns() {
+    TYPE_FILTERS.forEach(f => {
+      const btn = typeBtns[f.value];
+      if (!btn) return;
+      const active = f.value === 'all' ? state.types.length === 0 : state.types.includes(f.value);
+      btn.className = `btn btn-sm ${active ? 'btn-primary' : 'btn-secondary'}`;
+    });
+  }
+
   function build() {
     container.innerHTML = '';
     container.style.display = 'flex';
@@ -50,16 +61,22 @@ router.register('logs', (container) => {
     filterBar.appendChild(search);
 
     TYPE_FILTERS.forEach(f => {
-      const btn = ui.el('button', `btn btn-sm ${state.type === f.value ? 'btn-primary' : 'btn-secondary'}`, { text: t(f.label) });
+      const btn = ui.el('button', 'btn btn-sm btn-secondary', { text: t(f.label) });
       btn.addEventListener('click', () => {
-        state.type = f.value;
-        filterBar.querySelectorAll('button').forEach((b, i) => {
-          if (i < TYPE_FILTERS.length) b.className = `btn btn-sm ${state.type === TYPE_FILTERS[i].value ? 'btn-primary' : 'btn-secondary'}`;
-        });
+        if (f.value === 'all') {
+          state.types = [];
+        } else {
+          const idx = state.types.indexOf(f.value);
+          if (idx >= 0) state.types.splice(idx, 1);
+          else state.types.push(f.value);
+        }
+        syncTypeBtns();
         render();
       });
+      typeBtns[f.value] = btn;
       filterBar.appendChild(btn);
     });
+    syncTypeBtns();
 
     const reverseBtn = ui.el('button', `btn btn-sm ${state.reverse ? 'btn-primary' : 'btn-secondary'}`, { text: t('page.logs.reverse') });
     reverseBtn.addEventListener('click', () => {
@@ -115,9 +132,7 @@ router.register('logs', (container) => {
 
   async function load() {
     try {
-      const params = { limit: 500 };
-      if (state.type !== 'all') params.type = state.type;
-      const data = await api.logs(params);
+      const data = await api.logs({ limit: 500 });
       state.events = data.events || [];
       render();
     } catch (e) {
@@ -131,14 +146,16 @@ router.register('logs', (container) => {
     card.innerHTML = '';
     const header = ui.el('div', 'card-header');
     header.appendChild(ui.el('div', 'card-title', { text: t('page.logs.systemLogs') }));
-    const count = ui.el('div', '', { style: 'font-size:12px;color:var(--text-secondary)', text: t('page.logs.lines', { count: state.events.length }) });
-    header.appendChild(count);
-    card.appendChild(header);
-
     let events = state.events;
+    if (state.types.length) {
+      events = events.filter(e => state.types.includes(e.type));
+    }
     if (state.filter) {
       events = events.filter(e => e.msg.toLowerCase().includes(state.filter));
     }
+    const count = ui.el('div', '', { style: 'font-size:12px;color:var(--text-secondary)', text: t('page.logs.lines', { count: events.length }) });
+    header.appendChild(count);
+    card.appendChild(header);
 
     if (!events.length) {
       card.appendChild(ui.el('div', 'empty', { text: t('page.logs.noMatching') }));
