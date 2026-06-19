@@ -689,6 +689,7 @@
     "successRate": "Success rate",
     "suitability": "Recommendations",
     "supported": "Supported",
+    "notSupported": "Not supported",
     "suspected": "Suspected",
     "tag": "Tag",
     "timeline": "Timeline",

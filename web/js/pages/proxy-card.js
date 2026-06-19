@@ -275,10 +275,10 @@ const proxyCard = {
     section.appendChild(this._sectionTitle(t('proxyCard.security'), this._svg('shield')));
 
     const list = ui.el('div', 'proxy-card-checklist');
-    list.appendChild(this._checkRow('HTTPS (TLS)', p.ssl_supported, t('proxyCard.supported'), 'good'));
-    list.appendChild(this._checkRow(t('proxyCard.sslPassthrough'), p.ssl_supported, t('common.yes'), p.ssl_supported ? 'good' : 'muted'));
-    list.appendChild(this._checkRow('CONNECT', p.supports_connect, t('common.yes'), p.supports_connect ? 'good' : 'muted'));
-    list.appendChild(this._checkRow('MITM', !p.mitm_suspect, t('proxyCard.notDetected'), !p.mitm_suspect ? 'good' : 'bad'));
+    list.appendChild(this._checkRow('HTTPS (TLS)', p.ssl_supported, p.ssl_supported ? t('proxyCard.supported') : t('proxyCard.notSupported'), p.ssl_supported ? 'good' : 'bad'));
+    list.appendChild(this._checkRow(t('proxyCard.sslPassthrough'), p.ssl_supported, p.ssl_supported ? t('common.yes') : t('common.no'), p.ssl_supported ? 'good' : 'muted'));
+    list.appendChild(this._checkRow('CONNECT', p.supports_connect, p.supports_connect ? t('common.yes') : t('common.no'), p.supports_connect ? 'good' : 'muted'));
+    list.appendChild(this._checkRow('MITM', !p.mitm_suspect, p.mitm_suspect ? t('proxyCard.suspected') : t('proxyCard.notDetected'), p.mitm_suspect ? 'bad' : 'good'));
 
     section.appendChild(list);
     return section;

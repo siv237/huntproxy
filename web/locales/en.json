@@ -673,6 +673,7 @@
     "webrtcLeak": "WebRTC leak",
     "unknown": "Unknown",
     "supported": "Supported",
+    "notSupported": "Not supported",
     "isp": "ISP",
     "publicProxy": "Public Proxy",
     "checkedAgo": "Checked",

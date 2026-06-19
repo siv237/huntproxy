@@ -673,6 +673,7 @@
     "webrtcLeak": "WebRTC утечка",
     "unknown": "Неизвестно",
     "supported": "Поддерживается",
+    "notSupported": "Не поддерживается",
     "isp": "Провайдер",
     "publicProxy": "Public Proxy",
     "checkedAgo": "Проверено",
