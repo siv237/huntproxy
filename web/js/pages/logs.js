@@ -3,7 +3,7 @@ router.register('logs', (container) => {
     events: [],
     filter: '',
     types: [],
-    reverse: true,
+    reverse: false,
     autoScroll: true,
   };
 
@@ -143,6 +143,9 @@ router.register('logs', (container) => {
   function render() {
     const card = document.getElementById('logs-card');
     if (!card) return;
+    const oldWrap = document.getElementById('logs-lines-wrap');
+    const wasAtBottom = oldWrap ? (oldWrap.scrollHeight - oldWrap.scrollTop - oldWrap.clientHeight < 30) : true;
+    const oldScrollTop = oldWrap ? oldWrap.scrollTop : 0;
     card.innerHTML = '';
     const header = ui.el('div', 'card-header');
     header.appendChild(ui.el('div', 'card-title', { text: t('page.logs.systemLogs') }));
@@ -175,8 +178,10 @@ router.register('logs', (container) => {
       wrap.appendChild(row);
     });
     card.appendChild(wrap);
-    if (state.reverse && state.autoScroll) {
+    if (state.autoScroll && wasAtBottom) {
       requestAnimationFrame(() => { wrap.scrollTop = wrap.scrollHeight; });
+    } else {
+      wrap.scrollTop = oldScrollTop;
     }
   }
 
