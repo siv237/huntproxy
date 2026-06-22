@@ -10,6 +10,8 @@ class HealthMixin:
     def start_hunt(self) -> bool:
             if self.phase not in (self.PHASE_IDLE, self.PHASE_DONE):
                 return False
+            if getattr(self, '_health_running', False):
+                return False
             self._paused = False
             self._manual_pause = False
             self._internet_suspect = False
@@ -359,9 +361,9 @@ class HealthMixin:
             if self._health_running:
                 self._emit("Health check already in progress, skipping", "warn")
                 return
-            self._health_running = True
             # Save the current main-hunt progress so we can restore it after
-            # this manual health check completes.
+            # this manual health check completes. Must capture before
+            # pause_hunt() overwrites phase/phase_started.
             saved = {
                 "phase": self.phase,
                 "phase_started": self.phase_started,
@@ -373,13 +375,17 @@ class HealthMixin:
                 "last_proxy": self.last_proxy,
                 "last_country": self.last_country,
             }
-            self._log_action("health.snapshot", "before-recheck", extra={"saved": saved})
-            # Pause the running hunt so its workers don't interfere with the
-            # manual check. If already manually paused, leave as-is.
+            # If a hunt cycle is running, pause it first so it doesn't
+            # clobber the shared checked/checking_total counters.
             hunt_was_running = bool(self.task and not self.task.done()) and not self._paused
             if hunt_was_running:
                 self.pause_hunt(manual=True)
                 self._log_action("health.pause-hunt", "paused-for-recheck")
+                # Brief yield so in-flight _validate_all workers block on
+                # _pause_event before we overwrite the counters.
+                await asyncio.sleep(0.1)
+            self._health_running = True
+            self._log_action("health.snapshot", "before-recheck", extra={"saved": saved})
             ok_count = 0
             fail_count = 0
             try:
@@ -507,7 +513,7 @@ class HealthMixin:
                 # PHASE_DONE so the UI does not stay stuck on PHASE_HEALTH.
                 self.phase = saved["phase"]
                 self.checking_total = saved["checking_total"]
-                self.checked = saved["checked"]
+                self.checked = min(saved["checked"], saved["checking_total"])
                 self.working = saved["working"]
                 self.failed = saved["failed"]
                 self.downloaded = saved["downloaded"]

@@ -158,7 +158,11 @@
       "healthCheckStarted": "Gesundheitsprüfung gestartet",
       "deadCleared": "Tote Proxys entfernt",
       "server": "Server",
-      "exit": "Beenden"
+      "exit": "Beenden",
+      "phaseDownloading": "Listen laden",
+      "phaseHealthCheck": "Prüfung",
+      "phaseDone": "Abgeschlossen",
+      "running": "Läuft"
     },
     "hunt": {
       "title": "Jagd",

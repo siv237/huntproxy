@@ -158,7 +158,11 @@
       "healthCheckStarted": "Health check started",
       "deadCleared": "Dead proxies cleared",
       "server": "Server",
-      "exit": "Exit"
+      "exit": "Exit",
+      "phaseDownloading": "Downloading lists",
+      "phaseHealthCheck": "Health checking",
+      "phaseDone": "Complete",
+      "running": "Running"
     },
     "hunt": {
       "title": "Hunt",

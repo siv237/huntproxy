@@ -158,7 +158,11 @@
       "healthCheckStarted": "Проверка здоровья начата",
       "deadCleared": "Мёртвые прокси удалены",
       "server": "Сервер",
-      "exit": "Выход"
+      "exit": "Выход",
+      "phaseDownloading": "Загрузка списков",
+      "phaseHealthCheck": "Проверка прокси",
+      "phaseDone": "Завершено",
+      "running": "Выполняется"
     },
     "hunt": {
       "title": "Охота",

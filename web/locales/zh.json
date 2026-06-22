@@ -158,7 +158,11 @@
       "healthCheckStarted": "健康检查已开始",
       "deadCleared": "离线代理已清理",
       "server": "服务器",
-      "exit": "出口"
+      "exit": "出口",
+      "phaseDownloading": "下载列表",
+      "phaseHealthCheck": "健康检查",
+      "phaseDone": "完成",
+      "running": "运行中"
     },
     "hunt": {
       "title": "搜索",

@@ -1049,7 +1049,15 @@ router.register('overview', (container) => {
         el('pool-circle-fill').style.strokeDashoffset = circumference - (pct / 100) * circumference;
       }
       if (el('pool-phase')) {
-        el('pool-phase').textContent = s.running ? t('page.overview.validatingProxies') : t('page.hunt.idle');
+        const phaseLabels = {
+          'downloading': t('page.overview.phaseDownloading'),
+          'validating': t('page.overview.validatingProxies'),
+          'health': t('page.overview.phaseHealthCheck'),
+          'done': t('page.overview.phaseDone'),
+          'idle': t('page.hunt.idle'),
+          'paused': t('page.hunt.pausedMsg'),
+        };
+        el('pool-phase').textContent = phaseLabels[s.phase] || (s.running ? t('page.overview.validatingProxies') : t('page.hunt.idle'));
       }
       if (el('pool-current-proxy')) {
         renderPoolProxyInfo(s.last_proxy_details);
@@ -1081,7 +1089,14 @@ router.register('overview', (container) => {
       }
       if (el('pool-title')) {
         const p = s.paused || false, m = s.manual_pause || false;
-        el('pool-title').textContent = p ? (m ? t('page.overview.poolProgress') + ' — ' + t('page.hunt.pausedMsg') : t('page.overview.poolProgress') + ' — No Internet') : (s.running ? t('page.overview.poolProgress') + ' — Running' : t('page.overview.poolProgress'));
+        const phaseTitles = {
+          'downloading': t('page.overview.phaseDownloading'),
+          'validating': t('page.overview.validatingProxies'),
+          'health': t('page.overview.phaseHealthCheck'),
+          'done': t('page.overview.phaseDone'),
+        };
+        const phaseTitle = phaseTitles[s.phase] || t('page.overview.running');
+        el('pool-title').textContent = p ? (m ? t('page.overview.poolProgress') + ' — ' + t('page.hunt.pausedMsg') : t('page.overview.poolProgress') + ' — No Internet') : (s.running ? t('page.overview.poolProgress') + ' — ' + phaseTitle : t('page.overview.poolProgress'));
       }
 
       // Top countries

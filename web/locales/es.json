@@ -158,7 +158,11 @@
       "healthCheckStarted": "Comprobación de salud iniciada",
       "deadCleared": "Proxis muertos eliminados",
       "server": "Servidor",
-      "exit": "Salir"
+      "exit": "Salir",
+      "phaseDownloading": "Descargando listas",
+      "phaseHealthCheck": "Verificación",
+      "phaseDone": "Completado",
+      "running": "En ejecución"
     },
     "hunt": {
       "title": "Caza",
