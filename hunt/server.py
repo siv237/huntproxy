@@ -945,7 +945,7 @@ class HuntServer:
         # === Actions ===
         if path.startswith("/api/clear_dead") and method == "POST":
             dead_addrs = [a for a, r in self.state.ratings.items()
-                          if r.last_status == "failed" and not r.is_favorite]
+                          if r.last_status == "failed" and not r.is_favorite and not r.in_grace]
             for a in dead_addrs:
                 del self.state.ratings[a]
             self.state._emit(f"Cleared {len(dead_addrs)} dead proxies", "warn")
@@ -956,7 +956,7 @@ class HuntServer:
 
         if path.startswith("/api/export") and method == "POST":
             alive = [r for r in self.state.ratings.values()
-                     if r.last_status == "ok" and not r.in_blacklist]
+                     if (r.last_status == "ok" or r.in_grace) and not r.in_blacklist]
             alive.sort(key=lambda r: r.score, reverse=True)
             data = "\n".join(f"{r.address}  {r.country}  {r.last_latency:.3f}" for r in alive)
             return json.dumps({"ok": True, "data": data}), 200, "application/json"

@@ -903,6 +903,7 @@ class CheckingMixin:
                 r.latency_count += 1
                 r.last_status = "ok"
                 r.last_ok = time.time()
+                r.consecutive_fails = 0
                 if speed > 0:
                     r.speed_sum += speed
                     r.speed_count += 1
@@ -937,6 +938,7 @@ class CheckingMixin:
                     r.listen_isp = listen.get("isp") or r.listen_isp
             else:
                 r.last_status = "failed"
+                r.consecutive_fails += 1
             self.ratings[addr] = r
             if r.egress_ip:
                 self._apply_ip_blacklist_to_proxy(addr, r.egress_ip)

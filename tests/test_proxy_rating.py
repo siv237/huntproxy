@@ -12,6 +12,50 @@ class TestProxyRating:
         r = hunt.ProxyRating(address="1.2.3.4:8080", checks_total=1, checks_ok=0, last_status="failed")
         assert r.score == 0.0
 
+    def test_score_nonzero_for_failed_proxy_in_grace(self):
+        """A proven proxy (had speed) that is now failing keeps a decayed,
+        non-zero score during its grace period instead of being zeroed out."""
+        r = hunt.ProxyRating(
+            address="1.2.3.4:8080", checks_total=5, checks_ok=4,
+            last_status="failed", consecutive_fails=1,
+            latency_sum=0.5, latency_count=4,
+            speed_sum=100, speed_count=1,
+        )
+        assert r.in_grace is True
+        assert r.score > 0.0
+
+    def test_score_zero_after_grace_expires(self):
+        """Once consecutive failures exceed the grace threshold the proxy
+        scores zero again even if it once had speed."""
+        r = hunt.ProxyRating(
+            address="1.2.3.4:8080", checks_total=5, checks_ok=4,
+            last_status="failed", consecutive_fails=hunt.ProxyRating.GRACE_FAILS,
+            latency_sum=0.5, latency_count=4,
+            speed_sum=100, speed_count=1,
+        )
+        assert r.in_grace is False
+        assert r.score == 0.0
+
+    def test_score_decays_with_more_consecutive_fails(self):
+        r = hunt.ProxyRating(
+            address="1.2.3.4:8080", checks_total=5, checks_ok=4,
+            last_status="failed", consecutive_fails=1,
+            latency_sum=0.5, latency_count=4,
+            speed_sum=100, speed_count=1,
+        )
+        early = r.score
+        r.consecutive_fails = 50
+        later = r.score
+        assert early > later > 0.0
+
+    def test_failed_proxy_without_speed_not_in_grace(self):
+        r = hunt.ProxyRating(
+            address="1.2.3.4:8080", checks_total=5, checks_ok=4,
+            last_status="failed", consecutive_fails=1,
+        )
+        assert r.in_grace is False
+        assert r.score == 0.0
+
     def test_score_is_zero_for_blacklisted(self):
         r = hunt.ProxyRating(address="1.2.3.4:8080", checks_total=1, checks_ok=1, last_status="ok")
         r.blacklist_reason = "manual"

@@ -384,9 +384,11 @@ class HealthMixin:
             fail_count = 0
             try:
                 # Only manual blacklist is a hard exclusion; IP-blacklisted proxies
-                # remain candidates and are ranked by their reduced score.
+                # remain candidates and are ranked by their reduced score. Grace
+                # proxies (proven but currently failing) are re-checked too so they
+                # can recover instead of lingering until the grace period expires.
                 candidates = [r for r in self.ratings.values()
-                              if r.last_status == "ok" and not r.in_blacklist]
+                              if (r.last_status == "ok" or r.in_grace) and not r.in_blacklist]
                 if not candidates:
                     return
                 self.phase = self.PHASE_HEALTH

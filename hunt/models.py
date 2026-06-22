@@ -5,6 +5,12 @@ from dataclasses import dataclass, field
 
 @dataclass
 class ProxyRating:
+    # Proxies that once produced a non-zero speed measurement are kept alive
+    # (in the working list and in ratings) for this many consecutive failed
+    # checks before being dropped, so a temporary outage does not evict a
+    # proven good proxy on the first failure.
+    GRACE_FAILS = 100
+
     address: str
     country: str = ""
     country_code: str = ""
@@ -41,6 +47,7 @@ class ProxyRating:
     speed_count: int = 0
     last_speed: float = 0.0
     speed_fails: int = 0
+    consecutive_fails: int = 0
     source_ids: list = field(default_factory=list)
     ssl_supported: bool = False
 
@@ -57,13 +64,35 @@ class ProxyRating:
         return self.checks_ok / self.checks_total if self.checks_total else 0.0
 
     @property
+    def had_speed(self) -> bool:
+        """True if this proxy ever produced a non-zero speed measurement."""
+        return self.speed_count > 0
+
+    @property
+    def in_grace(self) -> bool:
+        """A proven proxy (had speed) within its failure grace period."""
+        return self.had_speed and self.consecutive_fails < self.GRACE_FAILS
+
+    @property
     def is_blacklisted(self) -> bool:
         return self.in_blacklist or bool(self.ip_blacklist_reason)
 
     @property
     def score(self) -> float:
-        if self.checks_total == 0 or self.last_status != "ok":
+        if self.checks_total == 0:
             return 0.0
+        if self.last_status != "ok":
+            # A proven proxy (one that once had non-zero speed) stays ranked
+            # during its grace period, with the score decaying as consecutive
+            # failures accumulate so it sinks gradually rather than vanishing
+            # on the first failure.
+            if not self.in_grace:
+                return 0.0
+            grace_ratio = 1.0 - (self.consecutive_fails / self.GRACE_FAILS)
+            return max(0.0, self._compute_score() * grace_ratio * 0.5)
+        return self._compute_score()
+
+    def _compute_score(self) -> float:
         sr = self.success_rate
         # Reliability and latency matter, but usable speed is the dominant
         # factor for the end user experience.
@@ -130,6 +159,8 @@ class ProxyRating:
             "speed_sum": round(self.speed_sum, 1),
             "speed_count": self.speed_count,
             "speed_fails": self.speed_fails,
+            "consecutive_fails": self.consecutive_fails,
+            "in_grace": self.in_grace,
             "last_check": self.last_check,
             "last_status": self.last_status,
             "first_seen": self.first_seen,

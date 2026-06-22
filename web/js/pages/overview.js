@@ -25,7 +25,7 @@ router.register('overview', (container) => {
     container.appendChild(row2);
 
     // Row 3: Top Rated Proxies + System Resources + Right sidebar (Quick Actions)
-    const row3 = ui.el('div', 'grid row-stretch', { style: 'grid-template-columns:2fr 1.5fr 1fr' });
+    const row3 = ui.el('div', 'grid row-stretch', { style: 'grid-template-columns:2.5fr 1.2fr 1fr' });
     row3.appendChild(buildTopRatedProxiesCard());
     row3.appendChild(buildSystemResourcesCard());
     row3.appendChild(buildQuickActionsCard());
@@ -432,6 +432,28 @@ router.register('overview', (container) => {
     return card;
   }
 
+  function blacklistBadge(p) {
+    const hits = p.ip_blacklist_hits || 0;
+    if (!p.in_blacklist && hits === 0) return '';
+    if (hits > 0) {
+      return `<span style="display:inline-flex;align-items:center;justify-content:center;min-width:20px;padding:1px 4px;border-radius:var(--radius-xs);background:var(--danger-bg);color:var(--danger);font-weight:700;font-size:9px">BL×${hits}</span>`;
+    }
+    return `<span style="display:inline-flex;align-items:center;justify-content:center;min-width:16px;padding:1px 4px;border-radius:var(--radius-xs);background:var(--danger-bg);color:var(--danger);font-weight:700;font-size:9px">BL</span>`;
+  }
+
+  function proxyMarkers(p) {
+    const markers = [];
+    const proto = (p.protocol || 'http').toUpperCase();
+    markers.push(`<span style="color:var(--text-muted);font-weight:600;font-size:9px">${proto}</span>`);
+    if (p.ssl_supported) markers.push('<span style="color:#06b6d4;font-weight:600;font-size:9px">SSL</span>');
+    if (p.supports_connect) markers.push('<span style="color:var(--success);font-weight:600;font-size:9px">HTTPS</span>');
+    if (p.mitm_suspect) markers.push('<span style="color:var(--danger);font-weight:700;font-size:9px">MITM!</span>');
+    if (p.in_grace) markers.push('<span style="color:var(--warning);font-weight:600;font-size:9px">GRACE</span>');
+    const bl = blacklistBadge(p);
+    if (bl) markers.push(bl);
+    return markers.join(' ');
+  }
+
   function renderTopRated(proxies, ps) {
     const wrap = document.getElementById('top-rated-tbl-wrap');
     if (!wrap) return;
@@ -441,16 +463,16 @@ router.register('overview', (container) => {
     const port = ps && ps.port ? ps.port : 17277;
 
     const headers = [
-      { label: '#', width: '30px', align: 'center' },
+      { label: '#', width: '28px', align: 'center' },
       { label: 'Country', width: null, align: 'left' },
       { label: 'Proxy', width: null, align: 'left' },
-      { label: 'SSL', width: '30px', align: 'center' },
-      { label: 'Latency', width: '60px', align: 'right' },
-      { label: 'Speed', width: '55px', align: 'right' },
-      { label: 'Score', width: '50px', align: 'right' },
-      { label: 'Uptime', width: '50px', align: 'center' },
-      { label: 'Last Check', width: '70px', align: 'right' },
-      { label: '', width: '50px', align: 'center' },
+      { label: 'Markers', width: null, align: 'left' },
+      { label: 'Lat', width: '46px', align: 'right' },
+      { label: 'Speed', width: '50px', align: 'right' },
+      { label: 'Score', width: '44px', align: 'right' },
+      { label: 'Up', width: '44px', align: 'center' },
+      { label: 'Last', width: '50px', align: 'right' },
+      { label: '', width: '46px', align: 'center' },
     ];
     const agoShort = (ts) => {
       if (!ts) return '—';
@@ -468,7 +490,7 @@ router.register('overview', (container) => {
         `<span style="color:var(--text-muted);font-size:11px">${i + 1}</span>`,
         `<span class="flag">${ui.flag(p.country_code)}</span> <span style="font-size:11px">${ui.escHtml(p.country || '')}</span>`,
         `<span class="addr proxy-address-link" data-card-addr="${ui.escHtml(p.address)}" style="cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px">${favStar}${ui.escHtml(p.address)}</span>`,
-        p.ssl_supported ? '<span style="color:#06b6d4;font-weight:600;font-size:10px">SSL</span>' : '<span style="color:var(--text-muted)">—</span>',
+        `<span style="display:inline-flex;gap:3px;flex-wrap:wrap">${proxyMarkers(p)}</span>`,
         p.last_latency ? p.last_latency.toFixed(2) + 's' : '—',
         p.speed_avg ? p.speed_avg.toFixed(0) + 'KB/s' : '—',
         (p.score || 0).toFixed(0),

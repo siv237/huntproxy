@@ -190,6 +190,7 @@ class HuntState(DbMixin, EventsMixin, SnapshotMixin, HealthMixin, CheckingMixin,
                         speed_sum=d.get("speed_sum", 0),
                         speed_count=d.get("speed_count", 0),
                         speed_fails=d.get("speed_fails", 0),
+                        consecutive_fails=d.get("consecutive_fails", 0),
                         egress_http_ip=d.get("egress_http_ip", ""),
                         egress_http_country=d.get("egress_http_country", ""),
                         egress_ip=d.get("egress_ip", ""),
@@ -377,9 +378,12 @@ class HuntState(DbMixin, EventsMixin, SnapshotMixin, HealthMixin, CheckingMixin,
             """Save alive (non-blacklisted) proxies to DB.
 
             Only the operator-curated manual blacklist is a hard exclusion;
-            downloaded IP blacklist matches only lower the score."""
+            downloaded IP blacklist matches only lower the score. Proven
+            proxies (those that once produced a non-zero speed measurement)
+            are kept during their failure grace period so a temporary outage
+            does not evict them from the working list on the first failure."""
             alive = [r for r in self.ratings.values()
-                     if r.last_status == "ok" and not r.in_blacklist]
+                     if (r.last_status == "ok" or r.in_grace) and not r.in_blacklist]
             alive.sort(key=lambda r: r.score, reverse=True)
             try:
                 conn = self._db()

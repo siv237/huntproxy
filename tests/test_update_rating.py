@@ -55,6 +55,23 @@ class TestUpdateRating:
         assert r.checks_total == 1
         assert r.checks_ok == 0
         assert r.latency_count == 0
+        assert r.consecutive_fails == 1
+
+    def test_update_rating_resets_consecutive_fails_on_ok(self, tmp_data_dir):
+        state = hunt.HuntState({"ip_blacklists": {"enabled": False}})
+        r = hunt.ProxyRating(address="1.2.3.4:8080")
+        r.consecutive_fails = 5
+        r.last_status = "failed"
+        state.ratings["1.2.3.4:8080"] = r
+        state._update_rating(
+            "1.2.3.4:8080",
+            ok=True,
+            country="US",
+            latency=0.5,
+            speed=100.0,
+        )
+        assert r.consecutive_fails == 0
+        assert r.last_status == "ok"
 
     def test_update_rating_applies_ip_blacklist(self, tmp_data_dir):
         state = hunt.HuntState({"ip_blacklists": {"enabled": False}})

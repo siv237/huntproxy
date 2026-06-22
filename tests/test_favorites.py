@@ -59,6 +59,33 @@ class TestFavorites:
         assert addr not in state.ratings
 
     @pytest.mark.asyncio
+    async def test_clear_dead_protects_proven_proxy_in_grace(self, http_client, api_server):
+        _, state = api_server
+        addr = "5.6.7.8:3128"
+        r = hunt.ProxyRating(
+            address=addr, last_status="failed", checks_total=5, checks_ok=4,
+            consecutive_fails=1, speed_sum=100, speed_count=1,
+        )
+        state.ratings[addr] = r
+
+        await http_client("POST", "/api/clear_dead")
+        assert addr in state.ratings
+
+    @pytest.mark.asyncio
+    async def test_clear_dead_removes_proxy_after_grace_expires(self, http_client, api_server):
+        _, state = api_server
+        addr = "5.6.7.8:3128"
+        r = hunt.ProxyRating(
+            address=addr, last_status="failed", checks_total=5, checks_ok=4,
+            consecutive_fails=hunt.ProxyRating.GRACE_FAILS,
+            speed_sum=100, speed_count=1,
+        )
+        state.ratings[addr] = r
+
+        await http_client("POST", "/api/clear_dead")
+        assert addr not in state.ratings
+
+    @pytest.mark.asyncio
     async def test_favorite_endpoints(self, http_client, api_server):
         _, state = api_server
         addr = "1.2.3.4:8080"
