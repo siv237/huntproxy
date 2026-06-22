@@ -217,6 +217,7 @@ class SnapshotMixin:
             alive = [r for r in self.ratings.values()
                      if (r.last_status == "ok" or r.in_grace)
                      and not r.in_blacklist
+                     and r.speed_count > 0
                      and r.speed_avg > 0]
             alive.sort(key=lambda r: r.score, reverse=True)
             if not alive:
