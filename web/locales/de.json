@@ -365,7 +365,9 @@
       "heatmapOk": "Funktioniert",
       "heatmapErr": "Fehler",
       "heatmapNone": "Keine Prüfung",
-      "heatmapEmpty": "Keine aktiven Proxys zum Anzeigen"
+      "heatmapEmpty": "Keine aktiven Proxys zum Anzeigen",
+      "heatmapOkDimmed": "Letztes OK (nicht neu geprüft)",
+      "heatmapErrDimmed": "Letzter Fehler (nicht neu geprüft)"
     },
     "logs": {
       "title": "Protokolle",

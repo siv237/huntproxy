@@ -266,6 +266,7 @@ class SnapshotMixin:
                     "protocol": r.protocol,
                     "ssl_supported": r.ssl_supported,
                     "is_favorite": r.is_favorite,
+                    "speed_avg": round(r.speed_avg, 1),
                     "buckets": buckets,
                     "ok_count": ok_count,
                     "err_count": err_count,

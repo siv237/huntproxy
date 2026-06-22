@@ -1130,6 +1130,7 @@
 .proxy-heatmap-cell.ok { background: var(--success); }
 .proxy-heatmap-cell.err { background: var(--danger); }
 .proxy-heatmap-cell.none { background: var(--surface); }
+.proxy-heatmap-cell.dimmed { opacity: 0.25; }
 
 .proxy-heatmap-axis {
   display: flex;

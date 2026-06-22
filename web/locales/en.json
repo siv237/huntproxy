@@ -395,7 +395,9 @@
       "heatmapOk": "Working",
       "heatmapErr": "Failed",
       "heatmapNone": "No check",
-      "heatmapEmpty": "No alive proxies to display"
+      "heatmapEmpty": "No alive proxies to display",
+      "heatmapOkDimmed": "Last OK (not rechecked)",
+      "heatmapErrDimmed": "Last error (not rechecked)"
     },
     "logs": {
       "title": "Logs",

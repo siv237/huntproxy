@@ -89,18 +89,39 @@ router.register('analytics', (container) => {
 
       proxies.forEach(p => {
         const row = ui.el('div', 'proxy-heatmap-row');
+        row.style.cursor = 'pointer';
+        row.addEventListener('click', () => { if (window.proxyCard) window.proxyCard.show(p.address); });
         const label = ui.el('span', 'proxy-heatmap-label');
         const favStar = p.is_favorite ? '<svg width="10" height="10" style="vertical-align:-1px;color:var(--warning);flex-shrink:0"><use href="#icon-star"/></svg>' : '';
-        label.innerHTML = `${favStar}<span class="flag">${ui.flag(p.country_code)}</span><span class="addr" title="${ui.escHtml(p.address)}">${ui.escHtml(p.address)}</span>`;
-        label.addEventListener('click', () => { if (window.proxyCard) window.proxyCard.show(p.address); });
+        const speed = p.speed_avg ? `<span style="color:var(--text-muted);flex-shrink:0">${p.speed_avg.toFixed(0)}KB/s</span>` : '';
+        label.innerHTML = `${favStar}<span class="flag">${ui.flag(p.country_code)}</span><span class="addr" title="${ui.escHtml(p.address)}">${ui.escHtml(p.address)}</span>${speed}`;
         row.appendChild(label);
 
         const bar = ui.el('div', 'proxy-heatmap-bar');
+
+        // Find first actual check index
+        let firstCheck = -1;
+        for (let i = 0; i < segs; i++) {
+          if ((p.buckets[i] || 0) !== 0) { firstCheck = i; break; }
+        }
+
+        // Walk left-to-right: carry last known state forward for gaps
+        let runningState = 0;
         for (let i = 0; i < segs; i++) {
           const v = p.buckets[i] || 0;
-          const cls = v === 1 ? 'ok' : v === 2 ? 'err' : 'none';
-          const cell = ui.el('div', `proxy-heatmap-cell ${cls}`);
-          cell.title = `${p.address} — ${cls === 'ok' ? t('page.analytics.heatmapOk') : cls === 'err' ? t('page.analytics.heatmapErr') : t('page.analytics.heatmapNone')}`;
+          let cls, dimmed = false;
+          if (v !== 0) {
+            cls = v === 1 ? 'ok' : 'err';
+            runningState = v;
+          } else if (i < firstCheck || firstCheck < 0) {
+            cls = 'none';
+          } else {
+            cls = runningState === 1 ? 'ok' : 'err';
+            dimmed = true;
+          }
+          const cell = ui.el('div', `proxy-heatmap-cell ${cls}` + (dimmed ? ' dimmed' : ''));
+          const label = cls === 'ok' ? (dimmed ? t('page.analytics.heatmapOkDimmed') : t('page.analytics.heatmapOk')) : cls === 'err' ? (dimmed ? t('page.analytics.heatmapErrDimmed') : t('page.analytics.heatmapErr')) : t('page.analytics.heatmapNone');
+          cell.title = `${p.address} — ${label}`;
           bar.appendChild(cell);
         }
         row.appendChild(bar);

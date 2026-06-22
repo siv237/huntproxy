@@ -395,7 +395,9 @@
       "heatmapOk": "Работает",
       "heatmapErr": "Ошибка",
       "heatmapNone": "Нет проверки",
-      "heatmapEmpty": "Нет живых прокси для отображения"
+      "heatmapEmpty": "Нет живых прокси для отображения",
+      "heatmapOkDimmed": "Последний OK (без перепроверки)",
+      "heatmapErrDimmed": "Последняя ошибка (без перепроверки)"
     },
     "logs": {
       "title": "Логи",

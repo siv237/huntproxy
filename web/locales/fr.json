@@ -365,7 +365,9 @@
       "heatmapOk": "Fonctionne",
       "heatmapErr": "Échec",
       "heatmapNone": "Pas de vérification",
-      "heatmapEmpty": "Aucun proxy actif à afficher"
+      "heatmapEmpty": "Aucun proxy actif à afficher",
+      "heatmapOkDimmed": "Dernier OK (non revérifié)",
+      "heatmapErrDimmed": "Dernière erreur (non revérifié)"
     },
     "logs": {
       "title": "Journaux",
