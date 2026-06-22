@@ -367,7 +367,8 @@
       "heatmapNone": "Pas de vérification",
       "heatmapEmpty": "Aucun proxy actif à afficher",
       "heatmapOkDimmed": "Dernier OK (non revérifié)",
-      "heatmapErrDimmed": "Dernière erreur (non revérifié)"
+      "heatmapErrDimmed": "Dernière erreur (non revérifié)",
+      "recheckAll": "↻ Tout vérifier"
     },
     "logs": {
       "title": "Journaux",

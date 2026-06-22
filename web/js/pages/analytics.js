@@ -63,19 +63,37 @@ router.register('analytics', (container) => {
   setTitle('analytics-errors', t('page.analytics.errorTrend'));
   setTitle('analytics-events', t('page.analytics.eventHistory'));
 
+  let _heatmapPolling = null;
+
   function renderHeatmap() {
     const card = document.getElementById('analytics-heatmap');
     if (!card) return;
     card.innerHTML = '';
     const header = ui.el('div', 'card-header');
     header.appendChild(ui.el('div', 'card-title', { text: t('page.analytics.proxyHeatmap') }));
+    const headerRight = ui.el('div', '', { style: 'display:flex;align-items:center;gap:8px' });
     const legend = ui.el('div', 'proxy-heatmap-legend');
     legend.innerHTML = `<span><span class="proxy-heatmap-legend-dot ok"></span>${ui.escHtml(t('page.analytics.heatmapOk'))}</span><span><span class="proxy-heatmap-legend-dot err"></span>${ui.escHtml(t('page.analytics.heatmapErr'))}</span><span><span class="proxy-heatmap-legend-dot none"></span>${ui.escHtml(t('page.analytics.heatmapNone'))}</span>`;
-    header.appendChild(legend);
+    headerRight.appendChild(legend);
+    const recheckBtn = ui.el('button', 'btn btn-xs btn-secondary', { text: t('page.analytics.recheckAll') });
+    recheckBtn.id = 'heatmap-recheck-btn';
+    recheckBtn.addEventListener('click', () => startRecheck(recheckBtn));
+    headerRight.appendChild(recheckBtn);
+    header.appendChild(headerRight);
     card.appendChild(header);
 
     const body = ui.el('div', 'proxy-heatmap');
+    card.appendChild(body);
 
+    drawHeatmapBody(body);
+
+    if (_heatmapPolling) {
+      const btn = document.getElementById('heatmap-recheck-btn');
+      if (btn) { btn.disabled = true; btn.textContent = t('common.testing'); }
+    }
+  }
+
+  function drawHeatmapBody(body) {
     api.proxyHeatmap(72).then(data => {
       const proxies = data.proxies || [];
       if (!proxies.length) {
@@ -92,9 +110,16 @@ router.register('analytics', (container) => {
         row.style.cursor = 'pointer';
         row.addEventListener('click', () => { if (window.proxyCard) window.proxyCard.show(p.address); });
         const label = ui.el('span', 'proxy-heatmap-label');
-        const favStar = p.is_favorite ? '<svg width="10" height="10" style="vertical-align:-1px;color:var(--warning);flex-shrink:0"><use href="#icon-star"/></svg>' : '';
-        const speed = p.speed_avg ? `<span style="color:var(--text-muted);flex-shrink:0">${p.speed_avg.toFixed(0)}KB/s</span>` : '';
-        label.innerHTML = `${favStar}<span class="flag">${ui.flag(p.country_code)}</span><span class="addr" title="${ui.escHtml(p.address)}">${ui.escHtml(p.address)}</span>${speed}`;
+        const favStar = p.is_favorite ? '<svg width="10" height="10" style="vertical-align:-1px;color:var(--warning);flex-shrink:0;width:10px;height:10px"><use href="#icon-star"/></svg>' : '<span style="width:10px;flex-shrink:0"></span>';
+        const proto = (p.protocol || 'http').toLowerCase();
+        let prefix = 'http://';
+        if (proto === 'socks5') prefix = 'socks5://';
+        else if (proto === 'socks4') prefix = 'socks4://';
+        else if (proto === 'tor' || p.address.includes('.onion')) prefix = 'tor://';
+        else if (p.ssl_supported) prefix = 'https://';
+        const speed = p.speed_avg ? `<span class="speed">${p.speed_avg.toFixed(0)}KB/s</span>` : '<span class="speed"></span>';
+        const score = `<span class="score">${(p.score || 0).toFixed(0)}</span>`;
+        label.innerHTML = `${favStar}<span class="flag">${ui.flag(p.country_code)}</span><span class="addr" title="${ui.escHtml(prefix + p.address)}">${prefix}${ui.escHtml(p.address)}</span>${speed}${score}`;
         row.appendChild(label);
 
         const bar = ui.el('div', 'proxy-heatmap-bar');
@@ -135,11 +160,41 @@ router.register('analytics', (container) => {
       axis.appendChild(ui.el('span', '', { text: t('proxyCard.h36ago') }));
       axis.appendChild(ui.el('span', '', { text: t('ago.now') }));
       body.appendChild(axis);
-
-      card.appendChild(body);
     }).catch(e => {
+      body.innerHTML = '';
       body.appendChild(ui.el('div', 'empty', { text: t('page.analytics.heatmapEmpty'), style: 'padding:16px' }));
-      card.appendChild(body);
+    });
+  }
+
+  function startRecheck(btn) {
+    if (btn.disabled) return;
+    btn.disabled = true;
+    btn.textContent = t('common.testing');
+    api.healthStart().then(() => {
+      app.toast(t('common.recheckStarted'));
+      _heatmapPolling = setInterval(async () => {
+        const body = document.querySelector('#analytics-heatmap .proxy-heatmap');
+        if (body) drawHeatmapBody(body);
+        try {
+          const s = await api.snapshot();
+          if (!s.running || s.phase !== 'health') {
+            clearInterval(_heatmapPolling);
+            _heatmapPolling = null;
+            btn.disabled = false;
+            btn.textContent = t('page.analytics.recheckAll');
+            if (body) drawHeatmapBody(body);
+          }
+        } catch (e) { /* keep polling */ }
+      }, 2000);
+      if (window._pageIntervals) window._pageIntervals.push(_heatmapPolling);
+    }).catch(e => {
+      btn.disabled = false;
+      btn.textContent = t('page.analytics.recheckAll');
+      if (e.message && e.message.includes('already_running')) {
+        app.toast(t('common.recheckAlreadyRunning'), 'warn');
+      } else {
+        app.toast(t('common.error', { message: e.message }), 'error');
+      }
     });
   }
 

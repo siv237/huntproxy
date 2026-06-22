@@ -1090,7 +1090,7 @@
 
 .proxy-heatmap-label {
   flex-shrink: 0;
-  width: 140px;
+  width: 330px;
   min-width: 0;
   display: flex;
   align-items: center;
@@ -1103,14 +1103,40 @@
   text-underline-offset: 2px;
 }
 
+.proxy-heatmap-label svg {
+  order: 0;
+  flex-shrink: 0;
+}
+
 .proxy-heatmap-label .flag {
   flex-shrink: 0;
+  order: 1;
 }
 
 .proxy-heatmap-label .addr {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  order: 2;
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.proxy-heatmap-label .speed {
+  flex-shrink: 0;
+  order: 3;
+  width: 48px;
+  text-align: right;
+  color: var(--text-muted);
+}
+
+.proxy-heatmap-label .score {
+  flex-shrink: 0;
+  order: 4;
+  width: 28px;
+  text-align: right;
+  color: var(--accent);
+  font-weight: 600;
 }
 
 .proxy-heatmap-bar {
@@ -1135,7 +1161,7 @@
 .proxy-heatmap-axis {
   display: flex;
   justify-content: space-between;
-  padding-left: 146px;
+  padding-left: 336px;
   font-size: 9px;
   color: var(--text-muted);
 }
