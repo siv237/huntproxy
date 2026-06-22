@@ -7,7 +7,7 @@ router.register('proxy-pool', (container) => {
     hideNoHttps: true,
     hideNoSsl: false,
     hideMitm: true,
-    hideBlacklisted: false,
+    hideBlacklisted: true,
     groupByProtocol: true,
   };
 
@@ -378,7 +378,7 @@ router.register('proxy-pool', (container) => {
 
     const sorted = (proxies || []).slice()
       .map(p => { p._diff = (p.listen_country && p.egress_country && p.listen_country !== p.egress_country) ? 1 : 0; p._exit_code = p.egress_country ? ui.flag(p.egress_country.slice(0,2).toUpperCase().replace(/[^A-Z]/g,'')) : ''; p._protoGroup = proxyProtoGroup(p); return p; })
-      .filter(p => (!state.hideNoHttps || p.supports_connect) && (!state.hideNoSsl || p.ssl_supported) && (!state.hideMitm || !p.mitm_suspect) && (!state.hideBlacklisted || !p.in_blacklist))
+      .filter(p => (!state.hideNoHttps || p.supports_connect) && (!state.hideNoSsl || p.ssl_supported) && (!state.hideMitm || !p.mitm_suspect) && (!state.hideBlacklisted || !(p.in_blacklist || (p.ip_blacklist_hits || 0) > 0)))
       .sort((a, b) => {
         const key = state.proxySortKey;
         const dir = state.proxySortDir;
@@ -398,9 +398,16 @@ router.register('proxy-pool', (container) => {
     const h = (label, key, width, align) => ({ label: label + (key ? ui.sortArrow(key, state.proxySortKey, state.proxySortDir) : ''), width, align, sortKey: key, onSort: key ? () => setProxySort(key) : undefined });
 
     function blacklistBadge(p) {
-      if (!p.in_blacklist) return '';
-      const hits = p.ip_blacklist_hits > 0 ? `×${p.ip_blacklist_hits}` : '';
-      return `<span style="display:inline-flex;align-items:center;justify-content:center;min-width:16px;padding:1px 4px;border-radius:var(--radius-xs);background:var(--danger-bg);color:var(--danger);font-weight:700;font-size:9px;margin-left:4px">BL${hits}</span>`;
+      const hits = p.ip_blacklist_hits || 0;
+      const total = p.ip_blacklist_sources_total || 0;
+      if (!p.in_blacklist && hits === 0) return '';
+      if (hits > 0 && total > 0) {
+        return `<span style="display:inline-flex;align-items:center;justify-content:center;min-width:20px;padding:1px 4px;border-radius:var(--radius-xs);background:var(--danger-bg);color:var(--danger);font-weight:700;font-size:9px;margin-left:4px">${hits}/${total}</span>`;
+      }
+      if (p.in_blacklist) {
+        return `<span style="display:inline-flex;align-items:center;justify-content:center;min-width:16px;padding:1px 4px;border-radius:var(--radius-xs);background:var(--danger-bg);color:var(--danger);font-weight:700;font-size:9px;margin-left:4px">BL</span>`;
+      }
+      return '';
     }
 
     if (state.groupByProtocol) {
@@ -433,7 +440,7 @@ router.register('proxy-pool', (container) => {
           h('KB/s', 'speed_avg', '40px', 'right'),
           h('Succ', 'success_rate', '40px', 'right'),
           h('Score', 'score', '40px', 'right'),
-          h('BL', 'ip_blacklist_hits', '28px', 'center'),
+          h('BL', 'ip_blacklist_hits', '36px', 'center'),
           h('Ok', 'last_ok', '36px', 'right'),
           h('', null, '40px', 'center'),
         ];
@@ -481,7 +488,7 @@ router.register('proxy-pool', (container) => {
         h('KB/s', 'speed_avg', '40px', 'right'),
         h('Succ', 'success_rate', '40px', 'right'),
         h('Score', 'score', '40px', 'right'),
-        h('BL', 'ip_blacklist_hits', '28px', 'center'),
+        h('BL', 'ip_blacklist_hits', '36px', 'center'),
         h('Flags', 'supports_connect', '50px', 'center'),
         h('Ok', 'last_ok', '36px', 'right'),
         h('', null, '40px', 'center'),

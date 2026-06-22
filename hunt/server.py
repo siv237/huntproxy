@@ -632,7 +632,13 @@ class HuntServer:
             ratings = [r for r in self.state.ratings.values()
                        if r.last_status == "ok" and not r.in_blacklist]
             ratings.sort(key=lambda r: r.score, reverse=True)
-            return json.dumps([r.to_dict() for r in ratings]), 200, "application/json"
+            ip_bl_total = len(self.state.get_ip_blacklist_sources())
+            result = []
+            for r in ratings:
+                d = r.to_dict()
+                d["ip_blacklist_sources_total"] = ip_bl_total
+                result.append(d)
+            return json.dumps(result), 200, "application/json"
 
         if path.startswith("/api/proxy/start"):
             qs = _qs(raw_path)
