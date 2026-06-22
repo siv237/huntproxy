@@ -215,7 +215,9 @@ class SnapshotMixin:
             seg_dur = 3600.0
 
             alive = [r for r in self.ratings.values()
-                     if (r.last_status == "ok" or r.in_grace) and not r.in_blacklist]
+                     if (r.last_status == "ok" or r.in_grace)
+                     and not r.in_blacklist
+                     and r.speed_avg > 0]
             alive.sort(key=lambda r: r.score, reverse=True)
             if not alive:
                 return {"segments": segments, "proxies": [], "cutoff": cutoff}
