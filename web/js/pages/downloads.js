@@ -54,6 +54,54 @@ router.register('downloads', (container) => {
     });
     card.appendChild(grid);
 
+    const importCard = ui.card(t('page.downloads.importProxies'));
+    importCard.id = 'import-card';
+    container.appendChild(importCard);
+
+    const impWrap = ui.el('div', '', { style: 'display:flex;flex-direction:column;gap:8px' });
+    impWrap.id = 'import-wrap';
+    importCard.appendChild(impWrap);
+
+    const impDesc = ui.el('div', '', { style: 'font-size:12px;color:var(--text-secondary)', text: t('page.overview.importDesc') });
+    impWrap.appendChild(impDesc);
+
+    const favLabel = ui.el('label', '', { style: 'display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer' });
+    const favCb = ui.el('input', '', { type: 'checkbox', checked: true });
+    favLabel.appendChild(favCb);
+    favLabel.appendChild(ui.el('span', '', { text: t('page.overview.importAsFavorite') }));
+    impWrap.appendChild(favLabel);
+
+    const impBtnRow = ui.el('div', '', { style: 'display:flex;gap:8px;align-items:center' });
+    const impBtn = ui.el('button', 'btn btn-primary', { text: t('page.overview.chooseFile') });
+    const impInput = ui.el('input', '', { type: 'file', accept: '.txt', style: 'display:none' });
+    impBtnRow.appendChild(impBtn);
+    impBtnRow.appendChild(impInput);
+    impWrap.appendChild(impBtnRow);
+
+    const impStatus = ui.el('div', '', { style: 'font-size:12px;color:var(--text-secondary);min-height:16px' });
+    impWrap.appendChild(impStatus);
+
+    impBtn.addEventListener('click', () => impInput.click());
+    impInput.addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      impBtn.disabled = true;
+      impStatus.textContent = '...';
+      try {
+        const text = await file.text();
+        const lines = text.split('\n');
+        const result = await api.importProxies({ proxies: lines, favorite: favCb.checked });
+        const msg = (result.added || 0) + (result.favorited != null ? ' ⭐' + result.favorited : '');
+        impStatus.textContent = msg;
+      } catch (err) {
+        impStatus.textContent = String(err.message || err);
+      } finally {
+        impBtn.disabled = false;
+        impInput.value = '';
+        loadCounts();
+      }
+    });
+
     const backupCard = ui.card(t('page.downloads.backupRestore'));
     backupCard.id = 'backup-card';
     backupCard.style.display = 'flex';

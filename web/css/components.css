@@ -1064,6 +1064,103 @@
   color: var(--text-muted);
 }
 
+/* Proxy heatmap */
+.proxy-heatmap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.proxy-heatmap-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.proxy-heatmap-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 1px 0;
+}
+
+.proxy-heatmap-label {
+  flex-shrink: 0;
+  width: 140px;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-family: monospace;
+  color: var(--text-secondary);
+  cursor: pointer;
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+}
+
+.proxy-heatmap-label .flag {
+  flex-shrink: 0;
+}
+
+.proxy-heatmap-label .addr {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.proxy-heatmap-bar {
+  display: flex;
+  flex: 1;
+  gap: 1px;
+  height: 14px;
+  min-width: 0;
+}
+
+.proxy-heatmap-cell {
+  flex: 1 1 0;
+  min-width: 0;
+  border-radius: 1px;
+}
+
+.proxy-heatmap-cell.ok { background: var(--success); }
+.proxy-heatmap-cell.err { background: var(--danger); }
+.proxy-heatmap-cell.none { background: var(--surface); }
+
+.proxy-heatmap-axis {
+  display: flex;
+  justify-content: space-between;
+  padding-left: 146px;
+  font-size: 9px;
+  color: var(--text-muted);
+}
+
+.proxy-heatmap-legend {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.proxy-heatmap-legend-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  margin-right: 3px;
+  vertical-align: middle;
+}
+
+.proxy-heatmap-legend-dot.ok { background: var(--success); }
+.proxy-heatmap-legend-dot.err { background: var(--danger); }
+.proxy-heatmap-legend-dot.none { background: var(--surface); }
+
 /* Grids */
 .proxy-card-grid-2 {
   display: grid;

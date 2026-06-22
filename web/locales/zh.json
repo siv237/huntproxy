@@ -131,6 +131,8 @@
       "exportDesc": "导出代理列表",
       "import": "导入",
       "importDesc": "导入代理",
+      "importAsFavorite": "将导入的代理添加到收藏",
+      "chooseFile": "选择文件",
       "settingsAction": "设置",
       "settingsDesc": "配置系统",
       "livePerformance": "实时性能",
@@ -358,7 +360,12 @@
       "alive": "在线",
       "dead": "离线",
       "inKB": "入（KB）",
-      "outKB": "出（KB）"
+      "outKB": "出（KB）",
+      "proxyHeatmap": "代理热力图（72小时）",
+      "heatmapOk": "正常",
+      "heatmapErr": "失败",
+      "heatmapNone": "未检查",
+      "heatmapEmpty": "没有活跃代理可显示"
     },
     "logs": {
       "title": "日志",
@@ -546,6 +553,7 @@
       "ratingsJson": "代理评分和统计",
       "configYaml": "应用配置",
       "download": "下载",
+      "importProxies": "导入代理",
       "backupRestore": "备份与恢复",
       "createBackup": "创建备份",
       "restoreBackup": "从文件恢复",

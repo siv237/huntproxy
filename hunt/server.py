@@ -913,6 +913,12 @@ class HuntServer:
             data = self.state.get_proxy_checks(addr, limit)
             return json.dumps(data), 200, "application/json"
 
+        if path.startswith("/api/proxy-heatmap") and method == "GET":
+            qs = _qs(raw_path)
+            hours = int(qs.get("hours", 72))
+            data = self.state.get_proxy_heatmap(hours)
+            return json.dumps(data), 200, "application/json"
+
         if path.startswith("/api/proxy/") and method == "GET":
             addr = path[len("/api/proxy/"):]
             addr = unquote(addr)
@@ -965,18 +971,38 @@ class HuntServer:
             try:
                 data = json.loads(body or b"{}")
                 lines = data.get("proxies", [])
+                mark_favorite = bool(data.get("favorite", False))
                 added = 0
+                favorited = 0
                 for line in lines:
-                    addr = line.strip()
+                    line = line.strip() if isinstance(line, str) else str(line).strip()
+                    if not line or line.startswith("#"):
+                        continue
+                    # working.txt / export format: "address  country  latency"
+                    # — take only the first whitespace-separated token.
+                    addr = line.split()[0] if line.split() else ""
                     if not addr or ":" not in addr:
                         continue
-                    if addr not in self.state.ratings and addr not in self.state.blacklist:
-                        self.state.ratings[addr] = ProxyRating(address=addr, first_seen=time.time(), last_check=time.time(), checks_total=1, checks_ok=1, last_status="ok")
+                    is_new = addr not in self.state.ratings and addr not in self.state.blacklist
+                    if is_new:
+                        self.state.ratings[addr] = ProxyRating(
+                            address=addr, first_seen=time.time(),
+                            last_check=time.time(), checks_total=1, checks_ok=1,
+                            last_status="ok")
                         added += 1
-                self.state._emit(f"Imported {added} proxies", "info")
+                    if mark_favorite and addr not in self.state.favorites:
+                        self.state.favorite_add(addr)
+                        favorited += 1
+                msg = f"Imported {added} proxies"
+                if mark_favorite:
+                    msg += f", favorited {favorited}"
+                self.state._emit(msg, "info")
                 self.state._save_state()
                 self.state._save_working_file()
-                return json.dumps({"ok": True, "added": added}), 200, "application/json"
+                result = {"ok": True, "added": added}
+                if mark_favorite:
+                    result["favorited"] = favorited
+                return json.dumps(result), 200, "application/json"
             except Exception as e:
                 return json.dumps({"ok": False, "error": str(e)}), 400, "application/json"
 

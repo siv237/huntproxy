@@ -202,6 +202,74 @@ class SnapshotMixin:
                 "count": len(checks),
             }
 
+    def get_proxy_heatmap(self, hours: int = 72) -> dict:
+            """Return a 72-hour check heatmap for all alive proxies.
+
+            Each proxy gets an array of ``segments`` buckets (one per hour),
+            where each bucket is 0 = no check, 1 = ok, 2 = failed. Proxies are
+            sorted by score descending so the best ones appear at the top.
+            """
+            segments = min(hours, 72)
+            now = time.time()
+            cutoff = now - segments * 3600
+            seg_dur = 3600.0
+
+            alive = [r for r in self.ratings.values()
+                     if (r.last_status == "ok" or r.in_grace) and not r.in_blacklist]
+            alive.sort(key=lambda r: r.score, reverse=True)
+            if not alive:
+                return {"segments": segments, "proxies": [], "cutoff": cutoff}
+
+            addrs = [r.address for r in alive]
+            addr_set = set(addrs)
+
+            try:
+                conn = self._stats_db()
+                rows = conn.execute(
+                    "SELECT address, ts, ok FROM proxy_checks "
+                    "WHERE ts >= ? AND address IN (%s) "
+                    "ORDER BY ts ASC" % ",".join("?" * len(addrs)),
+                    (cutoff, *addrs),
+                ).fetchall()
+                conn.close()
+            except Exception as e:
+                logger.error("get_proxy_heatmap: %s", e)
+                rows = []
+
+            by_addr: dict[str, list] = {}
+            for row in rows:
+                a = row["address"]
+                if a not in addr_set:
+                    continue
+                idx = int((row["ts"] - cutoff) / seg_dur)
+                if idx < 0 or idx >= segments:
+                    continue
+                buckets = by_addr.setdefault(a, [0] * segments)
+                cur = buckets[idx]
+                val = 1 if row["ok"] else 2
+                if cur == 0 or (cur == 1 and val == 2):
+                    buckets[idx] = val
+
+            proxies = []
+            for r in alive:
+                buckets = by_addr.get(r.address, [0] * segments)
+                ok_count = sum(1 for b in buckets if b == 1)
+                err_count = sum(1 for b in buckets if b == 2)
+                proxies.append({
+                    "address": r.address,
+                    "country": r.country,
+                    "country_code": r.country_code,
+                    "score": round(r.score, 1),
+                    "protocol": r.protocol,
+                    "ssl_supported": r.ssl_supported,
+                    "is_favorite": r.is_favorite,
+                    "buckets": buckets,
+                    "ok_count": ok_count,
+                    "err_count": err_count,
+                })
+
+            return {"segments": segments, "cutoff": cutoff, "proxies": proxies}
+
     def get_live_traffic(self) -> dict:
             """Return total traffic bytes (last 24h) and request count."""
             cutoff = time.time() - 86400

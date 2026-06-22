@@ -9,7 +9,6 @@ router.register('analytics', (container) => {
   function makeChartCard(title, id) {
     const card = ui.card(title);
     card.id = id;
-    card.style.flex = '1';
     card.style.minHeight = '0';
     card.style.display = 'flex';
     card.style.flexDirection = 'column';
@@ -17,20 +16,28 @@ router.register('analytics', (container) => {
     return card;
   }
 
-  const row1 = ui.el('div', 'grid grid-2 row-stretch');
+  // Row 0: Full-width heatmap
+  const heatmapCard = ui.card(t('page.analytics.proxyHeatmap'));
+  heatmapCard.id = 'analytics-heatmap';
+  heatmapCard.style.flex = '1';
+  heatmapCard.style.minHeight = '0';
+  heatmapCard.style.display = 'flex';
+  heatmapCard.style.flexDirection = 'column';
+  heatmapCard.style.overflow = 'hidden';
+  container.appendChild(heatmapCard);
+
+  // Rows 1-3: existing charts (compact)
+  const row1 = ui.el('div', 'grid grid-3 row-stretch');
   row1.appendChild(makeChartCard(t('page.analytics.poolSizeOverTime'), 'analytics-pool'));
   row1.appendChild(makeChartCard(t('page.analytics.trafficVolume'), 'analytics-traffic'));
+  row1.appendChild(makeChartCard(t('page.analytics.bandwidth24h'), 'analytics-bandwidth'));
   container.appendChild(row1);
 
-  const row2 = ui.el('div', 'grid grid-2 row-stretch');
-  row2.appendChild(makeChartCard(t('page.analytics.bandwidth24h'), 'analytics-bandwidth'));
+  const row2 = ui.el('div', 'grid grid-3 row-stretch');
   row2.appendChild(makeChartCard(t('page.analytics.avgResponseTime'), 'analytics-latency'));
+  row2.appendChild(makeChartCard(t('page.analytics.errorTrend'), 'analytics-errors'));
+  row2.appendChild(makeChartCard(t('page.analytics.eventHistory'), 'analytics-events'));
   container.appendChild(row2);
-
-  const row3 = ui.el('div', 'grid grid-2 row-stretch');
-  row3.appendChild(makeChartCard(t('page.analytics.errorTrend'), 'analytics-errors'));
-  row3.appendChild(makeChartCard(t('page.analytics.eventHistory'), 'analytics-events'));
-  container.appendChild(row3);
 
   function renderChartCard(id, inner) {
     const card = document.getElementById(id);
@@ -55,6 +62,65 @@ router.register('analytics', (container) => {
   setTitle('analytics-latency', t('page.analytics.avgResponseTime'));
   setTitle('analytics-errors', t('page.analytics.errorTrend'));
   setTitle('analytics-events', t('page.analytics.eventHistory'));
+
+  function renderHeatmap() {
+    const card = document.getElementById('analytics-heatmap');
+    if (!card) return;
+    card.innerHTML = '';
+    const header = ui.el('div', 'card-header');
+    header.appendChild(ui.el('div', 'card-title', { text: t('page.analytics.proxyHeatmap') }));
+    const legend = ui.el('div', 'proxy-heatmap-legend');
+    legend.innerHTML = `<span><span class="proxy-heatmap-legend-dot ok"></span>${ui.escHtml(t('page.analytics.heatmapOk'))}</span><span><span class="proxy-heatmap-legend-dot err"></span>${ui.escHtml(t('page.analytics.heatmapErr'))}</span><span><span class="proxy-heatmap-legend-dot none"></span>${ui.escHtml(t('page.analytics.heatmapNone'))}</span>`;
+    header.appendChild(legend);
+    card.appendChild(header);
+
+    const body = ui.el('div', 'proxy-heatmap');
+
+    api.proxyHeatmap(72).then(data => {
+      const proxies = data.proxies || [];
+      if (!proxies.length) {
+        body.appendChild(ui.el('div', 'empty', { text: t('page.analytics.heatmapEmpty'), style: 'padding:16px' }));
+        card.appendChild(body);
+        return;
+      }
+      const segs = data.segments || 72;
+
+      const scroll = ui.el('div', 'proxy-heatmap-scroll');
+
+      proxies.forEach(p => {
+        const row = ui.el('div', 'proxy-heatmap-row');
+        const label = ui.el('span', 'proxy-heatmap-label');
+        const favStar = p.is_favorite ? '<svg width="10" height="10" style="vertical-align:-1px;color:var(--warning);flex-shrink:0"><use href="#icon-star"/></svg>' : '';
+        label.innerHTML = `${favStar}<span class="flag">${ui.flag(p.country_code)}</span><span class="addr" title="${ui.escHtml(p.address)}">${ui.escHtml(p.address)}</span>`;
+        label.addEventListener('click', () => { if (window.proxyCard) window.proxyCard.show(p.address); });
+        row.appendChild(label);
+
+        const bar = ui.el('div', 'proxy-heatmap-bar');
+        for (let i = 0; i < segs; i++) {
+          const v = p.buckets[i] || 0;
+          const cls = v === 1 ? 'ok' : v === 2 ? 'err' : 'none';
+          const cell = ui.el('div', `proxy-heatmap-cell ${cls}`);
+          cell.title = `${p.address} — ${cls === 'ok' ? t('page.analytics.heatmapOk') : cls === 'err' ? t('page.analytics.heatmapErr') : t('page.analytics.heatmapNone')}`;
+          bar.appendChild(cell);
+        }
+        row.appendChild(bar);
+        scroll.appendChild(row);
+      });
+
+      body.appendChild(scroll);
+
+      const axis = ui.el('div', 'proxy-heatmap-axis');
+      axis.appendChild(ui.el('span', '', { text: t('proxyCard.h72ago') }));
+      axis.appendChild(ui.el('span', '', { text: t('proxyCard.h36ago') }));
+      axis.appendChild(ui.el('span', '', { text: t('ago.now') }));
+      body.appendChild(axis);
+
+      card.appendChild(body);
+    }).catch(e => {
+      body.appendChild(ui.el('div', 'empty', { text: t('page.analytics.heatmapEmpty'), style: 'padding:16px' }));
+      card.appendChild(body);
+    });
+  }
 
   async function load() {
     let h24 = [], h6h = [];
@@ -138,5 +204,6 @@ router.register('analytics', (container) => {
     }
   }
 
+  renderHeatmap();
   load();
 });

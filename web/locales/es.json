@@ -131,6 +131,8 @@
       "exportDesc": "Exportar lista de proxis",
       "import": "Importar",
       "importDesc": "Importar proxis",
+      "importAsFavorite": "Añadir proxis importados a favoritos",
+      "chooseFile": "Elegir archivo",
       "settingsAction": "Ajustes",
       "settingsDesc": "Configurar el sistema",
       "livePerformance": "Rendimiento en Vivo",
@@ -358,7 +360,12 @@
       "alive": "Vivos",
       "dead": "Muertos",
       "inKB": "Entrante (KB)",
-      "outKB": "Saliente (KB)"
+      "outKB": "Saliente (KB)",
+      "proxyHeatmap": "Mapa de calor de proxis (72h)",
+      "heatmapOk": "Funciona",
+      "heatmapErr": "Error",
+      "heatmapNone": "Sin comprobación",
+      "heatmapEmpty": "No hay proxis activos para mostrar"
     },
     "logs": {
       "title": "Registros",
@@ -546,6 +553,7 @@
       "ratingsJson": "Clasificaciones y estadísticas de proxis",
       "configYaml": "Configuración de la aplicación",
       "download": "Descargar",
+      "importProxies": "Importar proxis",
       "backupRestore": "Copia de seguridad y restauración",
       "createBackup": "Crear copia de seguridad",
       "restoreBackup": "Restaurar desde archivo",

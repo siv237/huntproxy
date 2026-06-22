@@ -133,3 +133,57 @@ class TestFavorites:
         groups = state.get_backup_groups()
         keys = [g["key"] for g in groups]
         assert "favorites" in keys
+
+    @pytest.mark.asyncio
+    async def test_import_with_favorite_marks_proxies(self, http_client, api_server):
+        _, state = api_server
+        lines = ["1.2.3.4:8080  United States  0.500", "5.6.7.8:3128  Germany  0.300"]
+        resp = await http_client("POST", "/api/import", {"proxies": lines, "favorite": True})
+        status, data = json_body(resp)
+        assert status == 200
+        assert data["ok"] is True
+        assert data["added"] == 2
+        assert data["favorited"] == 2
+        assert "1.2.3.4:8080" in state.favorites
+        assert "5.6.7.8:3128" in state.favorites
+
+    @pytest.mark.asyncio
+    async def test_import_without_favorite_does_not_mark(self, http_client, api_server):
+        _, state = api_server
+        resp = await http_client("POST", "/api/import", {"proxies": ["9.9.9.9:8080"]})
+        status, data = json_body(resp)
+        assert status == 200
+        assert data["added"] == 1
+        assert "favorited" not in data
+        assert "9.9.9.9:8080" not in state.favorites
+
+    @pytest.mark.asyncio
+    async def test_import_skips_comments_and_parses_first_token(self, http_client, api_server):
+        _, state = api_server
+        lines = [
+            "# huntproxy alive working proxies (generated from DB)",
+            "1.1.1.1:80  US  0.123",
+            "",
+            "2.2.2.2:443  DE  0.456",
+        ]
+        resp = await http_client("POST", "/api/import", {"proxies": lines, "favorite": True})
+        status, data = json_body(resp)
+        assert status == 200
+        assert data["added"] == 2
+        assert "1.1.1.1:80" in state.ratings
+        assert "2.2.2.2:443" in state.ratings
+
+    @pytest.mark.asyncio
+    async def test_import_does_not_overwrite_existing(self, http_client, api_server):
+        _, state = api_server
+        addr = "3.3.3.3:8080"
+        state.ratings[addr] = hunt.ProxyRating(
+            address=addr, checks_total=10, checks_ok=8, last_status="ok",
+            speed_sum=500, speed_count=1)
+        resp = await http_client("POST", "/api/import", {"proxies": [addr], "favorite": True})
+        status, data = json_body(resp)
+        assert status == 200
+        assert data["added"] == 0
+        assert data["favorited"] == 1
+        assert state.ratings[addr].checks_total == 10
+        assert addr in state.favorites

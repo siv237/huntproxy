@@ -131,6 +131,8 @@
       "exportDesc": "Proxy-Liste exportieren",
       "import": "Importieren",
       "importDesc": "Proxys importieren",
+      "importAsFavorite": "Importierte Proxys zu Favoriten hinzufügen",
+      "chooseFile": "Datei wählen",
       "settingsAction": "Einstellungen",
       "settingsDesc": "System konfigurieren",
       "livePerformance": "Live-Leistung",
@@ -358,7 +360,12 @@
       "alive": "Aktiv",
       "dead": "Tot",
       "inKB": "Rein (KB)",
-      "outKB": "Raus (KB)"
+      "outKB": "Raus (KB)",
+      "proxyHeatmap": "Proxy-Heatmap (72h)",
+      "heatmapOk": "Funktioniert",
+      "heatmapErr": "Fehler",
+      "heatmapNone": "Keine Prüfung",
+      "heatmapEmpty": "Keine aktiven Proxys zum Anzeigen"
     },
     "logs": {
       "title": "Protokolle",
@@ -546,6 +553,7 @@
       "ratingsJson": "Proxy-Bewertungen und Statistiken",
       "configYaml": "Anwendungskonfiguration",
       "download": "Herunterladen",
+      "importProxies": "Proxys importieren",
       "backupRestore": "Sicherung & Wiederherstellung",
       "createBackup": "Sicherung erstellen",
       "restoreBackup": "Aus Datei wiederherstellen",

@@ -131,6 +131,8 @@
       "exportDesc": "Exporter la liste des proxys",
       "import": "Importer",
       "importDesc": "Importer des proxys",
+      "importAsFavorite": "Ajouter les proxys importés aux favoris",
+      "chooseFile": "Choisir un fichier",
       "settingsAction": "Paramètres",
       "settingsDesc": "Configurer le système",
       "livePerformance": "Performances en direct",
@@ -358,7 +360,12 @@
       "alive": "Actifs",
       "dead": "Morts",
       "inKB": "Entr (Ko)",
-      "outKB": "Sort (Ko)"
+      "outKB": "Sort (Ko)",
+      "proxyHeatmap": "Carte de chaleur des proxys (72h)",
+      "heatmapOk": "Fonctionne",
+      "heatmapErr": "Échec",
+      "heatmapNone": "Pas de vérification",
+      "heatmapEmpty": "Aucun proxy actif à afficher"
     },
     "logs": {
       "title": "Journaux",
@@ -546,6 +553,7 @@
       "ratingsJson": "Évaluations et statistiques des proxys",
       "configYaml": "Configuration de l'application",
       "download": "Télécharger",
+      "importProxies": "Importer des proxys",
       "backupRestore": "Sauvegarde et restauration",
       "createBackup": "Créer une sauvegarde",
       "restoreBackup": "Restaurer depuis un fichier",

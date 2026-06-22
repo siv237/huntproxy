@@ -131,6 +131,8 @@
       "exportDesc": "Export proxy list",
       "import": "Import",
       "importDesc": "Import proxies",
+      "importAsFavorite": "Add imported proxies to favorites",
+      "chooseFile": "Choose file",
       "settingsAction": "Settings",
       "settingsDesc": "Configure system",
       "livePerformance": "Live Performance",
@@ -388,7 +390,12 @@
       "alive": "Alive",
       "dead": "Dead",
       "inKB": "Upload (KB)",
-      "outKB": "Download (KB)"
+      "outKB": "Download (KB)",
+      "proxyHeatmap": "Proxy Heatmap (72h)",
+      "heatmapOk": "Working",
+      "heatmapErr": "Failed",
+      "heatmapNone": "No check",
+      "heatmapEmpty": "No alive proxies to display"
     },
     "logs": {
       "title": "Logs",
@@ -586,6 +593,7 @@
       "ratingsJson": "Proxy ratings and statistics",
       "configYaml": "Application configuration",
       "download": "Download",
+      "importProxies": "Import Proxies",
       "backupRestore": "Backup & Restore",
       "createBackup": "Create Backup",
       "restoreBackup": "Restore from File",

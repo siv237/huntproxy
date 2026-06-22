@@ -54,6 +54,7 @@ const api = {
   },
   proxyDetail(addr) { return this.request(`/api/proxy/${encodeURIComponent(addr)}`); },
   proxyChecks(addr, limit = 30) { return this.request(`/api/proxy-checks/${encodeURIComponent(addr)}?limit=${limit}`); },
+  proxyHeatmap(hours = 72) { return this.request(`/api/proxy-heatmap?hours=${hours}`); },
   blacklist(params = {}) {
     const q = new URLSearchParams(params).toString();
     return this.request(`/api/blacklist?${q}`);
