@@ -1012,7 +1012,7 @@ class HuntServer:
                     self.state._log_action("health.start", "already-running")
                     return json.dumps({"ok": False, "error": "already_running"}), 409, "application/json"
                 self.state._log_action("health.start", "recheck-all")
-                asyncio.create_task(self.state._health_check())
+                asyncio.create_task(self.state._health_check(manual=True))
                 return json.dumps({"ok": True}), 200, "application/json"
             except Exception as e:
                 return json.dumps({"ok": False, "error": str(e)}), 500, "application/json"

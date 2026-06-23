@@ -163,7 +163,8 @@
       "phaseHealthCheck": "Vérification",
       "phaseDone": "Terminé",
       "running": "En cours",
-      "phaseBlacklists": "Téléchargement des listes noires"
+      "phaseBlacklists": "Téléchargement des listes noires",
+      "phaseRecheck": "Revérification des proxies"
     },
     "hunt": {
       "title": "Chasse",

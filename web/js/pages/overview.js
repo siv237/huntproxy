@@ -184,10 +184,10 @@ router.register('overview', (container) => {
 
     const circle = ui.el('div', 'circle-progress', { id: 'pool-circle' });
     circle.innerHTML = `
-      <svg width="80" height="80" viewBox="0 0 80 80">
+      <svg width="80" height="80" viewBox="0 0 80 80" style="transform:rotate(-90deg)">
         <circle class="track" cx="40" cy="40" r="34"/>
-        <circle class="fill-err" id="pool-circle-err" cx="40" cy="40" r="34" stroke-dasharray="213.6" stroke-dashoffset="213.6" style="stroke:var(--danger);fill:none;stroke-width:6;stroke-linecap:round;transform:rotate(-90deg);transform-origin:50% 50%;transition:stroke-dashoffset 0.4s ease"/>
-        <circle class="fill" id="pool-circle-fill" cx="40" cy="40" r="34" stroke-dasharray="213.6" stroke-dashoffset="213.6" style="stroke:var(--success);fill:none;stroke-width:6;stroke-linecap:round;transform:rotate(-90deg);transform-origin:50% 50%;transition:stroke-dashoffset 0.4s ease"/>
+        <circle class="fill-err" id="pool-circle-err" cx="40" cy="40" r="34" stroke-dasharray="213.6" stroke-dashoffset="213.6" style="stroke:var(--danger);fill:none;stroke-width:6;stroke-linecap:round;transition:stroke-dashoffset 0.4s ease"/>
+        <circle class="fill" id="pool-circle-fill" cx="40" cy="40" r="34" stroke-dasharray="213.6" stroke-dashoffset="213.6" style="stroke:var(--success);fill:none;stroke-width:6;stroke-linecap:round;transition:stroke-dashoffset 0.4s ease"/>
       </svg>
       <div class="text">
         <span class="value" id="pool-pct">0%</span>
@@ -1055,10 +1055,12 @@ router.register('overview', (container) => {
         const circumference = 2 * Math.PI * 34;
         let okPct, errPct;
         if (isDownloading) {
-          const results = p.source_results || [];
+          const results = isBlacklists ? (p.bl_source_results || []) : (p.source_results || []);
           const total = results.length || poolTotal || 1;
-          okPct = results.filter(r => r.status === 'ok').length / total;
-          errPct = results.filter(r => r.status === 'error').length / total;
+          const okN = results.filter(r => r.status === 'ok').length;
+          const errN = results.filter(r => r.status === 'error').length;
+          okPct = okN / total;
+          errPct = errN / total;
         } else {
           okPct = poolTotal > 0 ? (p.working || 0) / poolTotal : 0;
           errPct = poolTotal > 0 ? (p.failed || 0) / poolTotal : 0;
@@ -1066,8 +1068,9 @@ router.register('overview', (container) => {
         const errEl = el('pool-circle-err');
         if (errEl) {
           errEl.style.strokeDashoffset = circumference - (errPct * circumference);
-          errEl.style.transform = `rotate(${-90 + okPct * 360}deg)`;
-          errEl.style.transformOrigin = '50% 50%';
+          errEl.style.transformBox = 'fill-box';
+          errEl.style.transformOrigin = 'center';
+          errEl.style.transform = `rotate(${okPct * 360}deg)`;
         }
         el('pool-circle-fill').style.strokeDashoffset = circumference - (okPct * circumference);
       }
@@ -1104,7 +1107,7 @@ router.register('overview', (container) => {
           'downloading': t('page.overview.phaseDownloading'),
           'blacklists': t('page.overview.phaseBlacklists'),
           'validating': t('page.overview.validatingProxies'),
-          'health': t('page.overview.phaseHealthCheck'),
+          'health': s.health_manual ? t('page.overview.phaseRecheck') : t('page.overview.phaseHealthCheck'),
           'done': t('page.overview.phaseDone'),
           'idle': t('page.hunt.idle'),
           'paused': t('page.hunt.pausedMsg'),
@@ -1146,7 +1149,7 @@ router.register('overview', (container) => {
           'downloading': t('page.overview.phaseDownloading'),
           'blacklists': t('page.overview.phaseBlacklists'),
           'validating': t('page.overview.validatingProxies'),
-          'health': t('page.overview.phaseHealthCheck'),
+          'health': s.health_manual ? t('page.overview.phaseRecheck') : t('page.overview.phaseHealthCheck'),
           'done': t('page.overview.phaseDone'),
         };
         const phaseTitle = phaseTitles[s.phase] || t('page.overview.running');

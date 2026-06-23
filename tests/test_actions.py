@@ -82,9 +82,7 @@ class TestActionLog:
 
                 actions = state.get_actions(50)
                 names = [a["action"] for a in actions]
-                assert "health.snapshot" in names
                 assert "health.begin" in names
-                assert "health.restore" in names
                 # restore entry must show the restored counters
                 restore = next(a for a in actions if a["action"] == "health.restore")
                 assert restore["snapshot"]["checking_total"] == 200

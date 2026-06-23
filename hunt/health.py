@@ -89,7 +89,10 @@ class HealthMixin:
                 bl_sources = [s for s in self.get_blocklist_sources() if s.get("enabled")]
                 self.bl_sources_total = len(ip_bl_sources) + len(bl_sources)
                 self.bl_sources_done = 0
-                self.bl_results = []
+                self.bl_results = [
+                    {"id": s["id"], "name": s.get("name", s["id"]), "status": "pending", "count": 0}
+                    for s in ip_bl_sources + bl_sources
+                ]
                 self._emit("Downloading IP blacklists...", "info")
                 ip_bl_results = await self._download_ip_blacklists()
                 total_ip_bl = sum(ip_bl_results.values())
@@ -97,11 +100,11 @@ class HealthMixin:
                 # Update blacklist download progress
                 for s in ip_bl_sources:
                     self.bl_sources_done += 1
-                    self.bl_results.append({
-                        "id": s["id"], "name": s.get("name", s["id"]),
-                        "status": "ok" if s["id"] in ip_bl_results else "error",
-                        "count": ip_bl_results.get(s["id"], 0),
-                    })
+                    for r in self.bl_results:
+                        if r["id"] == s["id"]:
+                            r["status"] = "ok" if s["id"] in ip_bl_results else "error"
+                            r["count"] = ip_bl_results.get(s["id"], 0)
+                            break
 
                 self._emit("Downloading country blocklists...", "info")
                 bl_results = await self._download_blocklists()
@@ -109,11 +112,11 @@ class HealthMixin:
                 self._emit(f"Downloaded {total_bl} blocklist entries from {len(bl_results)} sources", "info")
                 for s in bl_sources:
                     self.bl_sources_done += 1
-                    self.bl_results.append({
-                        "id": s["id"], "name": s.get("name", s["id"]),
-                        "status": "ok" if s["id"] in bl_results else "error",
-                        "count": bl_results.get(s["id"], 0),
-                    })
+                    for r in self.bl_results:
+                        if r["id"] == s["id"]:
+                            r["status"] = "ok" if s["id"] in bl_results else "error"
+                            r["count"] = bl_results.get(s["id"], 0)
+                            break
 
                 self.phase = self.PHASE_VALIDATE
                 self.phase_started = time.time()
@@ -381,76 +384,78 @@ class HealthMixin:
                 except Exception:
                     pass
 
-    async def _health_check(self):
+    async def _health_check(self, manual: bool = False):
             if self._health_running:
                 self._emit("Health check already in progress, skipping", "warn")
                 return
-            # Save the current main-hunt progress so we can restore it after
-            # this manual health check completes. Must capture before
-            # pause_hunt() overwrites phase/phase_started.
-            saved = {
-                "phase": self.phase,
-                "phase_started": self.phase_started,
-                "checking_total": self.checking_total,
-                "checked": self.checked,
-                "working": self.working,
-                "failed": self.failed,
-                "downloaded": self.downloaded,
-                "last_proxy": self.last_proxy,
-                "last_country": self.last_country,
-            }
-            # If a hunt cycle is running, pause it first so it doesn't
-            # clobber the shared checked/checking_total counters.
-            hunt_was_running = bool(self.task and not self.task.done()) and not self._paused
-            if hunt_was_running:
+
+            # Capture the pre-recheck state BEFORE anything changes it.
+            saved_phase = self.phase
+            saved_phase_started = self.phase_started
+            saved_checking_total = self.checking_total
+            saved_checked = self.checked
+            saved_working = self.working
+            saved_failed = self.failed
+            saved_downloaded = self.downloaded
+            saved_last_proxy = self.last_proxy
+            saved_last_country = self.last_country
+            saved_sources_total = self.sources_total
+            saved_sources_done = self.sources_done
+            saved_bl_total = self.bl_sources_total
+            saved_bl_done = self.bl_sources_done
+            saved_bl_results = list(self.bl_results)
+            saved_source_status = dict(getattr(self, '_source_fetch_status', {}))
+            saved_paused = self._paused
+            saved_manual_pause = self._manual_pause
+
+            # Pause the hunt if it's running and not already paused.
+            hunt_task_active = bool(self.task and not self.task.done())
+            if hunt_task_active and not self._paused:
                 self.pause_hunt(manual=True)
-                self._log_action("health.pause-hunt", "paused-for-recheck")
-                # Brief yield so in-flight _validate_all workers block on
-                # _pause_event before we overwrite the counters.
                 await asyncio.sleep(0.1)
+
             self._health_running = True
-            self._log_action("health.snapshot", "before-recheck", extra={"saved": saved})
             ok_count = 0
             fail_count = 0
+
             try:
-                # Only manual blacklist is a hard exclusion; IP-blacklisted proxies
-                # remain candidates and are ranked by their reduced score. Grace
-                # proxies (proven but currently failing) are re-checked too so they
-                # can recover instead of lingering until the grace period expires.
                 candidates = [r for r in self.ratings.values()
                               if (r.last_status == "ok" or r.in_grace) and not r.in_blacklist]
                 if not candidates:
-                    return
-                self.phase = self.PHASE_HEALTH
-                self.phase_started = time.time()
-                self.checking_total = len(candidates)
-                self.checked = 0
-                self.working = 0
-                self.failed = 0
-                self._fail_streak = 0
-                self._check_streak = 0
-                self._log_action("health.begin", f"{len(candidates)} candidates")
-                self._emit(f"Health-checking {len(candidates)} alive proxies", "info")
+                    self._emit("No candidates for health check", "info")
+                else:
+                    self.phase = self.PHASE_HEALTH
+                    self._health_manual = manual
+                    self.phase_started = time.time()
+                    self.checking_total = len(candidates)
+                    self.checked = 0
+                    self.working = 0
+                    self.failed = 0
+                    self._fail_streak = 0
+                    self._check_streak = 0
+                    self._emit(f"Health-checking {len(candidates)} alive proxies", "info")
+                    self._log_action("health.begin", f"{len(candidates)} candidates")
 
-                sem = asyncio.Semaphore(self.health_parallel)
-                lock = asyncio.Lock()
+                    sem = asyncio.Semaphore(self.health_parallel)
+                    lock = asyncio.Lock()
 
-                # The main hunt shares self._pause_event and self._paused with us.
-                # We deliberately do not block on self._paused here because the
-                # main hunt (paused earlier) is still holding _pause_event;
-                # waiting on it would deadlock this manual check until the main
-                # hunt resumes. We only honor self._internet_suspect, which
-                # is unrelated to the manual pause.
-                async def check(r: ProxyRating):
-                    nonlocal ok_count, fail_count
-                    while True:
+                    async def check(r: ProxyRating):
+                        nonlocal ok_count, fail_count
                         async with sem:
                             if self._internet_suspect:
-                                await asyncio.sleep(0.5)
-                                continue
+                                return
                             http_task = asyncio.create_task(self._check_proxy(r.address))
                             ssl_task = asyncio.create_task(self._check_ssl(r.address))
-                            results = await asyncio.gather(http_task, ssl_task, return_exceptions=True)
+                            try:
+                                results = await asyncio.wait_for(
+                                    asyncio.gather(http_task, ssl_task, return_exceptions=True),
+                                    timeout=self.timeout + 5,
+                                )
+                            except asyncio.TimeoutError:
+                                http_task.cancel()
+                                ssl_task.cancel()
+                                results = [asyncio.TimeoutError(), asyncio.TimeoutError()]
+
                             if isinstance(results[0], Exception):
                                 ok, country, supports_connect, mitm_suspect, egress, listen, http_latency, cc, fast_fail = False, "", False, False, {}, {}, 0.0, "", False
                             else:
@@ -459,16 +464,7 @@ class HealthMixin:
                                 ssl_ok, ssl_country, ssl_cc, ssl_egress, ssl_latency, ssl_supports_connect = False, "", "", {}, 0.0, False
                             else:
                                 ssl_ok, ssl_country, ssl_cc, ssl_egress, ssl_latency, ssl_supports_connect = results[1]
-                            if fast_fail and not ok and not ssl_ok:
-                                async with lock:
-                                    self._fail_streak += 1
-                                    self._check_streak += 1
-                                    if self._check_streak >= 3 and self._fail_streak / self._check_streak > 0.7:
-                                        await self._auto_pause_if_internet_down()
-                                if self._internet_suspect:
-                                    await self._pause_event.wait()
-                                    continue
-                                return
+
                             if not ok and ssl_ok:
                                 ok = True
                                 country = ssl_country
@@ -481,83 +477,97 @@ class HealthMixin:
                                     egress = ssl_egress
                                 if not supports_connect and ssl_supports_connect:
                                     supports_connect = ssl_supports_connect
-                            # Non-SOCKS proxies must support CONNECT to be useful for HTTPS.
+
                             if ok and not self._is_socks_addr(r.address) and not supports_connect:
                                 ok = False
+
                             speed = 0.0
                             if ok:
                                 host, port_str = r.address.rsplit(":", 1)
                                 is_socks = port_str.isdigit() and int(port_str) in (1080, 10808, 9050, 4145)
                                 use_ssl = ssl_ok and not is_socks
                                 try:
-                                    speed = await self._measure_speed(host, int(port_str), is_socks,
-                                                                       use_ssl=use_ssl, supports_connect=supports_connect)
-                                except Exception:
+                                    speed = await asyncio.wait_for(
+                                        self._measure_speed(host, int(port_str), is_socks,
+                                                            use_ssl=use_ssl, supports_connect=supports_connect),
+                                        timeout=self.timeout + 5,
+                                    )
+                                except (asyncio.TimeoutError, Exception):
                                     speed = 0.0
+
                             async with lock:
-                                if self._internet_suspect:
-                                    await self._pause_event.wait()
-                                    continue
                                 self.checked += 1
-                                self._check_streak += 1
                                 if ok:
                                     ok_count += 1
                                     self.working = ok_count
                                     self.last_proxy = r.address
                                     self.last_country = country
-                                    self._fail_streak = 0
                                 else:
                                     fail_count += 1
                                     self.failed = fail_count
-                                    self._fail_streak += 1
                                 self._update_rating(r.address, ok, country, http_latency, supports_connect, mitm_suspect, egress, listen, speed, country_code=cc, ssl_supported=ssl_ok)
-                                if self.checked % 10 == 0:
+                                if self.checked % 10 == 0 or ok:
                                     pct = int(100 * self.checked / max(1, self.checking_total))
                                     self._emit(
                                         f"{pct}% {self.checked}/{self.checking_total} | "
                                         f"working: {ok_count} | last: {r.address} {country}",
                                         "progress"
                                     )
-                                if self._check_streak >= 10 and self._fail_streak / self._check_streak > 0.7:
-                                    await self._auto_pause_if_internet_down()
-                            return
 
-                tasks = [asyncio.create_task(check(r)) for r in candidates]
-                await asyncio.gather(*tasks, return_exceptions=True)
-                self._save_state()
-                self._save_working_file()
-                self._rating_updates_since_save = 0
-                self._push_history()
-                self._emit(f"Health check done: {ok_count} ok, {fail_count} failed", "ok")
-                self.phase = self.PHASE_DONE
+                    tasks = [asyncio.create_task(check(r)) for r in candidates]
+                    overall_timeout = len(candidates) * (self.timeout + 10) // max(1, self.health_parallel) + 30
+                    try:
+                        await asyncio.wait_for(
+                            asyncio.gather(*tasks, return_exceptions=True),
+                            timeout=overall_timeout,
+                        )
+                    except asyncio.TimeoutError:
+                        for t in tasks:
+                            if not t.done():
+                                t.cancel()
+                        self._emit("Health check timed out, cancelling stuck tasks", "warn")
+
+                    self._save_state()
+                    self._save_working_file()
+                    self._rating_updates_since_save = 0
+                    self._push_history()
+                    self._emit(f"Health check done: {ok_count} ok, {fail_count} failed", "ok")
             finally:
-                # Always restore the saved state so that whoever owns the
-                # counters next (the paused main hunt, or whoever triggers a
-                # fresh snapshot) sees consistent numbers — and we set our own
-                # PHASE_DONE so the UI does not stay stuck on PHASE_HEALTH.
-                self.phase = saved["phase"]
-                self.checking_total = saved["checking_total"]
-                self.checked = min(saved["checked"], saved["checking_total"])
-                self.working = saved["working"]
-                self.failed = saved["failed"]
-                self.downloaded = saved["downloaded"]
-                self.last_proxy = saved["last_proxy"]
-                self.last_country = saved["last_country"]
+                # Restore ALL counters and state unconditionally.
+                self.checking_total = saved_checking_total
+                self.checked = min(saved_checked, saved_checking_total)
+                self.working = saved_working
+                self.failed = saved_failed
+                self.downloaded = saved_downloaded
+                self.last_proxy = saved_last_proxy
+                self.last_country = saved_last_country
+                self.sources_total = saved_sources_total
+                self.sources_done = saved_sources_done
+                self.bl_sources_total = saved_bl_total
+                self.bl_sources_done = saved_bl_done
+                self.bl_results = saved_bl_results
+                self._source_fetch_status = saved_source_status
                 self._log_action("health.restore", "counters-restored", extra={
                     "checking_total": self.checking_total,
                     "checked": self.checked,
                     "ok_count": ok_count,
                     "fail_count": fail_count,
                 })
-                if hunt_was_running:
-                    # Resume the main hunt's _pause_event so any of its
-                    # in-flight `_validate_all` / `_health_loop` workers
-                    # continue with the live counters now in place.
-                    self.resume_hunt(manual=True)
-                # phase_started is bumped by resume_hunt() above; restore the
-                # pre-recheck value so the UI progress timer is consistent.
-                self.phase_started = saved["phase_started"]
+
+                # Resume hunt if we paused it.
+                if hunt_task_active and not saved_paused:
+                    self._paused = False
+                    self._manual_pause = False
+                    self._internet_suspect = False
+                    self._fail_streak = 0
+                    self._check_streak = 0
+                    self._pause_event.set()
+                    self._emit("Hunt RESUMED", "ok")
+
+                self.phase = saved_phase
+                self.phase_started = saved_phase_started
                 self._health_running = False
+                self._health_manual = False
 
     async def _revalidate_stale_proxies(self):
             """Re-check proxies that are stale at startup.

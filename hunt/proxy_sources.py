@@ -112,6 +112,7 @@ class ProxySourcesMixin:
             enabled_sources = [s for s in sources if s.get("enabled")]
             self.sources_total = len(enabled_sources)
             self.sources_done = 0
+            self._source_fetch_status = {s["id"]: "pending" for s in enabled_sources}
             seen = set()
             source_proxies: dict[str, set] = {}
 
@@ -133,6 +134,7 @@ class ProxySourcesMixin:
                             found = self._parse_source_text(text)
                             self._replace_proxy_source_entries(source_id, found)
                             source_proxies[source_id] = found
+                            self._source_fetch_status[source_id] = "ok"
                             conn = None
                             try:
                                 conn = self._db()
@@ -151,6 +153,7 @@ class ProxySourcesMixin:
                             self._emit(f"Source {src['name']}: {len(found)} proxies", "info")
                         else:
                             err_msg = f"HTTP {proc.returncode}"
+                            self._source_fetch_status[source_id] = "error"
                             conn = None
                             try:
                                 conn = self._db()
@@ -168,6 +171,7 @@ class ProxySourcesMixin:
                             self._emit(f"Source failed: {src['name']}: {err_msg}", "warn")
                     except Exception as e:
                         self.sources_done += 1
+                        self._source_fetch_status[source_id] = "error"
                         now = time.time()
                         err_msg = str(e)[:200]
                         conn = None

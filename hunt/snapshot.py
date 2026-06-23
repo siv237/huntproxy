@@ -23,6 +23,7 @@ class SnapshotMixin:
                 "running": self.phase not in (self.PHASE_IDLE, self.PHASE_DONE, self.PHASE_PAUSED),
                 "paused": self._paused,
                 "manual_pause": self._manual_pause,
+                "health_manual": getattr(self, '_health_manual', False),
                 "progress": {
                     "sources_total": self.sources_total,
                     "sources_done": self.sources_done,
@@ -77,12 +78,13 @@ class SnapshotMixin:
         try:
             sources = self.get_proxy_sources()
             enabled = [s for s in sources if s.get("enabled")]
+            fetch_status = getattr(self, '_source_fetch_status', {})
             return [
                 {
                     "id": s["id"],
                     "name": s.get("name", s["id"]),
-                    "status": s.get("last_fetch_status", ""),
-                    "count": s.get("last_fetch_count", 0),
+                    "status": fetch_status.get(s["id"], "pending"),
+                    "count": s.get("last_fetch_count", 0) if fetch_status.get(s["id"]) == "ok" else 0,
                     "current_entries": s.get("current_entries", 0),
                 }
                 for s in enabled

@@ -163,7 +163,8 @@
       "phaseHealthCheck": "健康检查",
       "phaseDone": "完成",
       "running": "运行中",
-      "phaseBlacklists": "下载黑名单"
+      "phaseBlacklists": "下载黑名单",
+      "phaseRecheck": "重新检查现有代理"
     },
     "hunt": {
       "title": "搜索",

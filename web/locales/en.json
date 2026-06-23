@@ -163,7 +163,8 @@
       "phaseHealthCheck": "Health checking",
       "phaseDone": "Complete",
       "running": "Running",
-      "phaseBlacklists": "Downloading blacklists"
+      "phaseBlacklists": "Downloading blacklists",
+      "phaseRecheck": "Rechecking existing proxies"
     },
     "hunt": {
       "title": "Hunt",

@@ -33,6 +33,8 @@ class CheckingMixin:
                         await self._pause_event.wait()
                     if addr in self.blacklist:
                         async with lock:
+                            if getattr(self, '_health_running', False):
+                                return
                             self.checked += 1
                         return
                     async with sem:
@@ -51,11 +53,19 @@ class CheckingMixin:
                         else:
                             ssl_ok, ssl_country, ssl_cc, ssl_egress, ssl_latency, ssl_supports_connect = results[1]
                         if fast_fail and not ok and not ssl_ok:
+                            need_auto_pause = False
                             async with lock:
+                                if getattr(self, '_health_running', False):
+                                    return
                                 self._fail_streak += 1
                                 self._check_streak += 1
+                                self.checked += 1
+                                fail_count += 1
+                                self.failed = fail_count
                                 if self._check_streak >= 3 and self._fail_streak / self._check_streak > 0.7:
-                                    await self._auto_pause_if_internet_down()
+                                    need_auto_pause = True
+                            if need_auto_pause:
+                                await self._auto_pause_if_internet_down()
                             if self._internet_suspect:
                                 await self._pause_event.wait()
                                 continue
@@ -88,35 +98,51 @@ class CheckingMixin:
                             except Exception:
                                 speed = 0.0
                         async with lock:
+                            if getattr(self, '_health_running', False):
+                                return
                             if self._internet_suspect:
-                                await self._pause_event.wait()
-                                continue
-                            self.checked += 1
-                            self._check_streak += 1
-                            if ok:
-                                ok_count += 1
-                                self.working = ok_count
-                                self.last_proxy = addr
-                                self.last_country = country
-                                self._fail_streak = 0
+                                pass  # handle outside lock
                             else:
-                                fail_count += 1
-                                self.failed = fail_count
-                                self._fail_streak += 1
-                            self._update_rating(addr, ok, country, http_latency, supports_connect, mitm_suspect, egress, listen, speed, country_code=cc, ssl_supported=ssl_ok)
-                            if self.checked % 25 == 0 or ok:
-                                pct = int(100 * self.checked / max(1, self.checking_total))
-                                self._emit(
-                                    f"{pct}% {self.checked}/{self.checking_total} | "
-                                    f"working: {ok_count} | last: {addr} {country}",
-                                    "progress"
-                                )
-                            if self._check_streak >= 10 and self._fail_streak / self._check_streak > 0.7:
-                                await self._auto_pause_if_internet_down()
+                                self.checked += 1
+                                self._check_streak += 1
+                                if ok:
+                                    ok_count += 1
+                                    self.working = ok_count
+                                    self.last_proxy = addr
+                                    self.last_country = country
+                                    self._fail_streak = 0
+                                else:
+                                    fail_count += 1
+                                    self.failed = fail_count
+                                    self._fail_streak += 1
+                                self._update_rating(addr, ok, country, http_latency, supports_connect, mitm_suspect, egress, listen, speed, country_code=cc, ssl_supported=ssl_ok)
+                                if self.checked % 25 == 0 or ok:
+                                    pct = int(100 * self.checked / max(1, self.checking_total))
+                                    self._emit(
+                                        f"{pct}% {self.checked}/{self.checking_total} | "
+                                        f"working: {ok_count} | last: {addr} {country}",
+                                        "progress"
+                                    )
+                                if self._check_streak >= 10 and self._fail_streak / self._check_streak > 0.7:
+                                    pass  # handle outside lock
+                        if self._internet_suspect:
+                            await self._pause_event.wait()
+                            continue
+                        if self._check_streak >= 10 and self._fail_streak / self._check_streak > 0.7:
+                            await self._auto_pause_if_internet_down()
                         return
 
             tasks = [asyncio.create_task(check_one(p)) for p in proxies]
-            await asyncio.gather(*tasks, return_exceptions=True)
+            try:
+                await asyncio.wait_for(
+                    asyncio.gather(*tasks, return_exceptions=True),
+                    timeout=len(proxies) * (self.timeout + 10) // max(1, self.parallel) + 60,
+                )
+            except asyncio.TimeoutError:
+                for t in tasks:
+                    if not t.done():
+                        t.cancel()
+                self._emit("Validation timed out, cancelling stuck tasks", "warn")
             self._save_state()
             self._save_working_file()
             self._rating_updates_since_save = 0

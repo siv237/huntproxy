@@ -163,7 +163,8 @@
       "phaseHealthCheck": "Prüfung",
       "phaseDone": "Abgeschlossen",
       "running": "Läuft",
-      "phaseBlacklists": "Blacklists laden"
+      "phaseBlacklists": "Blacklists laden",
+      "phaseRecheck": "Vorhandene Proxies neu prüfen"
     },
     "hunt": {
       "title": "Jagd",
