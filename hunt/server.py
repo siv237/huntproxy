@@ -1218,6 +1218,57 @@ class HuntServer:
                     result.append({"type": k, "count": v, "pct": round(v / total * 100, 1)})
             return json.dumps({"errors": result, "total": total}), 200, "application/json"
 
+        if path.startswith("/api/traffic/routes"):
+            routes = {}
+            try:
+                conn = self.state._stats_db()
+                cutoff = time.time() - 86400
+                rows = conn.execute(
+                    "SELECT upstream, COUNT(*) as cnt, "
+                    "COALESCE(SUM(bytes_in),0) as bin, COALESCE(SUM(bytes_out),0) as bout, "
+                    "COALESCE(SUM(CASE WHEN status='ok' THEN 1 ELSE 0 END),0) as ok, "
+                    "COALESCE(AVG(duration),0) as avg_dur "
+                    "FROM traffic_log WHERE ts > ? GROUP BY upstream ORDER BY cnt DESC",
+                    (cutoff,)
+                ).fetchall()
+                conn.close()
+                for r in rows:
+                    up = r["upstream"] or "unknown"
+                    rtype = "other"
+                    if up == "direct" or up.startswith("direct"):
+                        rtype = "direct"
+                    elif up.startswith("proxy:"):
+                        rtype = "proxy"
+                    elif up.startswith("pool:"):
+                        rtype = "pool"
+                    elif up.startswith("custom:"):
+                        rtype = "custom"
+                    if rtype not in routes:
+                        routes[rtype] = {"type": rtype, "requests": 0, "bytes_in": 0, "bytes_out": 0, "ok": 0, "avg_duration": 0, "_dur_sum": 0, "upstreams": []}
+                    rt = routes[rtype]
+                    rt["requests"] += r["cnt"]
+                    rt["bytes_in"] += r["bin"]
+                    rt["bytes_out"] += r["bout"]
+                    rt["ok"] += r["ok"]
+                    rt["_dur_sum"] += r["avg_dur"] * r["cnt"]
+                    rt["upstreams"].append({"upstream": up, "requests": r["cnt"]})
+            except Exception:
+                pass
+            result = []
+            for rt in routes.values():
+                cnt = rt["requests"] or 1
+                result.append({
+                    "type": rt["type"],
+                    "requests": rt["requests"],
+                    "bytes_in": rt["bytes_in"],
+                    "bytes_out": rt["bytes_out"],
+                    "success_rate": round(rt["ok"] / cnt * 100, 1),
+                    "avg_duration": round(rt["_dur_sum"] / cnt, 3),
+                    "upstreams": sorted(rt["upstreams"], key=lambda x: x["requests"], reverse=True)[:5],
+                })
+            result.sort(key=lambda x: x["requests"], reverse=True)
+            return json.dumps({"routes": result}), 200, "application/json"
+
         if path.startswith("/api/bandwidth"):
             try:
                 conn = self.state._stats_db()

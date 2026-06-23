@@ -1,5 +1,7 @@
 router.register('proxy-control', (container) => {
   const els = {};
+  let lastReqIds = new Set();
+  let pulseOn = false;
 
   function build() {
     container.innerHTML = '';
@@ -9,486 +11,408 @@ router.register('proxy-control', (container) => {
     container.style.minHeight = '0';
     container.style.flex = '1';
 
-    // Row 1: KPI Cards (6)
-    const row1 = ui.el('div', 'grid grid-6');
-    const kpiDefs = [
-      { id: 'kpi-active', label: t('page.proxyControl.activeProxy'), sub: t('page.proxyControl.status'), color: 'var(--success)' },
-      { id: 'kpi-type', label: t('page.proxyControl.proxyType'), sub: 'CONNECT', color: 'var(--accent)' },
-      { id: 'kpi-uptime', label: t('page.proxyControl.uptime'), sub: t('page.proxyControl.sinceStart'), color: 'var(--text-secondary)' },
-      { id: 'kpi-req', label: t('page.proxyControl.requests24h'), sub: t('common.vsYesterday'), color: 'var(--info)' },
-      { id: 'kpi-sr', label: t('page.proxyControl.successRate'), sub: t('common.vsYesterday'), color: 'var(--success)' },
-      { id: 'kpi-rt', label: t('page.proxyControl.avgResponseTime'), sub: t('common.vsYesterday'), color: 'var(--warning)' },
+    // Row 1: Summary tiles (4)
+    const row1 = ui.el('div', 'grid grid-4');
+    const tiles = [
+      { id: 'tile-req', label: t('page.proxyControl.req24h'), icon: '↻', color: 'var(--accent)' },
+      { id: 'tile-sr', label: t('page.proxyControl.successRate'), icon: '✓', color: 'var(--success)' },
+      { id: 'tile-bw', label: t('page.proxyControl.bandwidth24h'), icon: '↕', color: 'var(--info)' },
+      { id: 'tile-routes', label: t('page.proxyControl.activeRoutes'), icon: '⇄', color: 'var(--warning)' },
     ];
-    kpiDefs.forEach(k => {
-      const card = ui.statCard(k.label, '—', null, [10,15,12,18,20,16,22]);
-      card.id = k.id;
-      els[k.id] = card;
+    tiles.forEach(ti => {
+      const card = ui.el('div', 'card tm-tile');
+      card.id = ti.id;
+      card.innerHTML = `<div class="tm-tile-icon" style="color:${ti.color}">${ti.icon}</div>` +
+        `<div class="tm-tile-body"><div class="tm-tile-value">—</div><div class="tm-tile-label">${ti.label}</div></div>`;
+      els[ti.id] = card;
       row1.appendChild(card);
     });
     container.appendChild(row1);
 
-    // Row 2: Traffic Overview + Current Proxy + Connected Clients
-    const row2 = ui.el('div', 'grid grid-3 row-stretch');
-    const trafficCard = ui.card(t('page.proxyControl.trafficOverview'));
-    trafficCard.id = 'card-traffic';
-    trafficCard.style.gridColumn = 'span 2';
-    trafficCard.style.overflow = 'hidden';
-    els.traffic = trafficCard;
-    row2.appendChild(trafficCard);
+    // Row 2: Live Traffic Stream (full width, tall — the star)
+    const streamCard = ui.card(t('page.proxyControl.liveStream'));
+    streamCard.id = 'card-stream';
+    streamCard.style.flex = '1';
+    streamCard.style.minHeight = '0';
+    streamCard.style.display = 'flex';
+    streamCard.style.flexDirection = 'column';
+    streamCard.style.overflow = 'hidden';
+    const pulseEl = ui.el('div', 'tm-live-pulse');
+    pulseEl.innerHTML = '<span class="pulse"></span> ' + t('page.proxyControl.live');
+    const streamHeader = streamCard.querySelector('.card-header');
+    if (streamHeader) streamHeader.appendChild(pulseEl);
+    els.stream = streamCard;
+    container.appendChild(streamCard);
 
-    const rightCol = ui.el('div', '', { style: 'display:flex;flex-direction:column;gap:10px;min-height:0;overflow:hidden' });
-    const curCard = ui.card(t('page.proxyControl.currentProxy'));
-    curCard.id = 'card-cur-proxy';
-    curCard.style.flex = '1';
-    curCard.style.minHeight = '0';
-    curCard.style.overflow = 'hidden';
-    els.curProxy = curCard;
-    rightCol.appendChild(curCard);
+    // Row 3: Route Distribution + Top Destinations
+    const row3 = ui.el('div', 'grid grid-2 row-stretch');
+    const routeCard = ui.card(t('page.proxyControl.routeDistribution'));
+    routeCard.id = 'card-routes';
+    routeCard.style.overflow = 'hidden';
+    routeCard.style.display = 'flex';
+    routeCard.style.flexDirection = 'column';
+    els.routes = routeCard;
+    row3.appendChild(routeCard);
 
-    const clientsCard = ui.card(t('page.proxyControl.connectedClients'), t('common.viewAll'));
-    clientsCard.id = 'card-clients';
-    clientsCard.style.flex = '1';
-    clientsCard.style.minHeight = '0';
-    clientsCard.style.overflow = 'hidden';
-    els.clients = clientsCard;
-    rightCol.appendChild(clientsCard);
-    row2.appendChild(rightCol);
-    container.appendChild(row2);
-
-    // Row 3: Top Domains + Error Breakdown + Bandwidth
-    const row3 = ui.el('div', 'grid grid-3 row-stretch');
-    const domainsCard = ui.card(t('page.proxyControl.topDomains'));
-    domainsCard.id = 'card-domains';
-    domainsCard.style.overflow = 'hidden';
-    els.domains = domainsCard;
-    row3.appendChild(domainsCard);
-
-    const errCard = ui.card(t('page.proxyControl.errorBreakdown'), t('common.viewAll'));
-    errCard.id = 'card-errors';
-    errCard.style.overflow = 'hidden';
-    els.errors = errCard;
-    row3.appendChild(errCard);
-
-    const bwCard = ui.card(t('page.proxyControl.bandwidthUsage'));
-    bwCard.id = 'card-bandwidth';
-    bwCard.style.overflow = 'hidden';
-    els.bandwidth = bwCard;
-    row3.appendChild(bwCard);
+    const domCard = ui.card(t('page.proxyControl.topDestinations'));
+    domCard.id = 'card-domains';
+    domCard.style.overflow = 'hidden';
+    domCard.style.display = 'flex';
+    domCard.style.flexDirection = 'column';
+    els.domains = domCard;
+    row3.appendChild(domCard);
     container.appendChild(row3);
 
-    // Row 4: Recent Requests + Proxy Health
+    // Row 4: Current Upstream + Bandwidth
     const row4 = ui.el('div', 'grid grid-2 row-stretch');
-    const reqCard = ui.card(t('page.proxyControl.recentRequests'));
-    reqCard.id = 'card-recent-req';
-    reqCard.style.overflow = 'hidden';
-    els.recentReq = reqCard;
-    row4.appendChild(reqCard);
+    const upCard = ui.card(t('page.proxyControl.currentUpstream'), t('page.proxyControl.changeProxy'));
+    upCard.id = 'card-upstream';
+    upCard.style.overflow = 'hidden';
+    const upAction = upCard.querySelector('.card-action');
+    if (upAction) upAction.addEventListener('click', () => router.navigate('proxy-pool'));
+    els.upstream = upCard;
+    row4.appendChild(upCard);
 
-    const healthCard = ui.card(t('page.proxyControl.proxyHealth'));
-    healthCard.id = 'card-proxy-health';
-    healthCard.style.overflow = 'hidden';
-    els.proxyHealth = healthCard;
-    row4.appendChild(healthCard);
+    const bwCard = ui.card(t('page.proxyControl.bandwidth24h'));
+    bwCard.id = 'card-bandwidth';
+    bwCard.style.overflow = 'hidden';
+    bwCard.style.display = 'flex';
+    bwCard.style.flexDirection = 'column';
+    els.bandwidth = bwCard;
+    row4.appendChild(bwCard);
     container.appendChild(row4);
   }
 
   build();
 
-  // --- Updaters ---
-  function updateKPIs(ps, traffic, requests) {
-    const ap = ps && ps.active_proxy;
-    const totalReq = requests && requests.requests ? requests.requests.length : 0;
-    const successCount = requests && requests.requests ? requests.requests.filter(r => {
-      const st = (r.status || '').toString();
-      return st.startsWith('2') || st.startsWith('ok') || st === '200';
-    }).length : 0;
-    const sr = totalReq ? (successCount / totalReq * 100) : 0;
-
-    const kpiMap = {
-      'kpi-active': { value: ap ? ap.address.split(':')[0] : t('page.proxyControl.none'), sub: ap ? (ap.last_status === 'ok' ? t('page.proxyControl.healthy') : t('page.proxyControl.unhealthy')) : '—', addr: ap ? ap.address : null },
-      'kpi-type': { value: ap ? (ap.protocol || 'HTTP').toUpperCase() : '—', sub: 'CONNECT' },
-      'kpi-uptime': { value: '—', sub: t('page.proxyControl.sinceStart') },
-      'kpi-req': { value: totalReq.toLocaleString(), sub: '—' },
-      'kpi-sr': { value: sr.toFixed(1) + '%', sub: '—' },
-      'kpi-rt': { value: '—', sub: '—' },
-    };
-    Object.entries(kpiMap).forEach(([id, data]) => {
-      const card = document.getElementById(id);
-      if (!card) return;
-      const val = card.querySelector('.stat-value');
-      if (val) {
-        val.textContent = data.value;
-        val.style.cursor = data.addr ? 'pointer' : '';
-        val.style.textDecoration = data.addr ? 'underline dotted' : '';
-        val.style.textUnderlineOffset = data.addr ? '2px' : '';
-        val.onclick = data.addr ? () => { if (window.proxyCard) window.proxyCard.show(data.addr); } : null;
-      }
-      const sub = card.querySelector('.stat-delta');
-      if (sub) {
-        sub.style.display = 'block';
-        sub.textContent = data.sub;
-      }
-    });
-  }
-
-  function updateTraffic(card, traffic) {
-    card.innerHTML = '';
-    const header = ui.el('div', 'card-header');
-    header.appendChild(ui.el('div', 'card-title', { text: t('page.proxyControl.trafficOverview') }));
-    const tabs = ui.tabs(['Requests', 'Bandwidth', 'Response Time', 'Errors'], (name) => {
-      // For MVP, all tabs show same Requests graph
-      renderTrafficGraph(card, traffic);
-    });
-    header.appendChild(tabs);
-    card.appendChild(header);
-    renderTrafficGraph(card, traffic);
-  }
-
-  function renderTrafficGraph(card, traffic) {
-    const existing = card.querySelector('.traffic-body');
-    if (existing) existing.remove();
-
-    const body = ui.el('div', 'traffic-body', { style: 'display:flex;gap:16px;flex:1;min-height:0;overflow:hidden' });
-    const left = ui.el('div', '', { style: 'flex:1;min-width:0;min-height:0;display:flex;overflow:hidden' });
-    const pts = traffic && traffic.points ? traffic.points.slice(-48) : [];
-    if (pts.length >= 2) {
-      const data = pts.map(p => p.requests || 0);
-      const labels = pts.map(p => {
-        const d = new Date(p.ts * 1000);
-        return `${d.getHours()}:${d.getMinutes().toString().padStart(2,'0')}`;
-      });
-      left.innerHTML = charts.lineChart(data, { width: 500, height: 200, labels, color: 'var(--accent)', fillArea: true, responsive: true });
-    } else {
-      left.appendChild(ui.el('div', 'empty', { text: t('page.proxyControl.noTrafficData') }));
+  // --- Helpers ---
+  function routeBadge(upstream) {
+    if (!upstream || upstream === '?') {
+      return '<span class="route-badge route-unknown">?</span>';
     }
-    body.appendChild(left);
-
-    const right = ui.el('div', '', { style: 'width:160px;flex-shrink:0;display:flex;flex-direction:column;gap:6px;overflow:hidden' });
-    const last = pts.length ? pts[pts.length-1] : null;
-    const totalReq = pts.reduce((s, p) => s + (p.requests || 0), 0);
-    const totalOk = pts.reduce((s, p) => s + (p.connections_ok || 0), 0);
-    const totalFailed = pts.reduce((s, p) => s + (p.connections_failed || 0), 0);
-    const totalBwIn = pts.reduce((s, p) => s + (p.bandwidth_in || 0), 0);
-    const totalBwOut = pts.reduce((s, p) => s + (p.bandwidth_out || 0), 0);
-    const fmtBytes = b => {
-      if (b >= 1024*1024*1024) return (b/(1024*1024*1024)).toFixed(2) + ' GB';
-      if (b >= 1024*1024) return (b/(1024*1024)).toFixed(1) + ' MB';
-      if (b >= 1024) return (b/1024).toFixed(1) + ' KB';
-      return b + ' B';
-    };
-    const items = [
-      { label: t('page.proxyControl.totalRequests'), value: totalReq.toLocaleString(), color: 'var(--text-primary)' },
-      { label: t('page.proxyControl.successful'), value: totalOk.toLocaleString(), color: 'var(--success)' },
-      { label: t('page.proxyControl.failed'), value: totalFailed.toLocaleString(), color: 'var(--danger)' },
-      { label: t('page.proxyControl.bandwidthIn'), value: fmtBytes(totalBwIn), color: 'var(--text-secondary)' },
-      { label: t('page.proxyControl.bandwidthOut'), value: fmtBytes(totalBwOut), color: 'var(--text-secondary)' },
-    ];
-    items.forEach(item => {
-      const row = ui.el('div', '', { style: 'display:flex;justify-content:space-between;align-items:center;font-size:12px;padding:4px 0;border-bottom:1px solid var(--border-subtle)' });
-      row.appendChild(ui.el('span', '', { style: 'color:var(--text-secondary)', text: item.label }));
-      row.appendChild(ui.el('span', '', { style: `font-weight:700;color:${item.color}`, text: item.value }));
-      right.appendChild(row);
-    });
-    body.appendChild(right);
-    card.appendChild(body);
+    const parts = upstream.split(' → ');
+    return parts.map(p => {
+      if (p === 'direct') return '<span class="route-badge route-direct">DIRECT</span>';
+      if (p.startsWith('pool:')) {
+        const addr = p.slice(5);
+        return `<span class="route-badge route-pool" title="${ui.escHtml(addr)}">POOL <span class="route-addr">${ui.escHtml(addr)}</span></span>`;
+      }
+      if (p.startsWith('proxy:')) {
+        const addr = p.slice(6);
+        return `<span class="route-badge route-proxy" title="${ui.escHtml(addr)}">PROXY <span class="route-addr">${ui.escHtml(addr)}</span></span>`;
+      }
+      if (p.startsWith('custom:')) {
+        const name = p.slice(7);
+        return `<span class="route-badge route-custom" title="${ui.escHtml(name)}">CUSTOM <span class="route-addr">${ui.escHtml(name)}</span></span>`;
+      }
+      if (p.includes('(disabled)')) return `<span class="route-badge route-unknown">${ui.escHtml(p)}</span>`;
+      return `<span class="route-badge route-unknown">${ui.escHtml(p)}</span>`;
+    }).join('<span class="route-arrow">→</span>');
   }
 
-  function updateCurProxy(card, ps) {
+  function routeTypeLabel(type) {
+    const map = { direct: t('route.direct'), proxy: t('route.proxy'), pool: t('route.pool'), custom: t('route.custom'), other: t('page.proxyControl.other') };
+    return map[type] || type;
+  }
+
+  function routeTypeClass(type) {
+    return { direct: 'route-direct', proxy: 'route-proxy', pool: 'route-pool', custom: 'route-custom', other: 'route-unknown' }[type] || 'route-unknown';
+  }
+
+  function fmtBytes(b) {
+    if (!b || b === 0) return '0 B';
+    if (b >= 1024 * 1024 * 1024) return (b / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+    if (b >= 1024 * 1024) return (b / (1024 * 1024)).toFixed(1) + ' MB';
+    if (b >= 1024) return (b / 1024).toFixed(1) + ' KB';
+    return b + ' B';
+  }
+
+  // --- Updaters ---
+  function updateTiles(reqs, routes, bw) {
+    const totalReq = reqs ? reqs.length : 0;
+    const okCount = reqs ? reqs.filter(r => (r.status || '') === 'ok').length : 0;
+    const sr = totalReq ? (okCount / totalReq * 100).toFixed(1) + '%' : '—';
+    const totalBw = bw ? (bw.incoming || 0) + (bw.outgoing || 0) : 0;
+    const routeCount = routes ? routes.length : 0;
+
+    const setVal = (id, v) => {
+      const el = document.getElementById(id);
+      if (el) {
+        const val = el.querySelector('.tm-tile-value');
+        if (val) val.textContent = v;
+      }
+    };
+    setVal('tile-req', totalReq.toLocaleString());
+    setVal('tile-sr', sr);
+    setVal('tile-bw', fmtBytes(totalBw));
+    setVal('tile-routes', routeCount.toString());
+  }
+
+  function updateStream(card, requests) {
+    const list = requests && requests.requests ? requests.requests : [];
+    if (!list.length) {
+      const body = card.querySelector('.tm-stream-body');
+      if (body) body.remove();
+      if (!card.querySelector('.empty')) {
+        card.appendChild(ui.el('div', 'empty', { text: t('page.proxyControl.noRecentRequests'), style: 'flex:1;display:flex;align-items:center;justify-content:center' }));
+      }
+      return;
+    }
+
+    let body = card.querySelector('.tm-stream-body');
+    if (!body) {
+      body = ui.el('div', 'tm-stream-body');
+      card.appendChild(body);
+    }
+
+    // Detect new requests for flash animation
+    const newIds = new Set();
+    list.forEach(r => { newIds.add(r.ts + '|' + r.client + '|' + r.target); });
+
+    body.innerHTML = '';
+    const headers = [
+      { label: t('page.proxyControl.time'), width: '55px' },
+      { label: t('page.proxyControl.client'), width: '110px' },
+      { label: t('page.proxyControl.target'), width: 'auto' },
+      { label: t('page.proxyControl.route'), width: 'auto' },
+      { label: t('page.proxyControl.status'), width: '50px', align: 'center' },
+      { label: t('page.proxyControl.duration'), width: '65px', align: 'right' },
+      { label: t('page.proxyControl.size'), width: '80px', align: 'right' },
+    ];
+    const rows = list.slice(0, 40).map(r => {
+      const st = (r.status || '').toString();
+      const isOk = st === 'ok' || st === '200';
+      const is502 = st.startsWith('502');
+      const dur = r.duration != null ? r.duration.toFixed(2) + 's' : '—';
+      const sz = fmtBytes((r.bytes_in || 0) + (r.bytes_out || 0));
+      const id = r.ts + '|' + r.client + '|' + r.target;
+      const isNew = !lastReqIds.has(id);
+      const cls = isNew ? 'tm-row-new' : '';
+      const target = r.target || '—';
+      const targetShort = target.length > 40 ? target.slice(0, 38) + '…' : target;
+      return [
+        `<span class="${cls}">${ui.fmtTime(r.ts || 0).split(' ')[0]}</span>`,
+        `<span class="${cls}" style="font-family:monospace;font-size:11px">${ui.escHtml(r.client || '—')}</span>`,
+        `<span class="${cls}" style="font-family:monospace;font-size:12px;color:var(--text-primary)" title="${ui.escHtml(target)}">${ui.escHtml(targetShort)}</span>`,
+        `<span class="${cls}">${routeBadge(r.upstream)}</span>`,
+        `<span class="${cls}" style="color:${isOk ? 'var(--success)' : is502 ? 'var(--warning)' : 'var(--danger)'};font-weight:600">${isOk ? '✓' : is502 ? '502' : '✗'}</span>`,
+        `<span class="${cls}" style="font-size:11px;color:var(--text-secondary)">${dur}</span>`,
+        `<span class="${cls}" style="font-size:11px;color:var(--text-secondary)">${sz}</span>`,
+      ];
+    });
+    const tblWrap = ui.el('div', 'table-wrap', { style: 'flex:1;min-height:0;overflow-y:auto' });
+    tblWrap.appendChild(ui.table(headers, rows));
+    body.appendChild(tblWrap);
+
+    lastReqIds = newIds;
+  }
+
+  function updateRoutes(card, routes) {
     card.innerHTML = '';
     const header = ui.el('div', 'card-header');
-    header.appendChild(ui.el('div', 'card-title', { text: t('page.proxyControl.currentProxy') }));
+    header.appendChild(ui.el('div', 'card-title', { text: t('page.proxyControl.routeDistribution') }));
+    card.appendChild(header);
+
+    const list = routes && routes.routes ? routes.routes : [];
+    if (!list.length) {
+      card.appendChild(ui.el('div', 'empty', { text: t('page.proxyControl.noRouteData'), style: 'flex:1;display:flex;align-items:center;justify-content:center' }));
+      return;
+    }
+
+    const totalReq = list.reduce((s, r) => s + (r.requests || 0), 0) || 1;
+
+    const wrap = ui.el('div', '', { style: 'flex:1;min-height:0;overflow-y:auto;padding:4px 0' });
+    list.forEach(r => {
+      const pct = (r.requests / totalReq * 100);
+      const row = ui.el('div', 'tm-route-row');
+      const top = ui.el('div', 'tm-route-top');
+      const badge = ui.el('span', `route-badge ${routeTypeClass(r.type)}`, { text: routeTypeLabel(r.type).toUpperCase() });
+      top.appendChild(badge);
+      top.appendChild(ui.el('span', 'tm-route-count', { text: r.requests.toLocaleString() }));
+      top.appendChild(ui.el('span', 'tm-route-pct', { text: pct.toFixed(1) + '%' }));
+      top.appendChild(ui.el('span', 'tm-route-sr', { text: r.success_rate + '% OK', style: `color:${r.success_rate >= 80 ? 'var(--success)' : r.success_rate >= 50 ? 'var(--warning)' : 'var(--danger)'};font-size:11px;font-weight:600` }));
+      row.appendChild(top);
+
+      const bar = ui.el('div', 'tm-route-bar');
+      bar.appendChild(ui.el('div', '', { style: `width:${pct}%;height:100%;background:var(--${routeTypeClass(r.type).replace('route-', '')});border-radius:2px;transition:width .3s` }));
+      row.appendChild(bar);
+
+      const meta = ui.el('div', 'tm-route-meta');
+      meta.appendChild(ui.el('span', '', { text: '↓ ' + fmtBytes(r.bytes_out), style: 'color:var(--text-secondary)' }));
+      meta.appendChild(ui.el('span', '', { text: '↑ ' + fmtBytes(r.bytes_in), style: 'color:var(--text-secondary)' }));
+      meta.appendChild(ui.el('span', '', { text: r.avg_duration + 's avg', style: 'color:var(--text-secondary)' }));
+      row.appendChild(meta);
+
+      if (r.upstreams && r.upstreams.length > 1) {
+        const ups = ui.el('div', 'tm-route-ups');
+        r.upstreams.slice(0, 3).forEach(u => {
+          ups.appendChild(ui.el('span', 'tm-route-up', { text: u.upstream, title: u.upstream }));
+        });
+        if (r.upstreams.length > 3) {
+          ups.appendChild(ui.el('span', 'tm-route-up', { text: '+' + (r.upstreams.length - 3) }));
+        }
+        row.appendChild(ups);
+      }
+
+      wrap.appendChild(row);
+    });
+    card.appendChild(wrap);
+  }
+
+  function updateDomains(card, requests) {
+    card.innerHTML = '';
+    const header = ui.el('div', 'card-header');
+    header.appendChild(ui.el('div', 'card-title', { text: t('page.proxyControl.topDestinations') }));
+    card.appendChild(header);
+
+    const list = requests && requests.requests ? requests.requests : [];
+    if (!list.length) {
+      card.appendChild(ui.el('div', 'empty', { text: t('page.proxyControl.noDomainData'), style: 'flex:1;display:flex;align-items:center;justify-content:center' }));
+      return;
+    }
+
+    const domains = {};
+    list.forEach(r => {
+      const target = r.target || '';
+      if (!target || target === '?') return;
+      let h;
+      try { h = target.startsWith('http') ? new URL(target).hostname : target.split(':')[0]; } catch (e) { h = target; }
+      if (!h) return;
+      if (!domains[h]) domains[h] = { domain: h, requests: 0, bytes: 0, routes: {} };
+      domains[h].requests++;
+      domains[h].bytes += (r.bytes_in || 0) + (r.bytes_out || 0);
+      const up = r.upstream || 'unknown';
+      const upType = up === 'direct' ? 'direct' : up.startsWith('proxy:') ? 'proxy' : up.startsWith('pool:') ? 'pool' : up.startsWith('custom:') ? 'custom' : 'other';
+      domains[h].routes[upType] = (domains[h].routes[upType] || 0) + 1;
+    });
+
+    const top = Object.values(domains).sort((a, b) => b.requests - a.requests).slice(0, 12);
+    const total = top.reduce((s, d) => s + d.requests, 0) || 1;
+
+    const wrap = ui.el('div', '', { style: 'flex:1;min-height:0;overflow-y:auto' });
+    top.forEach(d => {
+      const row = ui.el('div', 'tm-domain-row');
+      const left = ui.el('div', 'tm-domain-left');
+      left.appendChild(ui.el('div', 'tm-domain-name', { text: d.domain, title: d.domain }));
+      const bar = ui.el('div', 'tm-domain-bar');
+      bar.appendChild(ui.el('div', '', { style: `width:${(d.requests / total * 100)}%;height:100%;background:var(--accent);border-radius:2px` }));
+      left.appendChild(bar);
+      row.appendChild(left);
+
+      const right = ui.el('div', 'tm-domain-right');
+      right.appendChild(ui.el('span', '', { text: d.requests + ' req', style: 'font-weight:600;font-size:12px' }));
+      right.appendChild(ui.el('span', '', { text: fmtBytes(d.bytes), style: 'font-size:11px;color:var(--text-secondary)' }));
+
+      const routeTypes = Object.entries(d.routes).sort((a, b) => b[1] - a[1]);
+      const badges = ui.el('div', 'tm-domain-routes');
+      routeTypes.forEach(([type, count]) => {
+        badges.appendChild(ui.el('span', `route-badge-sm ${routeTypeClass(type)}`, { text: routeTypeLabel(type), title: count + ' requests' }));
+      });
+      right.appendChild(badges);
+      row.appendChild(right);
+
+      wrap.appendChild(row);
+    });
+    card.appendChild(wrap);
+  }
+
+  function updateUpstream(card, ps) {
+    card.innerHTML = '';
+    const header = ui.el('div', 'card-header');
+    header.appendChild(ui.el('div', 'card-title', { text: t('page.proxyControl.currentUpstream') }));
     const btn = ui.el('button', 'btn btn-sm btn-secondary', { text: t('page.proxyControl.changeProxy') });
     btn.addEventListener('click', () => router.navigate('proxy-pool'));
     header.appendChild(btn);
     card.appendChild(header);
 
     const ap = ps && ps.active_proxy;
-    if (!ap) {
-      card.appendChild(ui.el('div', 'empty', { text: t('page.proxyControl.noActiveProxy') }));
+    const directMode = ps && ps.direct_mode;
+
+    if (directMode) {
+      const direct = ui.el('div', 'tm-upstream-mode');
+      direct.innerHTML = '<span class="route-badge route-direct">DIRECT MODE</span><div style="font-size:12px;color:var(--text-secondary);margin-top:8px">' + t('page.proxyControl.directModeDesc') + '</div>';
+      card.appendChild(direct);
       return;
     }
 
-    const top = ui.el('div', '', { style: 'display:flex;align-items:center;gap:10px;margin-bottom:12px' });
-    const addrLink = ui.el('div', '', { style: 'font-size:16px;font-weight:700;font-family:monospace;color:var(--accent);cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px', text: ap.address });
-    addrLink.addEventListener('click', () => { if (window.proxyCard) window.proxyCard.show(ap.address); });
+    if (!ap) {
+      card.appendChild(ui.el('div', 'empty', { text: t('page.proxyControl.noActiveProxy'), style: 'flex:1;display:flex;align-items:center;justify-content:center' }));
+      return;
+    }
+
+    const top = ui.el('div', 'tm-upstream-top');
+    const addrLink = ui.el('div', 'tm-upstream-addr');
+    addrLink.innerHTML = `<span style="font-family:monospace;font-size:15px;font-weight:700;color:var(--accent);cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px">${ui.escHtml(ap.address)}</span>`;
+    addrLink.querySelector('span').addEventListener('click', () => { if (window.proxyCard) window.proxyCard.show(ap.address); });
     top.appendChild(addrLink);
     top.appendChild(ui.badge(ap.last_status === 'ok' ? t('page.proxyControl.healthy') : t('page.proxyControl.unhealthy'), ap.last_status === 'ok' ? 'green' : 'red'));
-    top.appendChild(ui.el('span', 'flag', { text: ui.flag(ap.country_code) }));
+    if (ap.country_code) top.appendChild(ui.el('span', 'flag', { text: ui.flag(ap.country_code) }));
     card.appendChild(top);
 
-    const grid = ui.el('div', 'grid grid-2');
+    const grid = ui.el('div', 'grid grid-4');
     const items = [
-      { label: t('page.proxyControl.status'), value: ap.last_status === 'ok' ? t('page.proxyControl.healthy') : t('page.proxyControl.unhealthy') },
-      { label: t('page.proxyControl.latency'), value: ui.fmtLatency(ap.last_latency) },
-      { label: t('page.proxyControl.responseTimeAvg'), value: '—' },
-      { label: t('page.proxyControl.successRate'), value: ui.fmtPct(ap.success_rate) },
-      { label: t('page.proxyControl.lastCheck'), value: ui.ago(ap.last_check) },
-      { label: t('page.proxyControl.fails'), value: (ap.checks_total - ap.checks_ok) + ' / ' + ap.checks_total },
-      { label: t('page.proxyControl.speed'), value: ap.speed_avg ? ap.speed_avg.toFixed(0) + ' KB/s' : '—' },
-      { label: t('page.proxyControl.protocol'), value: (ap.protocol || 'HTTP').toUpperCase() },
+      { label: t('page.proxyControl.latency'), value: ui.fmtLatency(ap.last_latency), color: 'var(--text-primary)' },
+      { label: t('page.proxyControl.successRate'), value: ui.fmtPct(ap.success_rate), color: 'var(--success)' },
+      { label: t('page.proxyControl.speed'), value: ap.speed_avg ? ap.speed_avg.toFixed(0) + ' KB/s' : '—', color: 'var(--info)' },
+      { label: t('page.proxyControl.protocol'), value: (ap.protocol || 'HTTP').toUpperCase(), color: 'var(--text-secondary)' },
     ];
     items.forEach(item => {
-      const cell = ui.el('div', '', { style: 'text-align:center;padding:8px;background:var(--surface-raised);border-radius:var(--radius-xs)' });
-      cell.appendChild(ui.el('div', '', { style: 'font-size:11px;color:var(--text-secondary)', text: item.label }));
-      cell.appendChild(ui.el('div', '', { style: 'font-size:14px;font-weight:600', text: item.value }));
+      const cell = ui.el('div', 'tm-stat-cell');
+      cell.appendChild(ui.el('div', 'tm-stat-label', { text: item.label }));
+      cell.appendChild(ui.el('div', 'tm-stat-value', { text: item.value, style: `color:${item.color}` }));
       grid.appendChild(cell);
     });
     card.appendChild(grid);
   }
 
-  function updateClients(card, clients) {
-    card.innerHTML = '';
-    const header = ui.el('div', 'card-header');
-    header.appendChild(ui.el('div', 'card-title', { text: t('page.proxyControl.connectedClients') }));
-    const live = ui.el('div', '', { style: 'display:flex;align-items:center;gap:6px;font-size:12px;color:var(--success)' });
-    live.innerHTML = '<span class="pulse" style="width:8px;height:8px"></span> ' + t('page.proxyControl.live');
-    header.appendChild(live);
-    const va = ui.el('button', 'card-action', { text: t('common.viewAll') });
-    va.addEventListener('click', () => router.navigate('logs'));
-    header.appendChild(va);
-    card.appendChild(header);
-
-    const list = clients && clients.clients ? clients.clients : [];
-    const total = list.reduce((s, c) => s + (c.requests || 0), 0);
-    const totalEl = ui.el('div', '', { style: 'font-size:24px;font-weight:700;margin-bottom:8px', text: total.toLocaleString() });
-    card.appendChild(totalEl);
-    const subEl = ui.el('div', '', { style: 'font-size:11px;color:var(--text-secondary);margin-bottom:12px', text: t('page.proxyControl.totalConnections') });
-    card.appendChild(subEl);
-
-    if (!list.length) {
-      card.appendChild(ui.el('div', 'empty', { text: t('page.proxyControl.noClients') }));
-      return;
-    }
-
-    const headers = [
-      { label: 'IP Address', width: '120px' },
-      { label: 'Country', width: '80px' },
-      { label: 'Requests', width: '70px', align: 'right' },
-      { label: 'Last Seen', width: '80px', align: 'right' },
-    ];
-    const rows = list.slice(0, 8).map(c => [
-      c.client || '—',
-      '—', // Country not available in proxy log
-      (c.requests || 0).toLocaleString(),
-      ui.ago(c.last_seen),
-    ]);
-    const tblWrap = ui.el('div', 'table-wrap', { style: 'flex:1;min-height:0;overflow-y:auto' });
-    tblWrap.appendChild(ui.table(headers, rows));
-    card.appendChild(tblWrap);
-  }
-
-  function updateDomains(card, domains) {
-    card.innerHTML = '';
-    const header = ui.el('div', 'card-header');
-    header.appendChild(ui.el('div', 'card-title', { text: t('page.proxyControl.topDomains') }));
-    card.appendChild(header);
-
-    const list = domains && domains.domains ? domains.domains : [];
-    if (!list.length) {
-      card.appendChild(ui.el('div', 'empty', { text: t('page.proxyControl.noDomainData') }));
-      return;
-    }
-
-    const headers = [
-      { label: 'Domain', width: '160px' },
-      { label: 'Requests', width: '70px', align: 'right' },
-      { label: '% of Total', width: '70px', align: 'right' },
-      { label: 'Avg Response', width: '90px', align: 'right' },
-      { label: 'Status', width: '60px', align: 'center' },
-    ];
-    const total = list.reduce((s, d) => s + (d.requests || 0), 0) || 1;
-    const rows = list.slice(0, 10).map(d => [
-      d.domain || '—',
-      (d.requests || 0).toLocaleString(),
-      ((d.requests || 0) / total * 100).toFixed(1) + '%',
-      '—', // Avg response placeholder
-      '<span style="color:var(--success)">200</span>', // Placeholder status
-    ]);
-    const tblWrap = ui.el('div', 'table-wrap', { style: 'flex:1;min-height:0;overflow-y:auto' });
-    tblWrap.appendChild(ui.table(headers, rows));
-    card.appendChild(tblWrap);
-  }
-
-  function updateErrors(card, errors) {
-    card.innerHTML = '';
-    const header = ui.el('div', 'card-header');
-    header.appendChild(ui.el('div', 'card-title', { text: t('page.proxyControl.errorBreakdown') }));
-    const va = ui.el('button', 'card-action', { text: t('common.viewAll') });
-    va.addEventListener('click', () => router.navigate('logs'));
-    header.appendChild(va);
-    card.appendChild(header);
-
-    const list = errors && errors.errors ? errors.errors : [];
-    const total = errors && errors.total ? errors.total : 0;
-
-    const wrap = ui.el('div', '', { style: 'display:flex;align-items:center;gap:20px;flex-wrap:wrap' });
-    const donutWrap = ui.el('div', '', { style: 'flex-shrink:0' });
-    donutWrap.innerHTML = charts.donutChart(list.map((e, i) => ({
-      label: e.type,
-      value: e.count,
-      color: ['var(--danger)', 'var(--warning)', 'var(--info)', 'var(--accent)'][i % 4],
-    })), { size: 120, centerText: total.toString(),       centerLabel: t('page.proxyControl.totalErrors') });
-    wrap.appendChild(donutWrap);
-
-    const legend = ui.el('div', '', { style: 'flex:1;min-width:120px;display:flex;flex-direction:column;gap:8px' });
-    if (!list.length) {
-      legend.appendChild(ui.el('div', 'empty', { text: t('page.proxyControl.noErrors') }));
-    } else {
-      list.forEach((e, i) => {
-        const col = ['var(--danger)', 'var(--warning)', 'var(--info)', 'var(--accent)'][i % 4];
-        const row = ui.el('div', '', { style: 'display:flex;align-items:center;gap:8px;font-size:12px' });
-        row.innerHTML = `<span style="width:8px;height:8px;border-radius:50%;background:${col};flex-shrink:0"></span><span style="flex:1">${e.type}</span><span style="font-weight:600">${e.count}</span><span style="color:var(--text-muted)">(${e.pct || 0}%)</span>`;
-        legend.appendChild(row);
-      });
-    }
-    wrap.appendChild(legend);
-    card.appendChild(wrap);
-  }
-
-  function updateBandwidth(card, bw) {
+  function updateBandwidth(card, bw, history) {
     card.innerHTML = '';
     const header = ui.el('div', 'card-header');
     header.appendChild(ui.el('div', 'card-title', { text: t('page.proxyControl.bandwidth24h') }));
     card.appendChild(header);
 
-    const fmtBytes = b => {
-      if (b >= 1024*1024*1024) return (b/(1024*1024*1024)).toFixed(2) + ' GB';
-      if (b >= 1024*1024) return (b/(1024*1024)).toFixed(1) + ' MB';
-      if (b >= 1024) return (b/1024).toFixed(1) + ' KB';
-      return b + ' B';
-    };
     const incoming = bw ? (bw.incoming || 0) : 0;
     const outgoing = bw ? (bw.outgoing || 0) : 0;
 
-    const wrap = ui.el('div', 'grid grid-2');
-    const incomingEl = ui.el('div', '', { style: 'text-align:center;padding:12px;background:var(--surface-raised);border-radius:var(--radius-xs)' });
-    incomingEl.appendChild(ui.el('div', '', { style: 'font-size:11px;color:var(--text-secondary);margin-bottom:4px', text: t('page.proxyControl.incoming') }));
-    incomingEl.appendChild(ui.el('div', '', { style: 'font-size:20px;font-weight:700', text: incoming ? fmtBytes(incoming) : '—' }));
-    incomingEl.appendChild(ui.el('div', '', { style: 'font-size:11px;color:var(--success)', text: incoming ? (bw.incoming_gb || 0).toFixed(3) + ' GB' : '↑ —%' }));
-    wrap.appendChild(incomingEl);
-
-    const outgoingEl = ui.el('div', '', { style: 'text-align:center;padding:12px;background:var(--surface-raised);border-radius:var(--radius-xs)' });
-    outgoingEl.appendChild(ui.el('div', '', { style: 'font-size:11px;color:var(--text-secondary);margin-bottom:4px', text: t('page.proxyControl.outgoing') }));
-    outgoingEl.appendChild(ui.el('div', '', { style: 'font-size:20px;font-weight:700', text: outgoing ? fmtBytes(outgoing) : '—' }));
-    outgoingEl.appendChild(ui.el('div', '', { style: 'font-size:11px;color:var(--success)', text: outgoing ? (bw.outgoing_gb || 0).toFixed(3) + ' GB' : '↑ —%' }));
-    wrap.appendChild(outgoingEl);
-    card.appendChild(wrap);
-  }
-
-  function updateRecentRequests(card, requests) {
-    card.innerHTML = '';
-    const header = ui.el('div', 'card-header');
-    header.appendChild(ui.el('div', 'card-title', { text: t('page.proxyControl.recentRequests') }));
-    card.appendChild(header);
-
-    const list = requests && requests.requests ? requests.requests : [];
-    if (!list.length) {
-      card.appendChild(ui.el('div', 'empty', { text: t('page.proxyControl.noRecentRequests') }));
-      return;
-    }
-
-    const fmtBytes = b => {
-      if (!b) return '—';
-      if (b >= 1024*1024) return (b/(1024*1024)).toFixed(1) + ' MB';
-      if (b >= 1024) return (b/1024).toFixed(1) + ' KB';
-      return b + ' B';
-    };
-
-    const headers = [
-      { label: 'Time', width: '60px' },
-      { label: 'Client IP', width: '100px' },
-      { label: 'Target', width: '180px' },
-      { label: 'Status', width: '50px', align: 'center' },
-      { label: 'Duration', width: '70px', align: 'right' },
-      { label: 'Size In', width: '60px', align: 'right' },
-      { label: 'Size Out', width: '60px', align: 'right' },
-      { label: 'Proxy', width: '120px' },
-    ];
-    const rows = list.slice(0, 10).map(r => {
-      const st = (r.status || '').toString();
-      const isOk = st === 'ok' || st === '200';
-      const dur = r.duration ? r.duration.toFixed(3) + 's' : '—';
-      const upstream = r.upstream && r.upstream !== '?' ? r.upstream : 'direct';
-      return [
-        ui.fmtTime(r.ts || 0).split(' ')[0],
-        r.client || '—',
-        `<span style="max-width:160px;overflow:hidden;text-overflow:ellipsis;display:inline-block;white-space:nowrap">${r.target || '—'}</span>`,
-        `<span style="color:${isOk ? 'var(--success)' : 'var(--danger)'}">${st || '—'}</span>`,
-        dur,
-        fmtBytes(r.bytes_in),
-        fmtBytes(r.bytes_out),
-        `<span style="color:var(--info)">${ui.escHtml(upstream)}</span>`,
-      ];
-    });
-    const tblWrap = ui.el('div', 'table-wrap', { style: 'flex:1;min-height:0;overflow-y:auto' });
-    tblWrap.appendChild(ui.table(headers, rows));
-    card.appendChild(tblWrap);
-  }
-
-  function updateProxyHealth(card, ps, history) {
-    card.innerHTML = '';
-    const header = ui.el('div', 'card-header');
-    header.appendChild(ui.el('div', 'card-title', { text: t('page.proxyControl.proxyHealth') }));
-    card.appendChild(header);
+    const stats = ui.el('div', 'grid grid-2', { style: 'flex-shrink:0;margin-bottom:8px' });
+    const inCell = ui.el('div', 'tm-bw-cell');
+    inCell.innerHTML = `<div class="tm-bw-label">↓ ${t('page.proxyControl.incoming')}</div><div class="tm-bw-value">${fmtBytes(incoming)}</div>`;
+    stats.appendChild(inCell);
+    const outCell = ui.el('div', 'tm-bw-cell');
+    outCell.innerHTML = `<div class="tm-bw-label">↑ ${t('page.proxyControl.outgoing')}</div><div class="tm-bw-value">${fmtBytes(outgoing)}</div>`;
+    stats.appendChild(outCell);
+    card.appendChild(stats);
 
     const pts = history && history.length ? history.slice(-48) : [];
     if (pts.length >= 2) {
-      const data = pts.map(p => p.traffic_success_rate != null ? p.traffic_success_rate : (p.success_rate || 0));
+      const data = pts.map(p => (p.bandwidth_in || 0) + (p.bandwidth_out || 0));
       const labels = pts.map(p => {
         const d = new Date(p.ts * 1000);
-        return `${d.getHours()}:${d.getMinutes().toString().padStart(2,'0')}`;
+        return `${d.getHours()}:${d.getMinutes().toString().padStart(2, '0')}`;
       });
-      card.appendChild(ui.el('div', '', { style: 'flex:1;min-height:0;display:flex',
-        html: charts.lineChart(data, { width: 400, height: 120, labels, color: 'var(--success)', fillArea: true, responsive: true })
-      }));
+      const chartWrap = ui.el('div', '', { style: 'flex:1;min-height:0;display:flex', html: charts.lineChart(data, { width: 400, height: 120, labels, color: 'var(--accent)', fillArea: true, responsive: true }) });
+      card.appendChild(chartWrap);
     } else {
-      card.appendChild(ui.el('div', 'empty', { text: t('page.proxyControl.noHealthData') }));
+      card.appendChild(ui.el('div', 'empty', { text: t('page.proxyControl.noTrafficData'), style: 'flex:1;display:flex;align-items:center;justify-content:center' }));
     }
-
-    const ap = ps && ps.active_proxy;
-    const grid = ui.el('div', 'grid grid-4', { style: 'margin-top:auto;flex-shrink:0' });
-    const healthScore = ap ? Math.round(ap.score) : 0;
-    const failures = ap ? (ap.checks_total - ap.checks_ok) : 0;
-    const avgLat = ap ? ap.last_latency : 0;
-    const checks = ap ? ap.checks_total : 0;
-    const avgResp = pts.length ? (pts.reduce((s,p) => s + (p.avg_latency || 0), 0) / pts.length).toFixed(3) + 's' : '—';
-    const items = [
-      { label: t('page.proxyControl.healthScore'), value: healthScore + '%', color: 'var(--success)' },
-      { label: t('page.proxyControl.failures'), value: failures.toString(), color: 'var(--danger)' },
-      { label: t('page.proxyControl.avgResponse'), value: avgResp, color: 'var(--text-primary)' },
-      { label: t('page.proxyControl.checks'), value: checks.toLocaleString(), color: 'var(--text-primary)' },
-    ];
-    items.forEach(item => {
-      const cell = ui.el('div', '', { style: 'text-align:center;padding:8px;background:var(--surface-raised);border-radius:var(--radius-xs)' });
-      cell.appendChild(ui.el('div', '', { style: 'font-size:11px;color:var(--text-secondary)', text: item.label }));
-      cell.appendChild(ui.el('div', '', { style: `font-size:16px;font-weight:600;color:${item.color}`, text: item.value }));
-      grid.appendChild(cell);
-    });
-    card.appendChild(grid);
   }
 
   // --- Polling ---
   async function poll() {
     try {
-      let ps = {}, traffic = {}, requests = {}, clients = {}, domains = {}, errors = {}, bw = {}, history = [];
-      try { ps = await api.proxyStatus(); } catch (e) { console.error('proxyStatus', e); }
-      try { traffic = await api.traffic(); } catch (e) { console.error('traffic', e); }
-      try { requests = await api.requests(); } catch (e) { console.error('requests', e); }
-      try { clients = await api.clients(); } catch (e) { console.error('clients', e); }
-      try { domains = await api.domains(); } catch (e) { console.error('domains', e); }
-      try { errors = await api.errors(); } catch (e) { console.error('errors', e); }
-      try { bw = await api.bandwidth(); } catch (e) { console.error('bandwidth', e); }
-      try { history = await api.history('24h'); } catch (e) { console.error('history', e); }
+      let ps = {}, requests = {}, routes = {}, bw = {}, history = [];
+      try { ps = await api.proxyStatus(); } catch (e) {}
+      try { requests = await api.requests(); } catch (e) {}
+      try { routes = await api.trafficRoutes(); } catch (e) {}
+      try { bw = await api.bandwidth(); } catch (e) {}
+      try { history = await api.history('24h'); } catch (e) {}
 
-      try { updateKPIs(ps, traffic, requests); } catch (e) { console.error('kpi update', e); }
-      try { updateTraffic(els.traffic, traffic); } catch (e) { console.error('traffic update', e); }
-      try { updateCurProxy(els.curProxy, ps); } catch (e) { console.error('curProxy update', e); }
-      try { updateClients(els.clients, clients); } catch (e) { console.error('clients update', e); }
-      try { updateDomains(els.domains, domains); } catch (e) { console.error('domains update', e); }
-      try { updateErrors(els.errors, errors); } catch (e) { console.error('errors update', e); }
-      try { updateBandwidth(els.bandwidth, bw); } catch (e) { console.error('bandwidth update', e); }
-      try { updateRecentRequests(els.recentReq, requests); } catch (e) { console.error('recentReq update', e); }
-      try { updateProxyHealth(els.proxyHealth, ps, history); } catch (e) { console.error('proxyHealth update', e); }
+      try { updateTiles(requests.requests || [], routes.routes || [], bw); } catch (e) { console.error('tiles', e); }
+      try { updateStream(els.stream, requests); } catch (e) { console.error('stream', e); }
+      try { updateRoutes(els.routes, routes); } catch (e) { console.error('routes', e); }
+      try { updateDomains(els.domains, requests); } catch (e) { console.error('domains', e); }
+      try { updateUpstream(els.upstream, ps); } catch (e) { console.error('upstream', e); }
+      try { updateBandwidth(els.bandwidth, bw, history); } catch (e) { console.error('bandwidth', e); }
     } catch (e) {
       console.error('proxy-control poll', e);
     }
