@@ -57,16 +57,22 @@ cd "$INSTALL_DIR"
 
 # --- 3. venv + deps ---
 c_info "Creating Python virtual environment..."
-if [ ! -d ".venv" ]; then
-    python3 -m venv .venv
-fi
+rm -rf .venv
+python3 -m venv .venv
 c_ok "Virtual environment ready"
 
 c_info "Installing Python dependencies..."
-.venv/bin/pip install --upgrade pip
-.venv/bin/pip install -r requirements.txt 2>/dev/null || .venv/bin/pip install PyYAML
+.venv/bin/pip install --upgrade pip setuptools wheel
+.venv/bin/pip install -r requirements.txt
 touch .venv/installed.flag
-c_ok "Python dependencies installed"
+
+# --- verify yaml actually imports ---
+if ! .venv/bin/python -c "import yaml" 2>/dev/null; then
+    c_err "PyYAML failed to install — trying direct install..."
+    .venv/bin/pip install PyYAML
+    .venv/bin/python -c "import yaml" || { c_err "Cannot import yaml. Installation failed."; exit 1; }
+fi
+c_ok "Python dependencies installed (yaml verified)"
 
 # --- 4. scripts executable ---
 chmod +x hunt.sh daemon.sh test.sh 2>/dev/null || true

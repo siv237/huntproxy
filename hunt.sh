@@ -29,7 +29,9 @@ fi
 
 if [ ! -f "$VENV/installed.flag" ]; then
     echo "[*] Installing dependencies..."
-    "$VENV/bin/pip" install --quiet PyYAML 2>/dev/null || true
+    "$VENV/bin/pip" install --upgrade pip setuptools wheel
+    "$VENV/bin/pip" install PyYAML
+    "$VENV/bin/python" -c "import yaml" || { echo "[!] Failed to install PyYAML" >&2; exit 1; }
     touch "$VENV/installed.flag"
 fi
 
