@@ -388,7 +388,9 @@
       "heatmapEmpty": "No hay proxis activos para mostrar",
       "heatmapOkDimmed": "Último OK (no rechequeado)",
       "heatmapErrDimmed": "Último error (no rechequeado)",
-      "recheckAll": "↻ Comprobar todo"
+      "heatmapChecking": "Comprobando",
+      "recheckAll": "↻ Comprobar todo",
+      "abortRecheck": "✕ Abortar"
     },
     "logs": {
       "title": "Registros",

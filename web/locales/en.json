@@ -418,7 +418,9 @@
       "heatmapEmpty": "No alive proxies to display",
       "heatmapOkDimmed": "Last OK (not rechecked)",
       "heatmapErrDimmed": "Last error (not rechecked)",
-      "recheckAll": "↻ Check all"
+      "heatmapChecking": "Checking",
+      "recheckAll": "↻ Check all",
+      "abortRecheck": "✕ Abort"
     },
     "logs": {
       "title": "Logs",

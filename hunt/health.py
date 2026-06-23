@@ -27,6 +27,14 @@ class HealthMixin:
                 self._hunt_running = False
                 return False
 
+    def stop_health(self):
+            """Abort a running health-check recheck, cancelling its task."""
+            if self._health_task and not self._health_task.done():
+                self._health_task.cancel()
+            self._health_task = None
+            self._active_checks.clear()
+            self._emit("Health check aborted by user", "warn")
+
     def stop_hunt(self):
             if self.task and not self.task.done():
                 self.task.cancel()
@@ -540,6 +548,15 @@ class HealthMixin:
                             if not t.done():
                                 t.cancel()
                         self._emit("Health check timed out, cancelling stuck tasks", "warn")
+                    except asyncio.CancelledError:
+                        for t in tasks:
+                            if not t.done():
+                                t.cancel()
+                        await asyncio.gather(*tasks, return_exceptions=True)
+                        self._save_state()
+                        self._save_working_file()
+                        self._emit("Health check aborted", "warn")
+                        raise
 
                     self._save_state()
                     self._save_working_file()
@@ -585,6 +602,7 @@ class HealthMixin:
 
                 self._health_running = False
                 self._health_manual = False
+                self._health_task = None
 
     async def _revalidate_stale_proxies(self):
             """Re-check proxies that are stale at startup.

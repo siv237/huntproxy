@@ -69,6 +69,7 @@ const api = {
   exportProxies() { return this.request('/api/export', 'POST'); },
   importProxies(body) { return this.request('/api/import', 'POST', body); },
   healthStart() { return this.request('/api/health/start', 'POST'); },
+  healthStop() { return this.request('/api/health/stop', 'POST'); },
   traffic() { return this.request('/api/traffic'); },
   trafficLive() { return this.request('/api/traffic/live'); },
   requests() { return this.request('/api/requests'); },

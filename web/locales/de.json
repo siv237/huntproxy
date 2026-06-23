@@ -388,7 +388,9 @@
       "heatmapEmpty": "Keine aktiven Proxys zum Anzeigen",
       "heatmapOkDimmed": "Letztes OK (nicht neu geprüft)",
       "heatmapErrDimmed": "Letzter Fehler (nicht neu geprüft)",
-      "recheckAll": "↻ Alle prüfen"
+      "heatmapChecking": "Prüfe",
+      "recheckAll": "↻ Alle prüfen",
+      "abortRecheck": "✕ Abbrechen"
     },
     "logs": {
       "title": "Protokolle",

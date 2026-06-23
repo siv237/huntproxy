@@ -418,7 +418,9 @@
       "heatmapEmpty": "Нет живых прокси для отображения",
       "heatmapOkDimmed": "Последний OK (без перепроверки)",
       "heatmapErrDimmed": "Последняя ошибка (без перепроверки)",
-      "recheckAll": "↻ Проверить все"
+      "heatmapChecking": "Проверка",
+      "recheckAll": "↻ Проверить все",
+      "abortRecheck": "✕ Прервать"
     },
     "logs": {
       "title": "Логи",

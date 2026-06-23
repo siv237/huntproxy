@@ -1015,7 +1015,17 @@ class HuntServer:
                     self.state._log_action("health.start", "already-running")
                     return json.dumps({"ok": False, "error": "already_running"}), 409, "application/json"
                 self.state._log_action("health.start", "recheck-all")
-                asyncio.create_task(self.state._health_check(manual=True))
+                self.state._health_task = asyncio.create_task(self.state._health_check(manual=True))
+                return json.dumps({"ok": True}), 200, "application/json"
+            except Exception as e:
+                return json.dumps({"ok": False, "error": str(e)}), 500, "application/json"
+
+        if path.startswith("/api/health/stop") and method == "POST":
+            try:
+                if not self.state._health_running:
+                    return json.dumps({"ok": False, "error": "not_running"}), 409, "application/json"
+                self.state._log_action("health.stop", "abort-recheck")
+                self.state.stop_health()
                 return json.dumps({"ok": True}), 200, "application/json"
             except Exception as e:
                 return json.dumps({"ok": False, "error": str(e)}), 500, "application/json"

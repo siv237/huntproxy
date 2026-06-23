@@ -388,7 +388,9 @@
       "heatmapEmpty": "没有活跃代理可显示",
       "heatmapOkDimmed": "上次正常（未复查）",
       "heatmapErrDimmed": "上次错误（未复查）",
-      "recheckAll": "↻ 全部检查"
+      "heatmapChecking": "检查中",
+      "recheckAll": "↻ 全部检查",
+      "abortRecheck": "✕ 中止"
     },
     "logs": {
       "title": "日志",

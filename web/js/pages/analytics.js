@@ -64,6 +64,17 @@ router.register('analytics', (container) => {
   setTitle('analytics-events', t('page.analytics.eventHistory'));
 
   let _heatmapPolling = null;
+  let _heatmapRows = {};      // address -> { lastCell, initialLastVal, wasActive }
+  let _heatmapSegs = 72;
+  let _rechecking = false;
+
+  function setCellState(cell, state) {
+    cell.classList.remove('ok', 'err', 'none', 'dimmed', 'checking');
+    if (state === 'ok') cell.classList.add('ok');
+    else if (state === 'err') cell.classList.add('err');
+    else if (state === 'checking') cell.classList.add('checking');
+    else cell.classList.add('none');
+  }
 
   function renderHeatmap() {
     const card = document.getElementById('analytics-heatmap');
@@ -73,11 +84,14 @@ router.register('analytics', (container) => {
     header.appendChild(ui.el('div', 'card-title', { text: t('page.analytics.proxyHeatmap') }));
     const headerRight = ui.el('div', '', { style: 'display:flex;align-items:center;gap:8px' });
     const legend = ui.el('div', 'proxy-heatmap-legend');
-    legend.innerHTML = `<span><span class="proxy-heatmap-legend-dot ok"></span>${ui.escHtml(t('page.analytics.heatmapOk'))}</span><span><span class="proxy-heatmap-legend-dot err"></span>${ui.escHtml(t('page.analytics.heatmapErr'))}</span><span><span class="proxy-heatmap-legend-dot none"></span>${ui.escHtml(t('page.analytics.heatmapNone'))}</span>`;
+    legend.innerHTML = `<span><span class="proxy-heatmap-legend-dot ok"></span>${ui.escHtml(t('page.analytics.heatmapOk'))}</span><span><span class="proxy-heatmap-legend-dot err"></span>${ui.escHtml(t('page.analytics.heatmapErr'))}</span><span><span class="proxy-heatmap-legend-dot none"></span>${ui.escHtml(t('page.analytics.heatmapNone'))}</span><span><span class="proxy-heatmap-legend-dot checking"></span>${ui.escHtml(t('page.analytics.heatmapChecking'))}</span>`;
     headerRight.appendChild(legend);
     const recheckBtn = ui.el('button', 'btn btn-xs btn-secondary', { text: t('page.analytics.recheckAll') });
     recheckBtn.id = 'heatmap-recheck-btn';
-    recheckBtn.addEventListener('click', () => startRecheck(recheckBtn));
+    recheckBtn.addEventListener('click', () => {
+      if (_rechecking) abortRecheck(recheckBtn);
+      else startRecheck(recheckBtn);
+    });
     headerRight.appendChild(recheckBtn);
     header.appendChild(headerRight);
     card.appendChild(header);
@@ -89,19 +103,22 @@ router.register('analytics', (container) => {
 
     if (_heatmapPolling) {
       const btn = document.getElementById('heatmap-recheck-btn');
-      if (btn) { btn.disabled = true; btn.textContent = t('common.testing'); }
+      if (btn) { btn.textContent = t('page.analytics.abortRecheck'); }
     }
   }
 
   function drawHeatmapBody(body) {
+    _heatmapRows = {};
     api.proxyHeatmap(72).then(data => {
       const proxies = data.proxies || [];
+      body.innerHTML = '';
       if (!proxies.length) {
         body.appendChild(ui.el('div', 'empty', { text: t('page.analytics.heatmapEmpty'), style: 'padding:16px' }));
-        card.appendChild(body);
         return;
       }
       const segs = data.segments || 72;
+      _heatmapSegs = segs;
+      const lastIdx = segs - 1;
 
       const scroll = ui.el('div', 'proxy-heatmap-scroll');
 
@@ -132,6 +149,7 @@ router.register('analytics', (container) => {
 
         // Walk left-to-right: carry last known state forward for gaps
         let runningState = 0;
+        let lastCell = null;
         for (let i = 0; i < segs; i++) {
           const v = p.buckets[i] || 0;
           let cls, dimmed = false;
@@ -145,12 +163,19 @@ router.register('analytics', (container) => {
             dimmed = true;
           }
           const cell = ui.el('div', `proxy-heatmap-cell ${cls}` + (dimmed ? ' dimmed' : ''));
-          const label = cls === 'ok' ? (dimmed ? t('page.analytics.heatmapOkDimmed') : t('page.analytics.heatmapOk')) : cls === 'err' ? (dimmed ? t('page.analytics.heatmapErrDimmed') : t('page.analytics.heatmapErr')) : t('page.analytics.heatmapNone');
-          cell.title = `${p.address} — ${label}`;
+          const cellLabel = cls === 'ok' ? (dimmed ? t('page.analytics.heatmapOkDimmed') : t('page.analytics.heatmapOk')) : cls === 'err' ? (dimmed ? t('page.analytics.heatmapErrDimmed') : t('page.analytics.heatmapErr')) : t('page.analytics.heatmapNone');
+          cell.title = `${p.address} — ${cellLabel}`;
+          if (i === lastIdx) lastCell = cell;
           bar.appendChild(cell);
         }
         row.appendChild(bar);
         scroll.appendChild(row);
+
+        _heatmapRows[p.address] = {
+          lastCell,
+          initialLastVal: p.buckets[lastIdx] || 0,
+          wasActive: false,
+        };
       });
 
       body.appendChild(scroll);
@@ -168,24 +193,74 @@ router.register('analytics', (container) => {
 
   function startRecheck(btn) {
     if (btn.disabled) return;
+    if (!Object.keys(_heatmapRows).length) return;
     btn.disabled = true;
     btn.textContent = t('common.testing');
     api.healthStart().then(() => {
       app.toast(t('common.recheckStarted'));
+      _rechecking = true;
+      btn.disabled = false;
+      btn.textContent = t('page.analytics.abortRecheck');
+      const lastIdx = _heatmapSegs - 1;
       _heatmapPolling = setInterval(async () => {
         const body = document.querySelector('#analytics-heatmap .proxy-heatmap');
-        if (body) drawHeatmapBody(body);
-        try {
-          const s = await api.snapshot();
-          if (!s.running || s.phase !== 'health') {
-            clearInterval(_heatmapPolling);
-            _heatmapPolling = null;
-            btn.disabled = false;
-            btn.textContent = t('page.analytics.recheckAll');
-            if (body) drawHeatmapBody(body);
+        let snap, hm;
+        try { snap = await api.snapshot(); } catch (e) { snap = null; }
+        try { hm = await api.proxyHeatmap(72); } catch (e) { hm = null; }
+        const activeAddrs = new Set();
+        if (snap && snap.progress && Array.isArray(snap.progress.active_checks)) {
+          for (const c of snap.progress.active_checks) if (c && c.addr) activeAddrs.add(c.addr);
+        }
+        const hmMap = new Map();
+        if (hm && Array.isArray(hm.proxies)) {
+          for (const p of hm.proxies) hmMap.set(p.address, p.buckets || []);
+        }
+
+        for (const addr in _heatmapRows) {
+          const r = _heatmapRows[addr];
+          if (!r.lastCell) continue;
+          const inActive = activeAddrs.has(addr);
+
+          if (inActive) {
+            r.wasActive = true;
+            setCellState(r.lastCell, 'checking');
+            r.lastCell.title = `${addr} — ${t('page.analytics.heatmapChecking')}`;
+            continue;
           }
-        } catch (e) { /* keep polling */ }
-      }, 2000);
+          // Need heatmap data to determine a result; skip until next poll if it failed.
+          if (hm === null) continue;
+
+          const buckets = hmMap.get(addr);
+          const inHm = !!buckets;
+          const curBucket = inHm ? (buckets[lastIdx] || 0) : null;
+
+          if (r.wasActive) {
+            // Just finished checking — assign final colour
+            let result;
+            if (!inHm) result = 'err';
+            else if (curBucket === 2) result = 'err';
+            else result = 'ok';
+            setCellState(r.lastCell, result);
+            r.lastCell.title = `${addr} — ${result === 'ok' ? t('page.analytics.heatmapOk') : t('page.analytics.heatmapErr')}`;
+          } else if (curBucket !== null && curBucket !== r.initialLastVal && curBucket !== 0) {
+            // Finished between polls (never seen active) — colour by bucket
+            const result = curBucket === 1 ? 'ok' : 'err';
+            setCellState(r.lastCell, result);
+            r.wasActive = true;
+            r.lastCell.title = `${addr} — ${result === 'ok' ? t('page.analytics.heatmapOk') : t('page.analytics.heatmapErr')}`;
+          } else if (!inHm && r.initialLastVal !== 0) {
+            // Dropped out of the alive list without being seen active → failed
+            setCellState(r.lastCell, 'err');
+            r.lastCell.title = `${addr} — ${t('page.analytics.heatmapErr')}`;
+          }
+        }
+
+        // null = snapshot fetch failed → keep polling; true/false = actual run state
+        const stillRunning = snap === null ? null : (snap.running && snap.phase === 'health');
+        if (stillRunning === false) {
+          finishRecheck(btn, body);
+        }
+      }, 500);
       if (window._pageIntervals) window._pageIntervals.push(_heatmapPolling);
     }).catch(e => {
       btn.disabled = false;
@@ -193,6 +268,34 @@ router.register('analytics', (container) => {
       if (e.message && e.message.includes('already_running')) {
         app.toast(t('common.recheckAlreadyRunning'), 'warn');
       } else {
+        app.toast(t('common.error', { message: e.message }), 'error');
+      }
+    });
+  }
+
+  function finishRecheck(btn, body) {
+    if (_heatmapPolling) {
+      clearInterval(_heatmapPolling);
+      _heatmapPolling = null;
+    }
+    _rechecking = false;
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = t('page.analytics.recheckAll');
+    }
+    if (body) drawHeatmapBody(body);
+  }
+
+  function abortRecheck(btn) {
+    btn.disabled = true;
+    api.healthStop().then(() => {
+      // The polling loop will detect phase != health and call finishRecheck.
+    }).catch(e => {
+      if (e.message && e.message.includes('not_running')) {
+        // Already stopped — the polling loop / finishRecheck handles the button.
+        if (_rechecking) { btn.disabled = false; btn.textContent = t('page.analytics.abortRecheck'); }
+      } else {
+        if (_rechecking) { btn.disabled = false; btn.textContent = t('page.analytics.abortRecheck'); }
         app.toast(t('common.error', { message: e.message }), 'error');
       }
     });

@@ -1155,6 +1155,15 @@
 .proxy-heatmap-cell.err { background: var(--danger); }
 .proxy-heatmap-cell.none { background: var(--surface); }
 .proxy-heatmap-cell.dimmed { opacity: 0.25; }
+.proxy-heatmap-cell.checking {
+  background: var(--warning);
+  animation: heatmap-blink 0.6s steps(2, start) infinite;
+}
+@keyframes heatmap-blink {
+  0% { opacity: 1; }
+  50% { opacity: 0.25; }
+  100% { opacity: 1; }
+}
 
 .proxy-heatmap-axis {
   display: flex;
@@ -1185,6 +1194,7 @@
 .proxy-heatmap-legend-dot.ok { background: var(--success); }
 .proxy-heatmap-legend-dot.err { background: var(--danger); }
 .proxy-heatmap-legend-dot.none { background: var(--surface); }
+.proxy-heatmap-legend-dot.checking { background: var(--warning); animation: heatmap-blink 0.6s steps(2, start) infinite; }
 
 /* Grids */
 .proxy-card-grid-2 {
