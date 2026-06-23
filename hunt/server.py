@@ -501,7 +501,10 @@ class HuntServer:
             f"Connection: close\r\n\r\n"
         ).encode() + body
         writer.write(resp)
-        await writer.drain()
+        try:
+            await writer.drain()
+        except (BrokenPipeError, ConnectionResetError):
+            pass
 
     def _serve_static(self, path: str):
         if not WEB_DIR.exists():
