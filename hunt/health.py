@@ -439,81 +439,94 @@ class HealthMixin:
 
                     sem = asyncio.Semaphore(self.health_parallel)
                     lock = asyncio.Lock()
+                    _hctr = [0]
 
                     async def check(r: ProxyRating):
                         nonlocal ok_count, fail_count
-                        async with sem:
-                            if self._internet_suspect:
-                                return
-                            http_task = asyncio.create_task(self._check_proxy(r.address))
-                            ssl_task = asyncio.create_task(self._check_ssl(r.address))
-                            try:
-                                results = await asyncio.wait_for(
-                                    asyncio.gather(http_task, ssl_task, return_exceptions=True),
-                                    timeout=self.timeout + 5,
-                                )
-                            except asyncio.TimeoutError:
-                                http_task.cancel()
-                                ssl_task.cancel()
-                                results = [asyncio.TimeoutError(), asyncio.TimeoutError()]
-
-                            if isinstance(results[0], Exception):
-                                ok, country, supports_connect, mitm_suspect, egress, listen, http_latency, cc, fast_fail = False, "", False, False, {}, {}, 0.0, "", False
-                            else:
-                                ok, country, supports_connect, mitm_suspect, egress, listen, http_latency, cc, fast_fail = results[0]
-                            if isinstance(results[1], Exception):
-                                ssl_ok, ssl_country, ssl_cc, ssl_egress, ssl_latency, ssl_supports_connect = False, "", "", {}, 0.0, False
-                            else:
-                                ssl_ok, ssl_country, ssl_cc, ssl_egress, ssl_latency, ssl_supports_connect = results[1]
-
-                            if not ok and ssl_ok:
-                                ok = True
-                                country = ssl_country
-                                cc = ssl_cc
-                                egress = ssl_egress
-                                http_latency = ssl_latency
-                                supports_connect = ssl_supports_connect
-                            elif ok and ssl_ok:
-                                if not egress and ssl_egress:
-                                    egress = ssl_egress
-                                if not supports_connect and ssl_supports_connect:
-                                    supports_connect = ssl_supports_connect
-
-                            if ok and not self._is_socks_addr(r.address) and not supports_connect:
-                                ok = False
-
-                            speed = 0.0
-                            if ok:
-                                host, port_str = r.address.rsplit(":", 1)
-                                is_socks = port_str.isdigit() and int(port_str) in (1080, 10808, 9050, 4145)
-                                use_ssl = ssl_ok and not is_socks
+                        wid = _hctr[0]; _hctr[0] += 1
+                        try:
+                            _p = int(r.address.rsplit(":", 1)[1])
+                            _proto = "socks5" if _p in (1080, 10808, 9050) else "socks4" if _p == 4145 else "http"
+                        except Exception:
+                            _proto = "http"
+                        self._active_checks[wid] = {"addr": r.address, "step": "queued", "started": time.time(), "protocol": _proto}
+                        try:
+                            async with sem:
+                                if self._internet_suspect:
+                                    return
+                                self._active_checks[wid] = {"addr": r.address, "step": "connect", "started": time.time(), "protocol": _proto}
+                                http_task = asyncio.create_task(self._check_proxy(r.address))
+                                ssl_task = asyncio.create_task(self._check_ssl(r.address))
                                 try:
-                                    speed = await asyncio.wait_for(
-                                        self._measure_speed(host, int(port_str), is_socks,
-                                                            use_ssl=use_ssl, supports_connect=supports_connect),
+                                    results = await asyncio.wait_for(
+                                        asyncio.gather(http_task, ssl_task, return_exceptions=True),
                                         timeout=self.timeout + 5,
                                     )
-                                except (asyncio.TimeoutError, Exception):
-                                    speed = 0.0
+                                except asyncio.TimeoutError:
+                                    http_task.cancel()
+                                    ssl_task.cancel()
+                                    results = [asyncio.TimeoutError(), asyncio.TimeoutError()]
 
-                            async with lock:
-                                self.checked += 1
-                                if ok:
-                                    ok_count += 1
-                                    self.working = ok_count
-                                    self.last_proxy = r.address
-                                    self.last_country = country
+                                if isinstance(results[0], Exception):
+                                    ok, country, supports_connect, mitm_suspect, egress, listen, http_latency, cc, fast_fail = False, "", False, False, {}, {}, 0.0, "", False
                                 else:
-                                    fail_count += 1
-                                    self.failed = fail_count
-                                self._update_rating(r.address, ok, country, http_latency, supports_connect, mitm_suspect, egress, listen, speed, country_code=cc, ssl_supported=ssl_ok)
-                                if self.checked % 10 == 0 or ok:
-                                    pct = int(100 * self.checked / max(1, self.checking_total))
-                                    self._emit(
-                                        f"{pct}% {self.checked}/{self.checking_total} | "
-                                        f"working: {ok_count} | last: {r.address} {country}",
-                                        "progress"
-                                    )
+                                    ok, country, supports_connect, mitm_suspect, egress, listen, http_latency, cc, fast_fail = results[0]
+                                if isinstance(results[1], Exception):
+                                    ssl_ok, ssl_country, ssl_cc, ssl_egress, ssl_latency, ssl_supports_connect = False, "", "", {}, 0.0, False
+                                else:
+                                    ssl_ok, ssl_country, ssl_cc, ssl_egress, ssl_latency, ssl_supports_connect = results[1]
+
+                                if not ok and ssl_ok:
+                                    ok = True
+                                    country = ssl_country
+                                    cc = ssl_cc
+                                    egress = ssl_egress
+                                    http_latency = ssl_latency
+                                    supports_connect = ssl_supports_connect
+                                elif ok and ssl_ok:
+                                    if not egress and ssl_egress:
+                                        egress = ssl_egress
+                                    if not supports_connect and ssl_supports_connect:
+                                        supports_connect = ssl_supports_connect
+
+                                if ok and not self._is_socks_addr(r.address) and not supports_connect:
+                                    ok = False
+
+                                speed = 0.0
+                                if ok:
+                                    self._active_checks[wid] = {"addr": r.address, "step": "speed", "started": time.time(), "protocol": _proto, "country": country, "cc": cc}
+                                    host, port_str = r.address.rsplit(":", 1)
+                                    is_socks = port_str.isdigit() and int(port_str) in (1080, 10808, 9050, 4145)
+                                    use_ssl = ssl_ok and not is_socks
+                                    try:
+                                        speed = await asyncio.wait_for(
+                                            self._measure_speed(host, int(port_str), is_socks,
+                                                                use_ssl=use_ssl, supports_connect=supports_connect),
+                                            timeout=self.timeout + 5,
+                                        )
+                                    except (asyncio.TimeoutError, Exception):
+                                        speed = 0.0
+
+                                async with lock:
+                                    self.checked += 1
+                                    if ok:
+                                        ok_count += 1
+                                        self.working = ok_count
+                                        self.last_proxy = r.address
+                                        self.last_country = country
+                                    else:
+                                        fail_count += 1
+                                        self.failed = fail_count
+                                    self._update_rating(r.address, ok, country, http_latency, supports_connect, mitm_suspect, egress, listen, speed, country_code=cc, ssl_supported=ssl_ok)
+                                    if self.checked % 10 == 0 or ok:
+                                        pct = int(100 * self.checked / max(1, self.checking_total))
+                                        self._emit(
+                                            f"{pct}% {self.checked}/{self.checking_total} | "
+                                            f"working: {ok_count} | last: {r.address} {country}",
+                                            "progress"
+                                        )
+                        finally:
+                            self._active_checks.pop(wid, None)
 
                     tasks = [asyncio.create_task(check(r)) for r in candidates]
                     overall_timeout = len(candidates) * (self.timeout + 10) // max(1, self.health_parallel) + 30

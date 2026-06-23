@@ -101,6 +101,7 @@ class HuntState(DbMixin, EventsMixin, SnapshotMixin, HealthMixin, CheckingMixin,
             self.events: list[dict] = []
             self._event_seq = 0
             self._cond = asyncio.Condition()
+            self._active_checks: dict[str, dict] = {}
 
             # settings
             cfg = config.get("hunt", {})

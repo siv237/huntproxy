@@ -14,6 +14,7 @@ class SnapshotMixin:
                      if r.last_status == "ok" and not r.in_blacklist]
             sorted_alive = sorted(alive, key=lambda r: r.score, reverse=True)
             dead = [r for r in self.ratings.values() if r.last_status == "failed"]
+            sorted_dead = sorted(dead, key=lambda r: r.last_check, reverse=True)
             banned = [r for r in self.ratings.values() if r.in_blacklist]
             ip_blacklisted = sum(1 for r in self.ratings.values() if r.ip_blacklist_reason and not r.in_blacklist)
 
@@ -38,6 +39,7 @@ class SnapshotMixin:
                     "last_proxy": self.last_proxy,
                     "last_country": self.last_country,
                     "source_results": self._get_source_download_results(),
+                    "active_checks": list(self._active_checks.values()),
                 },
                 "counts": {
                     "ratings": len(self.ratings),
@@ -53,6 +55,7 @@ class SnapshotMixin:
                     "country_filter": self.country_filter,
                 },
                 "top_proxies": [r.to_dict() for r in sorted_alive[:30]],
+                "recent_dead": [r.to_dict() for r in sorted_dead[:30]],
                 "top_countries": self.get_countries(),
                 "blacklist": self._blacklist_view(),
                 "last_event": self.last_event,

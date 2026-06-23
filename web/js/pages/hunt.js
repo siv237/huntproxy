@@ -11,18 +11,98 @@ router.register('hunt', (container) => {
     container.style.minHeight = '0';
     container.style.flex = '1';
 
-    // Row 1: Controls + Progress + Blacklist mini
-    const row1 = ui.el('div', 'grid grid-3 row-stretch');
-    row1.appendChild(buildControlCard());
-    row1.appendChild(buildProgressCard());
-    row1.appendChild(buildBlacklistCard());
-    container.appendChild(row1);
+    // Top: Pipeline stepper strip (full width, thin)
+    container.appendChild(buildPipelineStrip());
 
-    // Row 2: Top Proxies + Hunt Log
+    // Main: Left conveyor + Right panels
+    const main = ui.el('div', '', { style: 'display:flex;gap:10px;flex:1;min-height:0' });
+
+    const leftCol = ui.el('div', '', { style: 'flex:0 0 45%;display:flex;flex-direction:column;min-height:0' });
+    leftCol.appendChild(buildConveyorCard());
+    main.appendChild(leftCol);
+
+    const rightCol = ui.el('div', '', { style: 'flex:1;display:flex;flex-direction:column;gap:10px;min-height:0;min-width:0' });
+    const row1 = ui.el('div', 'grid grid-2 row-stretch');
+    row1.appendChild(buildProgressCard());
+    row1.appendChild(buildResultsCard());
+    rightCol.appendChild(row1);
+
     const row2 = ui.el('div', 'grid grid-2 row-stretch');
     row2.appendChild(buildTopProxiesCard());
     row2.appendChild(buildLogCard());
-    container.appendChild(row2);
+    rightCol.appendChild(row2);
+
+    main.appendChild(rightCol);
+    container.appendChild(main);
+  }
+
+  const PIPELINE_PHASES = ['download', 'blacklist', 'validate', 'health'];
+  const PIPELINE_PHASE_I18N = { download: 'page.hunt.phase_download', blacklist: 'page.hunt.phase_blacklist', validate: 'page.hunt.phase_validate', health: 'page.hunt.phase_health' };
+  const PIPELINE_PHASE_ICON = { download: '⬇', blacklist: '🛡', validate: '🔍', health: '❤' };
+
+  function buildPipelineStrip() {
+    const card = ui.el('div', 'card pipeline-strip');
+    card.id = 'pipeline-strip';
+    card.style.padding = '6px 10px';
+    card.style.flex = '0 0 auto';
+
+    const row = ui.el('div', '', { style: 'display:flex;align-items:center;gap:0' });
+    PIPELINE_PHASES.forEach((ph, i) => {
+      const step = ui.el('div', 'pipe-step');
+      step.id = 'pipe-step-' + ph;
+      const dot = ui.el('div', 'pipe-step-dot', { text: PIPELINE_PHASE_ICON[ph] });
+      step.appendChild(dot);
+      const body = ui.el('div', 'pipe-step-body');
+      body.appendChild(ui.el('div', 'pipe-step-title', { id: 'pipe-title-' + ph, text: t(PIPELINE_PHASE_I18N[ph]) }));
+      body.appendChild(ui.el('div', 'pipe-step-detail', { id: 'pipe-detail-' + ph, text: '—' }));
+      step.appendChild(body);
+      row.appendChild(step);
+      if (i < PIPELINE_PHASES.length - 1) {
+        row.appendChild(ui.el('div', 'pipe-step-arrow'));
+      }
+    });
+    card.appendChild(row);
+    return card;
+  }
+
+  const CONVEYOR_PHASES = ['queued', 'connect', 'speed'];
+  const CONVEYOR_PHASE_I18N = { queued: 'page.hunt.conv_queued', connect: 'page.hunt.conv_connect', speed: 'page.hunt.conv_speed' };
+  const CONVEYOR_PHASE_ICON = { queued: '⏳', connect: '🔗', speed: '⚡' };
+
+  function buildConveyorCard() {
+    const card = ui.el('div', 'card conveyor-board');
+    card.id = 'conveyor-card';
+    card.style.padding = '8px 10px';
+    card.style.flex = '1';
+    card.style.display = 'flex';
+    card.style.flexDirection = 'column';
+    card.style.minHeight = '0';
+
+    const header = ui.el('div', 'card-header');
+    header.appendChild(ui.el('div', 'card-title', { text: t('page.hunt.conveyor') }));
+    const liveTag = ui.el('span', 'pipeline-live', { id: 'pipeline-live', text: '—' });
+    header.appendChild(liveTag);
+    card.appendChild(header);
+
+    const lanes = ui.el('div', 'conveyor-vlanes');
+    lanes.id = 'conveyor-lanes';
+
+    CONVEYOR_PHASES.forEach(ph => {
+      const lane = ui.el('div', 'conveyor-vlane');
+      lane.id = 'conveyor-vlane-' + ph;
+      const label = ui.el('div', 'conveyor-vlane-header', {}, [
+        ui.el('span', 'conveyor-vlane-icon', { text: CONVEYOR_PHASE_ICON[ph] }),
+        ui.el('span', '', { text: t(CONVEYOR_PHASE_I18N[ph]) }),
+        ui.el('span', 'conveyor-vlane-count', { id: 'conveyor-vcount-' + ph, text: '0' }),
+      ]);
+      lane.appendChild(label);
+      const items = ui.el('div', 'conveyor-vlane-items', { id: 'conveyor-vitems-' + ph });
+      lane.appendChild(items);
+      lanes.appendChild(lane);
+    });
+
+    card.appendChild(lanes);
+    return card;
   }
 
   function buildControlCard() {
@@ -65,7 +145,42 @@ router.register('hunt', (container) => {
   function buildProgressCard() {
     const card = ui.el('div', 'card');
     card.id = 'progress-card';
-    card.appendChild(ui.el('div', 'card-title', { text: t('page.hunt.poolProgress'), style: 'margin-bottom:8px' }));
+    card.style.display = 'flex';
+    card.style.flexDirection = 'column';
+
+    const header = ui.el('div', 'card-header');
+    header.appendChild(ui.el('div', 'card-title', { text: t('page.hunt.poolProgress') }));
+    const btnRow = ui.el('div', '', { style: 'display:flex;gap:4px;flex-wrap:wrap' });
+    const startBtn = ui.el('button', 'btn btn-primary', { text: t('page.hunt.startHunt') });
+    startBtn.id = 'btn-hunt-start';
+    startBtn.style.fontSize = '10px';
+    startBtn.style.padding = '2px 8px';
+    startBtn.addEventListener('click', () => api.huntStart().then(r => app.toast(r.ok ? t('page.hunt.huntStarted') : r.error)));
+    btnRow.appendChild(startBtn);
+
+    const pauseBtn = ui.el('button', 'btn btn-secondary', { text: t('page.hunt.pause') });
+    pauseBtn.id = 'btn-hunt-pause';
+    pauseBtn.style.fontSize = '10px';
+    pauseBtn.style.padding = '2px 8px';
+    pauseBtn.addEventListener('click', () => api.huntPause().then(r => app.toast(r.ok ? t('page.hunt.pausedMsg') : r.error)));
+    btnRow.appendChild(pauseBtn);
+
+    const resumeBtn = ui.el('button', 'btn btn-secondary', { text: t('page.hunt.resume') });
+    resumeBtn.id = 'btn-hunt-resume';
+    resumeBtn.style.fontSize = '10px';
+    resumeBtn.style.padding = '2px 8px';
+    resumeBtn.addEventListener('click', () => api.huntResume().then(r => app.toast(r.ok ? t('page.hunt.resumed') : r.error)));
+    btnRow.appendChild(resumeBtn);
+
+    const stopBtn = ui.el('button', 'btn btn-danger', { text: t('page.hunt.stop') });
+    stopBtn.id = 'btn-hunt-stop';
+    stopBtn.style.fontSize = '10px';
+    stopBtn.style.padding = '2px 8px';
+    stopBtn.addEventListener('click', () => api.huntStop().then(() => app.toast(t('page.hunt.huntStopped'))));
+    btnRow.appendChild(stopBtn);
+
+    header.appendChild(btnRow);
+    card.appendChild(header);
 
     const top = ui.el('div', '', { style: 'display:flex;align-items:center;gap:8px;margin-bottom:6px' });
     top.appendChild(ui.el('div', '', { id: 'phase-badge', style: 'display:inline-flex;align-items:center;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;text-transform:uppercase;background:var(--surface-raised);color:var(--text-secondary)', text: t('page.hunt.idle') }));
@@ -84,31 +199,58 @@ router.register('hunt', (container) => {
     const lp = ui.el('div', '', { id: 'last-proxy-row', style: 'margin-top:4px;font-size:11px;color:var(--text-secondary);display:flex;align-items:center;gap:4px;visibility:hidden' });
     lp.innerHTML = '<span id="last-flag"></span><span id="last-addr" style="font-family:monospace;color:var(--accent)"></span><span id="last-country-name"></span>';
     card.appendChild(lp);
+
+    const sel = ui.el('select', '', { id: 'country-filter', style: 'width:100%;padding:3px 6px;font-size:11px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--bg);color:var(--text-primary);margin-top:6px' });
+    ['ALL','US','RU','GB','DE','FR','NL','CA','JP','BR','IN','UA','PL'].forEach(c => {
+      const opt = ui.el('option', '', { value: c === 'ALL' ? '' : c, text: c });
+      sel.appendChild(opt);
+    });
+    sel.addEventListener('change', () => api.setCountry(sel.value).then(() => app.toast('Country: ' + (sel.value || 'ALL'))));
+    card.appendChild(sel);
+
     return card;
   }
 
-  function buildBlacklistCard() {
-    const card = ui.el('div', 'card');
-    card.id = 'blacklist-card';
-    card.appendChild(ui.el('div', 'card-title', { text: t('page.hunt.blacklist'), style: 'margin-bottom:8px' }));
+  function buildResultsCard() {
+    const card = ui.el('div', 'card conveyor-board');
+    card.id = 'results-card';
+    card.style.padding = '8px 10px';
+    card.style.display = 'flex';
+    card.style.flexDirection = 'column';
 
-    const form = ui.el('div', '', { style: 'display:flex;gap:4px;margin-bottom:6px' });
-    const addrInp = ui.el('input', '', { id: 'bl-input', type: 'text', placeholder: t('page.blacklist.proxyAddress'), style: 'flex:1;padding:3px 6px;font-size:11px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--bg);color:var(--text-primary)' });
-    const reasonInp = ui.el('input', '', { id: 'bl-reason', type: 'text', placeholder: t('common.reason'), style: 'flex:1;padding:3px 6px;font-size:11px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--bg);color:var(--text-primary)' });
-    const addBtn = ui.el('button', 'btn btn-xs btn-primary', { text: '+' });
-    addBtn.addEventListener('click', () => {
-      const a = addrInp.value.trim(), r = reasonInp.value.trim();
-      if (!a) return;
-      api.blAdd(a, r).then(() => { addrInp.value = ''; reasonInp.value = ''; app.toast(t('page.hunt.addedToBlacklist')); poll(); });
-    });
-    form.appendChild(addrInp);
-    form.appendChild(reasonInp);
-    form.appendChild(addBtn);
-    card.appendChild(form);
+    const header = ui.el('div', 'card-header');
+    header.appendChild(ui.el('div', 'card-title', { text: t('page.hunt.results') }));
+    const resultsCount = ui.el('span', 'pipeline-live', { id: 'results-count', text: '0' });
+    header.appendChild(resultsCount);
+    card.appendChild(header);
 
-    const tbl = ui.el('div', 'table-wrap');
-    tbl.id = 'bl-tbl-wrap';
-    card.appendChild(tbl);
+    const lanes = ui.el('div', 'conveyor-vlanes');
+
+    // Alive lane
+    const aliveLane = ui.el('div', 'conveyor-vlane conveyor-vlane-alive');
+    const aliveHeader = ui.el('div', 'conveyor-vlane-header', {}, [
+      ui.el('span', 'conveyor-vlane-icon', { text: '✓' }),
+      ui.el('span', '', { text: t('page.hunt.conv_alive') }),
+      ui.el('span', 'conveyor-vlane-count', { id: 'results-alive-count', text: '0' }),
+    ]);
+    aliveLane.appendChild(aliveHeader);
+    const aliveItems = ui.el('div', 'conveyor-vlane-items', { id: 'results-alive-items' });
+    aliveLane.appendChild(aliveItems);
+    lanes.appendChild(aliveLane);
+
+    // Dead lane
+    const deadLane = ui.el('div', 'conveyor-vlane conveyor-vlane-dead');
+    const deadHeader = ui.el('div', 'conveyor-vlane-header', {}, [
+      ui.el('span', 'conveyor-vlane-icon', { text: '✗' }),
+      ui.el('span', '', { text: t('page.hunt.conv_dead') }),
+      ui.el('span', 'conveyor-vlane-count', { id: 'results-dead-count', text: '0' }),
+    ]);
+    deadLane.appendChild(deadHeader);
+    const deadItems = ui.el('div', 'conveyor-vlane-items', { id: 'results-dead-items' });
+    deadLane.appendChild(deadItems);
+    lanes.appendChild(deadLane);
+
+    card.appendChild(lanes);
     return card;
   }
 
@@ -139,6 +281,171 @@ router.register('hunt', (container) => {
   build();
 
   // --- Updaters ---
+
+  const PHASE_MAP = { 'downloading': 'download', 'blacklists': 'blacklist', 'validating': 'validate', 'health': 'health', 'done': null, 'idle': null, 'paused': null };
+
+  function updatePipelineStrip(s) {
+    const p = s.progress || {};
+    const phase = s.phase;
+    const phaseKey = PHASE_MAP[phase] ?? null;
+    const parallel = (s.settings && s.settings.parallel) || 30;
+
+    const setStep = (id, cls) => { const el = document.getElementById('pipe-step-' + id); if (el) el.className = 'pipe-step' + (cls ? ' ' + cls : ''); };
+    const setDetail = (id, txt) => { const el = document.getElementById('pipe-detail-' + id); if (el) el.textContent = txt; };
+
+    PIPELINE_PHASES.forEach(ph => { setStep(ph, 'waiting'); setDetail(ph, '—'); });
+
+    // Download
+    {
+      const srcs = p.source_results || [];
+      const okN = srcs.filter(r => r.status === 'ok').length;
+      const errN = srcs.filter(r => r.status === 'error').length;
+      const total = srcs.length || p.sources_total || 0;
+      const done = p.sources_done || okN + errN;
+      setDetail('download', total > 0 ? `${done}/${total} · ${okN}ok ${errN}err` : '—');
+    }
+    // Blacklist
+    {
+      const bls = p.bl_source_results || [];
+      const okN = bls.filter(r => r.status === 'ok').length;
+      const errN = bls.filter(r => r.status === 'error').length;
+      const total = bls.length || p.bl_sources_total || 0;
+      const done = p.bl_sources_done || okN + errN;
+      setDetail('blacklist', total > 0 ? `${done}/${total} · ${okN}ok ${errN}err` : '—');
+    }
+    // Validate
+    {
+      const total = p.checking_total || p.downloaded || 0;
+      const checked = p.checked || 0;
+      const pct = total > 0 ? Math.round(checked / total * 100) : 0;
+      setDetail('validate', total > 0 ? `${checked}/${total} ${pct}% · ⚡${parallel} ✓${p.working || 0} ✗${p.failed || 0}` : '—');
+    }
+    // Health
+    {
+      const alive = (s.counts && s.counts.alive) || 0;
+      setDetail('health', alive > 0 ? `${alive} alive · ${Math.round((s.settings || {}).health_interval || 300)}s` : '—');
+    }
+
+    // Mark done/active
+    const currentIdx = phaseKey ? PIPELINE_PHASES.indexOf(phaseKey) : -1;
+    PIPELINE_PHASES.forEach((ph, i) => {
+      if (currentIdx < 0) return;
+      if (i < currentIdx) setStep(ph, 'done');
+      else if (i === currentIdx) setStep(ph, s.paused ? 'paused' : 'active');
+    });
+    if (phase === 'done') PIPELINE_PHASES.forEach(ph => setStep(ph, 'done'));
+  }
+
+  function updateConveyor(s) {
+    const p = s.progress || {};
+    const active = p.active_checks || [];
+    const now = Date.now() / 1000;
+    const protoColors = { socks5: 'var(--accent)', socks4: 'var(--info)', http: 'var(--text-secondary)', https: 'var(--success)' };
+
+    const byPhase = {};
+    CONVEYOR_PHASES.forEach(ph => byPhase[ph] = []);
+
+    active.forEach(c => {
+      const ph = CONVEYOR_PHASES.includes(c.step) ? c.step : 'queued';
+      byPhase[ph].push(c);
+    });
+
+    CONVEYOR_PHASES.forEach(ph => {
+      const items = document.getElementById('conveyor-vitems-' + ph);
+      const count = document.getElementById('conveyor-vcount-' + ph);
+      const lane = document.getElementById('conveyor-vlane-' + ph);
+      if (!items) return;
+
+      if (count) count.textContent = String(byPhase[ph].length);
+      if (lane) lane.classList.toggle('conveyor-vlane-active', byPhase[ph].length > 0);
+
+      items.innerHTML = '';
+      byPhase[ph].sort((a, b) => (a.started || 0) - (b.started || 0)).forEach(c => {
+        const card = ui.el('div', 'conveyor-vcard conveyor-vcard-' + ph);
+        const protoEl = ui.el('span', 'conveyor-proto', { text: (c.protocol || 'http').toUpperCase() });
+        protoEl.style.color = protoColors[c.protocol] || protoColors.http;
+        card.appendChild(protoEl);
+
+        const addrEl = ui.el('span', 'conveyor-addr', { text: c.addr || '—' });
+        card.appendChild(addrEl);
+
+        const elapsed = Math.max(0, now - (c.started || now));
+        const elapsedEl = ui.el('span', 'conveyor-elapsed', { text: elapsed.toFixed(1) + 's' });
+        card.appendChild(elapsedEl);
+
+        if (c.cc) {
+          const flagEl = ui.el('span', 'conveyor-flag', { text: ui.flag(c.cc) || '' });
+          card.appendChild(flagEl);
+        }
+
+        items.appendChild(card);
+      });
+    });
+
+    const live = document.getElementById('pipeline-live');
+    if (live) {
+      if (s.paused) { live.textContent = t('page.hunt.paused'); live.className = 'pipeline-live paused'; }
+      else if (s.running) { live.textContent = active.length + ' ' + t('page.hunt.conv_active'); live.className = 'pipeline-live active'; }
+      else { live.textContent = t('page.hunt.idle'); live.className = 'pipeline-live'; }
+    }
+  }
+
+  function updateResults(s) {
+    const counts = s.counts || {};
+    const alive = s.top_proxies || [];
+    const dead = s.recent_dead || [];
+    const protoColors = { socks5: 'var(--accent)', socks4: 'var(--info)', http: 'var(--text-secondary)', https: 'var(--success)' };
+
+    const aliveEl = document.getElementById('results-alive-items');
+    const deadEl = document.getElementById('results-dead-items');
+    const aliveCount = document.getElementById('results-alive-count');
+    const deadCount = document.getElementById('results-dead-count');
+    const totalCount = document.getElementById('results-count');
+    if (aliveCount) aliveCount.textContent = String(counts.alive || 0);
+    if (deadCount) deadCount.textContent = String(counts.dead || 0);
+    if (totalCount) totalCount.textContent = (counts.alive || 0) + ' / ' + (counts.dead || 0);
+
+    const renderCard = (p, cls) => {
+      const card = ui.el('div', 'conveyor-vcard ' + cls);
+      const protoEl = ui.el('span', 'conveyor-proto', { text: (p.protocol || 'http').toUpperCase() });
+      protoEl.style.color = protoColors[p.protocol] || protoColors.http;
+      card.appendChild(protoEl);
+      const addrEl = ui.el('span', 'conveyor-addr', { text: p.address });
+      addrEl.classList.add('proxy-address-link');
+      addrEl.dataset.cardAddr = p.address;
+      card.appendChild(addrEl);
+      if (p.country_code) {
+        const flagEl = ui.el('span', 'conveyor-flag', { text: ui.flag(p.country_code) || '' });
+        card.appendChild(flagEl);
+      }
+      if (p.speed_avg) {
+        const speedEl = ui.el('span', 'conveyor-elapsed', { text: Math.round(p.speed_avg) + 'KB/s' });
+        card.appendChild(speedEl);
+      }
+      return card;
+    };
+
+    if (aliveEl) {
+      aliveEl.innerHTML = '';
+      alive.slice(0, 50).forEach(p => aliveEl.appendChild(renderCard(p, 'conveyor-vcard-alive')));
+    }
+    if (deadEl) {
+      deadEl.innerHTML = '';
+      dead.slice(0, 50).forEach(p => deadEl.appendChild(renderCard(p, 'conveyor-vcard-dead')));
+    }
+
+    [aliveEl, deadEl].forEach(el => {
+      if (!el) return;
+      el.querySelectorAll('[data-card-addr]').forEach(link => {
+        link.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const addr = link.dataset.cardAddr;
+          if (addr && window.proxyCard) window.proxyCard.show(addr);
+        });
+      });
+    });
+  }
+
   function updateStats(s) {
     const c = s.counts || {};
     const el = id => document.getElementById(id);
@@ -308,9 +615,11 @@ router.register('hunt', (container) => {
       try { ev = await api.events(lastEventSeq); } catch (e) { console.error('events', e); }
 
       updateStats(s);
+      updatePipelineStrip(s);
+      updateConveyor(s);
       updateProgress(s);
+      updateResults(s);
       updateTopProxies(s.top_proxies);
-      updateBlacklist(s.blacklist);
       if (ev && ev.length) {
         lastEventSeq = Math.max(...ev.map(e => e.seq), lastEventSeq);
         updateLog(ev);
