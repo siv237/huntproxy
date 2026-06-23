@@ -77,6 +77,7 @@ const api = {
   errors() { return this.request('/api/errors'); },
   bandwidth() { return this.request('/api/bandwidth'); },
   trafficRoutes() { return this.request('/api/traffic/routes'); },
+  trafficSummary() { return this.request('/api/traffic/summary'); },
 
   // Routing & Domain Lists
   routingStatus() { return this.request('/api/routing/status'); },

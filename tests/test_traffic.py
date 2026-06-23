@@ -96,8 +96,8 @@ class TestApiTraffic:
 
         resp = await http_client("GET", "/api/bandwidth")
         data = _json_response(resp)
-        assert data["incoming"] == 100
-        assert data["outgoing"] == 200
+        assert data["upload"] == 100   # bytes_in = client→upstream = upload
+        assert data["download"] == 200  # bytes_out = upstream→client = download
 
     @pytest.mark.asyncio
     async def test_api_requests_reads_stats_db(self, http_client, api_server):

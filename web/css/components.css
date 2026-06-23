@@ -2180,3 +2180,80 @@
   0% { background: rgba(var(--accent-rgb, 30,144,255), 0.12); }
   100% { background: transparent; }
 }
+
+/* Traffic consumer card */
+.tm-consumer-total {
+  text-align: center;
+  padding: 8px 0 12px;
+}
+.tm-consumer-total-value {
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--accent);
+}
+.tm-consumer-total-label {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.tm-consumer-split {
+  margin-bottom: 4px;
+}
+.tm-split-bar {
+  display: flex;
+  height: 8px;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.tm-split-dl {
+  background: var(--success);
+  transition: width .3s;
+}
+.tm-split-ul {
+  background: var(--accent);
+  transition: width .3s;
+}
+.tm-consumer-split-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  margin-bottom: 10px;
+}
+.tm-split-dl-label { color: var(--success); }
+.tm-split-ul-label { color: var(--accent); }
+
+.tm-consumer-reqs {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  border-top: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.tm-consumer-routes {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+.tm-consumer-routes-title {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+.tm-consumer-route-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+}
+.tm-consumer-route-bar {
+  flex: 1;
+  height: 4px;
+  background: var(--surface-raised);
+  border-radius: 2px;
+  overflow: hidden;
+}

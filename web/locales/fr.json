@@ -285,8 +285,8 @@
       "noTrafficData": "Pas encore de données de bande passante",
       "healthy": "Sain",
       "unhealthy": "Non sain",
-      "incoming": "Entrant",
-      "outgoing": "Sortant",
+      "download": "Téléchargement",
+      "upload": "Envoi",
       "time": "Heure",
       "client": "Client",
       "target": "Destination",
@@ -297,7 +297,14 @@
       "latency": "Latence",
       "speed": "Vitesse",
       "protocol": "Protocole",
-      "other": "Autre"
+      "other": "Autre",
+      "trafficConsumer": "Consommation de trafic",
+      "totalTraffic": "Trafic total",
+      "requests": "requêtes",
+      "topRoutes": "Top routes",
+      "period_day": "Jour",
+      "period_week": "Semaine",
+      "period_month": "Mois"
     },
     "proxyPool": {
       "title": "Pool de proxys",

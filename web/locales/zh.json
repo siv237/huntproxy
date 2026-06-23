@@ -285,8 +285,8 @@
       "noTrafficData": "暂无带宽数据",
       "healthy": "健康",
       "unhealthy": "不健康",
-      "incoming": "入站",
-      "outgoing": "出站",
+      "download": "下载",
+      "upload": "上传",
       "time": "时间",
       "client": "客户端",
       "target": "目标",
@@ -297,7 +297,14 @@
       "latency": "延迟",
       "speed": "速度",
       "protocol": "协议",
-      "other": "其他"
+      "other": "其他",
+      "trafficConsumer": "流量消费",
+      "totalTraffic": "总流量",
+      "requests": "请求",
+      "topRoutes": "热门路由",
+      "period_day": "日",
+      "period_week": "周",
+      "period_month": "月"
     },
     "proxyPool": {
       "title": "代理池",

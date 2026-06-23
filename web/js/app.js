@@ -185,8 +185,8 @@ const app = {
     try {
       const t = await api.trafficLive();
       const now = Date.now();
-      const inB = t.in_bytes || 0;
-      const outB = t.out_bytes || 0;
+      const inB = t.in_bytes || 0;   // bytes_in = client→upstream = upload
+      const outB = t.out_bytes || 0; // bytes_out = upstream→client = download
       const totalB = t.total_bytes || 0;
 
       let inRate = 0;
@@ -198,11 +198,11 @@ const app = {
       }
       this._lastTraffic = { ts: now, inBytes: inB, outBytes: outB, totalBytes: totalB };
 
-      const inEl = document.getElementById('traffic-in');
-      const outEl = document.getElementById('traffic-out');
+      const inEl = document.getElementById('traffic-in');   // ↓ In = download = out_bytes
+      const outEl = document.getElementById('traffic-out'); // ↑ Out = upload = in_bytes
       const totalEl = document.getElementById('traffic-total');
-      if (inEl) inEl.textContent = ui.fmtBytes(inRate) + '/s';
-      if (outEl) outEl.textContent = ui.fmtBytes(outRate) + '/s';
+      if (inEl) inEl.textContent = ui.fmtBytes(outRate) + '/s';
+      if (outEl) outEl.textContent = ui.fmtBytes(inRate) + '/s';
       if (totalEl) totalEl.textContent = ui.fmtBytes(totalB);
     } catch (e) {
       console.error('pollTraffic', e);

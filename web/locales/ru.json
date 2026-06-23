@@ -285,8 +285,8 @@
       "noTrafficData": "Данных о трафике пока нет",
       "healthy": "Здоров",
       "unhealthy": "Нездоров",
-      "incoming": "Входящий",
-      "outgoing": "Исходящий",
+      "download": "Загрузка",
+      "upload": "Отдача",
       "time": "Время",
       "client": "Клиент",
       "target": "Назначение",
@@ -297,7 +297,14 @@
       "latency": "Задержка",
       "speed": "Скорость",
       "protocol": "Протокол",
-      "other": "Другое"
+      "other": "Другое",
+      "trafficConsumer": "Потребитель трафика",
+      "totalTraffic": "Всего трафика",
+      "requests": "запросов",
+      "topRoutes": "Топ маршрутов",
+      "period_day": "День",
+      "period_week": "Неделя",
+      "period_month": "Месяц"
     },
     "proxyPool": {
       "title": "Пул прокси",

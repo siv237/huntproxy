@@ -63,8 +63,8 @@ router.register('proxy-control', (container) => {
     row3.appendChild(domCard);
     container.appendChild(row3);
 
-    // Row 4: Current Upstream + Bandwidth
-    const row4 = ui.el('div', 'grid grid-2 row-stretch');
+    // Row 4: Current Upstream + Traffic Consumer + Bandwidth
+    const row4 = ui.el('div', 'grid grid-3 row-stretch');
     const upCard = ui.card(t('page.proxyControl.currentUpstream'), t('page.proxyControl.changeProxy'));
     upCard.id = 'card-upstream';
     upCard.style.overflow = 'hidden';
@@ -72,6 +72,30 @@ router.register('proxy-control', (container) => {
     if (upAction) upAction.addEventListener('click', () => router.navigate('proxy-pool'));
     els.upstream = upCard;
     row4.appendChild(upCard);
+
+    const consumerCard = ui.card(t('page.proxyControl.trafficConsumer'));
+    consumerCard.id = 'card-consumer';
+    consumerCard.style.overflow = 'hidden';
+    consumerCard.style.display = 'flex';
+    consumerCard.style.flexDirection = 'column';
+    const consumerHeader = consumerCard.querySelector('.card-header');
+    if (consumerHeader) {
+      const periodTabs = ui.el('div', 'card-tabs');
+      const periodLabels = { day: t('page.proxyControl.period_day'), week: t('page.proxyControl.period_week'), month: t('page.proxyControl.period_month') };
+      ['day', 'week', 'month'].forEach((p, i) => {
+        const tab = ui.el('button', 'card-tab' + (i === 0 ? ' active' : ''), { text: periodLabels[p], 'data-period': p });
+        tab.addEventListener('click', () => {
+          consumerCard.querySelectorAll('.card-tab').forEach(b => b.classList.remove('active'));
+          tab.classList.add('active');
+          els._consumerPeriod = p;
+        });
+        periodTabs.appendChild(tab);
+      });
+      consumerHeader.appendChild(periodTabs);
+    }
+    els.consumer = consumerCard;
+    els._consumerPeriod = 'day';
+    row4.appendChild(consumerCard);
 
     const bwCard = ui.card(t('page.proxyControl.bandwidth24h'));
     bwCard.id = 'card-bandwidth';
@@ -132,7 +156,7 @@ router.register('proxy-control', (container) => {
     const totalReq = reqs ? reqs.length : 0;
     const okCount = reqs ? reqs.filter(r => (r.status || '') === 'ok').length : 0;
     const sr = totalReq ? (okCount / totalReq * 100).toFixed(1) + '%' : '—';
-    const totalBw = bw ? (bw.incoming || 0) + (bw.outgoing || 0) : 0;
+    const totalBw = bw ? (bw.total || ((bw.download || 0) + (bw.upload || 0))) : 0;
     const routeCount = routes ? routes.length : 0;
 
     const setVal = (id, v) => {
@@ -371,16 +395,16 @@ router.register('proxy-control', (container) => {
     header.appendChild(ui.el('div', 'card-title', { text: t('page.proxyControl.bandwidth24h') }));
     card.appendChild(header);
 
-    const incoming = bw ? (bw.incoming || 0) : 0;
-    const outgoing = bw ? (bw.outgoing || 0) : 0;
+    const download = bw ? (bw.download || 0) : 0;
+    const upload = bw ? (bw.upload || 0) : 0;
 
     const stats = ui.el('div', 'grid grid-2', { style: 'flex-shrink:0;margin-bottom:8px' });
-    const inCell = ui.el('div', 'tm-bw-cell');
-    inCell.innerHTML = `<div class="tm-bw-label">↓ ${t('page.proxyControl.incoming')}</div><div class="tm-bw-value">${fmtBytes(incoming)}</div>`;
-    stats.appendChild(inCell);
-    const outCell = ui.el('div', 'tm-bw-cell');
-    outCell.innerHTML = `<div class="tm-bw-label">↑ ${t('page.proxyControl.outgoing')}</div><div class="tm-bw-value">${fmtBytes(outgoing)}</div>`;
-    stats.appendChild(outCell);
+    const dlCell = ui.el('div', 'tm-bw-cell');
+    dlCell.innerHTML = `<div class="tm-bw-label">↓ ${t('page.proxyControl.download')}</div><div class="tm-bw-value">${fmtBytes(download)}</div>`;
+    stats.appendChild(dlCell);
+    const upCell = ui.el('div', 'tm-bw-cell');
+    upCell.innerHTML = `<div class="tm-bw-label">↑ ${t('page.proxyControl.upload')}</div><div class="tm-bw-value">${fmtBytes(upload)}</div>`;
+    stats.appendChild(upCell);
     card.appendChild(stats);
 
     const pts = history && history.length ? history.slice(-48) : [];
@@ -397,14 +421,69 @@ router.register('proxy-control', (container) => {
     }
   }
 
+  function updateConsumer(card, summary) {
+    const period = els._consumerPeriod || 'day';
+    const data = summary && summary[period] ? summary[period] : null;
+
+    // Preserve header + tabs, only update body
+    const header = card.querySelector('.card-header');
+    card.innerHTML = '';
+    if (header) card.appendChild(header);
+
+    if (!data || (data.requests || 0) === 0) {
+      card.appendChild(ui.el('div', 'empty', { text: t('page.proxyControl.noTrafficData'), style: 'flex:1;display:flex;align-items:center;justify-content:center' }));
+      return;
+    }
+
+    const total = data.total || 0;
+    const download = data.download || 0;
+    const upload = data.upload || 0;
+    const dlPct = total ? (download / total * 100) : 0;
+
+    // Big total
+    const totalEl = ui.el('div', 'tm-consumer-total');
+    totalEl.innerHTML = `<div class="tm-consumer-total-value">${fmtBytes(total)}</div><div class="tm-consumer-total-label">${t('page.proxyControl.totalTraffic')}</div>`;
+    card.appendChild(totalEl);
+
+    // Download / Upload split bar
+    const split = ui.el('div', 'tm-consumer-split');
+    split.innerHTML = `<div class="tm-split-bar"><div class="tm-split-dl" style="width:${dlPct}%"></div><div class="tm-split-ul" style="width:${100 - dlPct}%"></div></div>`;
+    const splitLabels = ui.el('div', 'tm-consumer-split-labels');
+    splitLabels.innerHTML = `<span class="tm-split-dl-label">↓ ${t('page.proxyControl.download')} ${fmtBytes(download)} (${dlPct.toFixed(0)}%)</span><span class="tm-split-ul-label">↑ ${t('page.proxyControl.upload')} ${fmtBytes(upload)} (${(100 - dlPct).toFixed(0)}%)</span>`;
+    card.appendChild(split);
+    card.appendChild(splitLabels);
+
+    // Request stats
+    const reqRow = ui.el('div', 'tm-consumer-reqs');
+    const sr = data.success_rate || 0;
+    reqRow.innerHTML = `<span>${data.requests.toLocaleString()} ${t('page.proxyControl.requests')}</span><span style="color:var(--text-secondary)">${data.success.toLocaleString()} ✓ / ${data.failed.toLocaleString()} ✗</span><span style="color:${sr >= 80 ? 'var(--success)' : sr >= 50 ? 'var(--warning)' : 'var(--danger)'};font-weight:600">${sr}% ${t('page.proxyControl.successRate')}</span>`;
+    card.appendChild(reqRow);
+
+    // Top routes
+    if (data.top_routes && data.top_routes.length) {
+      const routesWrap = ui.el('div', 'tm-consumer-routes');
+      const title = ui.el('div', 'tm-consumer-routes-title', { text: t('page.proxyControl.topRoutes') });
+      routesWrap.appendChild(title);
+      const maxBytes = Math.max(...data.top_routes.map(r => r.bytes), 1);
+      data.top_routes.slice(0, 5).forEach(r => {
+        const row = ui.el('div', 'tm-consumer-route-row');
+        const pct = (r.bytes / maxBytes * 100);
+        row.innerHTML = `<span class="route-badge-sm ${routeTypeClass(r.type)}">${routeTypeLabel(r.type)}</span><div class="tm-consumer-route-bar"><div style="width:${pct}%;height:100%;background:var(--accent);border-radius:2px"></div></div><span style="font-size:11px;color:var(--text-secondary);min-width:60px;text-align:right">${fmtBytes(r.bytes)}</span><span style="font-size:11px;color:var(--text-muted);min-width:40px;text-align:right">${r.requests}</span>`;
+        routesWrap.appendChild(row);
+      });
+      card.appendChild(routesWrap);
+    }
+  }
+
   // --- Polling ---
   async function poll() {
     try {
-      let ps = {}, requests = {}, routes = {}, bw = {}, history = [];
+      let ps = {}, requests = {}, routes = {}, bw = {}, summary = {}, history = [];
       try { ps = await api.proxyStatus(); } catch (e) {}
       try { requests = await api.requests(); } catch (e) {}
       try { routes = await api.trafficRoutes(); } catch (e) {}
       try { bw = await api.bandwidth(); } catch (e) {}
+      try { summary = await api.trafficSummary(); } catch (e) {}
       try { history = await api.history('24h'); } catch (e) {}
 
       try { updateTiles(requests.requests || [], routes.routes || [], bw); } catch (e) { console.error('tiles', e); }
@@ -412,6 +491,7 @@ router.register('proxy-control', (container) => {
       try { updateRoutes(els.routes, routes); } catch (e) { console.error('routes', e); }
       try { updateDomains(els.domains, requests); } catch (e) { console.error('domains', e); }
       try { updateUpstream(els.upstream, ps); } catch (e) { console.error('upstream', e); }
+      try { updateConsumer(els.consumer, summary); } catch (e) { console.error('consumer', e); }
       try { updateBandwidth(els.bandwidth, bw, history); } catch (e) { console.error('bandwidth', e); }
     } catch (e) {
       console.error('proxy-control poll', e);

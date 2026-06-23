@@ -1273,22 +1273,80 @@ class HuntServer:
             try:
                 conn = self.state._stats_db()
                 row = conn.execute(
-                    "SELECT COALESCE(SUM(bytes_in),0) as incoming, COALESCE(SUM(bytes_out),0) as outgoing "
+                    "SELECT COALESCE(SUM(bytes_in),0) as bin, COALESCE(SUM(bytes_out),0) as bout "
                     "FROM traffic_log WHERE ts > ?",
                     (time.time() - 86400,)
                 ).fetchone()
                 conn.close()
-                incoming = row["incoming"] if row else 0
-                outgoing = row["outgoing"] if row else 0
+                upload = row["bin"] if row else 0    # bytes_in  = client→upstream = upload
+                download = row["bout"] if row else 0  # bytes_out = upstream→client = download
             except Exception:
-                incoming = 0
-                outgoing = 0
+                upload = 0
+                download = 0
             return json.dumps({
-                "incoming": incoming,
-                "outgoing": outgoing,
-                "incoming_gb": round(incoming / (1024**3), 3),
-                "outgoing_gb": round(outgoing / (1024**3), 3),
+                "download": download,
+                "upload": upload,
+                "total": download + upload,
             }), 200, "application/json"
+
+        if path.startswith("/api/traffic/summary"):
+            periods = {"day": 86400, "week": 604800, "month": 2592000}
+            result = {}
+            try:
+                conn = self.state._stats_db()
+                now = time.time()
+                for name, secs in periods.items():
+                    cutoff = now - secs
+                    row = conn.execute(
+                        "SELECT COALESCE(SUM(bytes_in),0) as bin, COALESCE(SUM(bytes_out),0) as bout, "
+                        "COUNT(*) as reqs, "
+                        "COALESCE(SUM(CASE WHEN status='ok' THEN 1 ELSE 0 END),0) as ok "
+                        "FROM traffic_log WHERE ts > ?",
+                        (cutoff,)
+                    ).fetchone()
+                    download = int(row["bout"] or 0)
+                    upload = int(row["bin"] or 0)
+                    total = download + upload
+                    reqs = int(row["reqs"] or 0)
+                    ok = int(row["ok"] or 0)
+                    result[name] = {
+                        "download": download,
+                        "upload": upload,
+                        "total": total,
+                        "requests": reqs,
+                        "success": ok,
+                        "failed": reqs - ok,
+                        "success_rate": round(ok / reqs * 100, 1) if reqs else 0,
+                    }
+                    # Per-route breakdown for this period
+                    route_rows = conn.execute(
+                        "SELECT upstream, COUNT(*) as cnt, "
+                        "COALESCE(SUM(bytes_in),0) as bin, COALESCE(SUM(bytes_out),0) as bout "
+                        "FROM traffic_log WHERE ts > ? GROUP BY upstream ORDER BY cnt DESC LIMIT 5",
+                        (cutoff,)
+                    ).fetchall()
+                    routes = []
+                    for rr in route_rows:
+                        up = rr["upstream"] or "unknown"
+                        rtype = "other"
+                        if up == "direct" or up.startswith("direct"): rtype = "direct"
+                        elif up.startswith("proxy:"): rtype = "proxy"
+                        elif up.startswith("pool:"): rtype = "pool"
+                        elif up.startswith("custom:"): rtype = "custom"
+                        routes.append({
+                            "type": rtype,
+                            "upstream": up,
+                            "requests": int(rr["cnt"]),
+                            "bytes": int(rr["bout"] or 0) + int(rr["bin"] or 0),
+                        })
+                    result[name]["top_routes"] = routes
+                conn.close()
+            except Exception as e:
+                logger.error("traffic/summary: %s", e)
+                for name in periods:
+                    if name not in result:
+                        result[name] = {"download": 0, "upload": 0, "total": 0, "requests": 0, "success": 0, "failed": 0, "success_rate": 0, "top_routes": []}
+            return json.dumps(result), 200, "application/json"
 
         # === Routing API ===
         if path == "/api/routing/status":

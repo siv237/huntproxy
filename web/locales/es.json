@@ -285,8 +285,8 @@
       "noTrafficData": "Aún no hay datos de ancho de banda",
       "healthy": "Saludable",
       "unhealthy": "No saludable",
-      "incoming": "Entrante",
-      "outgoing": "Saliente",
+      "download": "Descarga",
+      "upload": "Subida",
       "time": "Hora",
       "client": "Cliente",
       "target": "Destino",
@@ -297,7 +297,14 @@
       "latency": "Latencia",
       "speed": "Velocidad",
       "protocol": "Protocolo",
-      "other": "Otro"
+      "other": "Otro",
+      "trafficConsumer": "Consumo de tráfico",
+      "totalTraffic": "Tráfico total",
+      "requests": "solicitudes",
+      "topRoutes": "Rutas principales",
+      "period_day": "Día",
+      "period_week": "Semana",
+      "period_month": "Mes"
     },
     "proxyPool": {
       "title": "Grupo de Proxis",
