@@ -1,74 +1,102 @@
 #!/usr/bin/env bash
-# install.sh — install huntproxy as a systemd service
+#
+# huntproxy installer — one-line setup for Ubuntu 24.04
+# Usage:  curl -fsSL https://raw.githubusercontent.com/siv237/huntproxy/main/install.sh | bash
+#
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SERVICE_NAME="huntproxy"
-SYSTEMD_DIR="${SYSTEMD_DIR:-/etc/systemd/system}"
-INSTALL_DIR="${INSTALL_DIR:-/usr/local/lib/huntproxy}"
-BIN_DIR="${BIN_DIR:-/usr/local/bin}"
+REPO="https://github.com/siv237/huntproxy.git"
+INSTALL_DIR="${1:-$HOME/huntproxy}"
+BRANCH="main"
 
-info() { echo "[*] $(date +%H:%M:%S) $*"; }
-need_root() { [[ $EUID -eq 0 ]] || { echo "must be root" >&2; exit 1; }; }
+c_ok()   { echo -e "  \033[32m✓\033[0m $*"; }
+c_info() { echo -e "  \033[36m→\033[0m $*"; }
+c_err()  { echo -e "  \033[31m✗\033[0m $*" >&2; }
 
-install() {
-  need_root
-  info "Installing to $INSTALL_DIR"
-  mkdir -p "$INSTALL_DIR/data"
-  cp -r "$SCRIPT_DIR"/{hunt.py,hunt,hunt.sh,daemon.sh,config.yaml,requirements.txt} "$INSTALL_DIR/"
+# --- root check ---
+if [ "$(id -u)" -eq 0 ]; then
+    c_err "Don't run as root. Run as a normal user."
+    exit 1
+fi
 
-  ln -sf "$INSTALL_DIR/hunt.sh" "$BIN_DIR/huntproxy"
-  ln -sf "$SCRIPT_DIR/setup_iptables.sh" "$BIN_DIR/huntproxy-iptables"
-  chmod +x "$BIN_DIR/huntproxy" "$BIN_DIR/huntproxy-iptables"
+# --- detect OS ---
+if [ -f /etc/os-release ]; then
+    . /etc/os-release
+fi
+if [ "${ID:-}" != "ubuntu" ] && [ "${ID_LIKE:-}" != *"ubuntu"* ]; then
+    c_info "This installer targets Ubuntu 24.04. You seem to be on ${PRETTY_NAME:-unknown}."
+    c_info "Continuing anyway, but apt packages may differ."
+fi
 
-  pip3 install --break-system-packages -r "$INSTALL_DIR/requirements.txt" >/dev/null 2>&1 || \
-    pip3 install -r "$INSTALL_DIR/requirements.txt" >/dev/null 2>&1 || true
+echo ""
+echo "  ╔══════════════════════════════════════╗"
+echo "  ║        huntproxy installer            ║"
+echo "  ╚══════════════════════════════════════╝"
+echo ""
 
-  cat > "$SYSTEMD_DIR/$SERVICE_NAME.service" << EOF
-[Unit]
-Description=huntproxy — cascading proxy with transparent mode
-After=network-online.target
-Wants=network-online.target
+# --- 1. system deps ---
+c_info "Installing system dependencies..."
+sudo apt-get update -qq
+sudo apt-get install -y -qq python3 python3-venv python3-pip git curl > /dev/null 2>&1
+c_ok "System packages installed"
 
-[Service]
-Type=simple
-ExecStart=$INSTALL_DIR/hunt.sh
-WorkingDirectory=$INSTALL_DIR
-Restart=always
-RestartSec=5
-StandardOutput=journal
-StandardError=journal
-Environment=PYTHONUNBUFFERED=1
+# --- 2. clone / update ---
+if [ -d "$INSTALL_DIR/.git" ]; then
+    c_info "Updating existing install at $INSTALL_DIR..."
+    git -C "$INSTALL_DIR" fetch --quiet origin "$BRANCH"
+    git -C "$INSTALL_DIR" reset --hard "origin/$BRANCH" --quiet
+    c_ok "Repository updated"
+else
+    c_info "Cloning huntproxy to $INSTALL_DIR..."
+    git clone --depth 1 -b "$BRANCH" "$REPO" "$INSTALL_DIR" --quiet
+    c_ok "Repository cloned"
+fi
 
-[Install]
-WantedBy=multi-user.target
-EOF
+cd "$INSTALL_DIR"
 
-  systemctl daemon-reload
-  systemctl enable "$SERVICE_NAME" 2>/dev/null || true
-  systemctl restart "$SERVICE_NAME" 2>/dev/null || true
+# --- 3. venv + deps ---
+c_info "Creating Python virtual environment..."
+if [ ! -d ".venv" ]; then
+    python3 -m venv .venv
+fi
+c_ok "Virtual environment ready"
 
-  info "Installed."
-  echo
-  echo "  systemctl {start|stop|status|restart} $SERVICE_NAME"
-  echo "  journalctl -u $SERVICE_NAME -f"
-  echo "  $BIN_DIR/huntproxy {status|list|refresh|blacklist}"
-  echo "  $BIN_DIR/huntproxy-iptables {start|stop|status}"
-}
+c_info "Installing Python dependencies..."
+.venv/bin/pip install --quiet --upgrade pip
+.venv/bin/pip install --quiet -r requirements.txt 2>/dev/null || .venv/bin/pip install --quiet PyYAML
+touch .venv/installed.flag
+c_ok "Python dependencies installed"
 
-uninstall() {
-  need_root
-  systemctl stop "$SERVICE_NAME" 2>/dev/null || true
-  systemctl disable "$SERVICE_NAME" 2>/dev/null || true
-  rm -f "$SYSTEMD_DIR/$SERVICE_NAME.service"
-  rm -f "$BIN_DIR/huntproxy" "$BIN_DIR/huntproxy-iptables"
-  rm -rf "$INSTALL_DIR"
-  systemctl daemon-reload
-  info "Uninstalled."
-}
+# --- 4. scripts executable ---
+chmod +x hunt.sh daemon.sh test.sh 2>/dev/null || true
+c_ok "Scripts made executable"
 
-case "${1:-install}" in
-  install) install ;;
-  uninstall) uninstall ;;
-  *) echo "Usage: $0 {install|uninstall}"; exit 1 ;;
-esac
+# --- 5. create data dir ---
+mkdir -p data
+c_ok "Data directory ready"
+
+# --- done ---
+echo ""
+echo "  ╔══════════════════════════════════════════════╗"
+echo "  ║  Installation complete!                      ║"
+echo "  ╚══════════════════════════════════════════════╝"
+echo ""
+echo "  Location:  $INSTALL_DIR"
+echo ""
+echo "  Quick start (foreground):"
+echo "    cd $INSTALL_DIR && ./hunt.sh"
+echo ""
+echo "  Quick start (daemon):"
+echo "    cd $INSTALL_DIR && ./daemon.sh start"
+echo ""
+echo "  Stop daemon:"
+echo "    cd $INSTALL_DIR && ./daemon.sh stop"
+echo ""
+echo "  Web UI:  http://127.0.0.1:17177/"
+echo ""
+echo "  Public mode (listen on all interfaces):"
+echo "    cd $INSTALL_DIR && ./hunt.sh --public"
+echo ""
+echo "  Run tests:"
+echo "    cd $INSTALL_DIR && ./test.sh"
+echo ""
