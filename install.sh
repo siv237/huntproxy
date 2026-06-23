@@ -35,21 +35,21 @@ echo "  ╚═══════════════════════
 echo ""
 
 # --- 1. system deps ---
-c_info "Installing system dependencies..."
+c_info "Installing system dependencies (python3, venv, git, curl)..."
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
-apt-get install -y -qq python3 python3-venv python3-pip git curl > /dev/null 2>&1
+apt-get install -y python3 python3-venv python3-pip git curl
 c_ok "System packages installed"
 
 # --- 2. clone / update ---
 if [ -d "$INSTALL_DIR/.git" ]; then
     c_info "Updating existing install at $INSTALL_DIR..."
-    git -C "$INSTALL_DIR" fetch --quiet origin "$BRANCH"
-    git -C "$INSTALL_DIR" reset --hard "origin/$BRANCH" --quiet
+    git -C "$INSTALL_DIR" fetch --progress origin "$BRANCH"
+    git -C "$INSTALL_DIR" reset --hard "origin/$BRANCH"
     c_ok "Repository updated"
 else
     c_info "Cloning huntproxy to $INSTALL_DIR..."
-    git clone --depth 1 -b "$BRANCH" "$REPO" "$INSTALL_DIR" --quiet
+    git clone --progress -b "$BRANCH" "$REPO" "$INSTALL_DIR"
     c_ok "Repository cloned"
 fi
 
@@ -63,8 +63,8 @@ fi
 c_ok "Virtual environment ready"
 
 c_info "Installing Python dependencies..."
-.venv/bin/pip install --quiet --upgrade pip
-.venv/bin/pip install --quiet -r requirements.txt 2>/dev/null || .venv/bin/pip install --quiet PyYAML
+.venv/bin/pip install --upgrade pip
+.venv/bin/pip install -r requirements.txt 2>/dev/null || .venv/bin/pip install PyYAML
 touch .venv/installed.flag
 c_ok "Python dependencies installed"
 
