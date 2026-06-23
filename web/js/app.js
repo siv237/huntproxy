@@ -2,9 +2,18 @@ const app = {
   _theme: 'light',
   _lastSeq: 0,
   _pollers: [],
+  _sectionOf: {
+    hunt: 'engine', 'proxy-sources': 'engine', proxies: 'engine',
+    'custom-proxies': 'engine', 'proxy-pool': 'engine', 'proxy-control': 'engine',
+    blacklist: 'lists', favorites: 'lists', 'ip-blacklists': 'lists', blocklists: 'lists',
+    routes: 'routing', 'domain-lists': 'routing',
+    analytics: 'insights', logs: 'insights', actions: 'insights', connectivity: 'insights',
+    settings: 'system', downloads: 'system', api: 'system', about: 'system',
+  },
 
   init() {
     this.loadTheme();
+    this.initSections();
     i18n.init().then(() => {
       this.updateLangLabel();
       this.applyI18n();
@@ -77,6 +86,54 @@ const app = {
 
   toggleSidebar() {
     document.body.classList.toggle('sidebar-open');
+  },
+
+  initSections() {
+    const saved = localStorage.getItem('sidebar-collapsed');
+    let collapsed = null;
+    if (saved !== null) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) collapsed = parsed;
+      } catch (e) {}
+    }
+    document.querySelectorAll('.nav-section').forEach(sec => {
+      const name = sec.dataset.section;
+      if (collapsed === null || collapsed.includes(name)) {
+        sec.classList.add('collapsed');
+      }
+    });
+  },
+
+  toggleSection(name) {
+    const sec = document.querySelector(`.nav-section[data-section="${name}"]`);
+    if (!sec) return;
+    let collapsed = [];
+    try { collapsed = JSON.parse(localStorage.getItem('sidebar-collapsed') || '[]'); } catch (e) {}
+    if (sec.classList.contains('collapsed')) {
+      sec.classList.remove('collapsed');
+      collapsed = collapsed.filter(s => s !== name);
+    } else {
+      sec.classList.add('collapsed');
+      collapsed.push(name);
+    }
+    localStorage.setItem('sidebar-collapsed', JSON.stringify(collapsed));
+  },
+
+  expandActiveSection(page) {
+    const name = this._sectionOf[page];
+    document.querySelectorAll('.nav-section').forEach(sec => {
+      sec.classList.toggle('nav-section-has-active', sec.dataset.section === name);
+    });
+    if (!name) return;
+    const sec = document.querySelector(`.nav-section[data-section="${name}"]`);
+    if (sec && sec.classList.contains('collapsed')) {
+      sec.classList.remove('collapsed');
+      let collapsed = [];
+      try { collapsed = JSON.parse(localStorage.getItem('sidebar-collapsed') || '[]'); } catch (e) {}
+      collapsed = collapsed.filter(s => s !== name);
+      localStorage.setItem('sidebar-collapsed', JSON.stringify(collapsed));
+    }
   },
 
   toast(message, type = 'success') {

@@ -20,7 +20,14 @@
     "api": "API",
     "about": "关于",
     "actions": "Actions",
-    "blocklists": "封锁列表"
+    "blocklists": "封锁列表",
+    "section": {
+      "engine": "代理引擎",
+      "lists": "列表与过滤",
+      "routing": "路由",
+      "insights": "分析与日志",
+      "system": "系统"
+    }
   },
   "topbar": {
     "searchPlaceholder": "搜索代理、IP、国家...",

@@ -20,7 +20,14 @@
     "downloads": "Загрузки",
     "api": "API",
     "about": "О программе",
-    "blocklists": "Блокировки"
+    "blocklists": "Блокировки",
+    "section": {
+      "engine": "Движок прокси",
+      "lists": "Списки и фильтры",
+      "routing": "Маршрутизация",
+      "insights": "Аналитика и логи",
+      "system": "Система"
+    }
   },
   "topbar": {
     "searchPlaceholder": "Поиск прокси, IP, стран...",

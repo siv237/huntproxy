@@ -20,7 +20,14 @@
     "api": "API",
     "about": "À propos",
     "actions": "Actions",
-    "blocklists": "Listes de blocage"
+    "blocklists": "Listes de blocage",
+    "section": {
+      "engine": "Moteur Proxy",
+      "lists": "Listes et Filtrage",
+      "routing": "Routage",
+      "insights": "Analytique et Logs",
+      "system": "Système"
+    }
   },
   "topbar": {
     "searchPlaceholder": "Rechercher proxys, IP, pays...",

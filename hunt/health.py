@@ -65,8 +65,9 @@ class HealthMixin:
             self._fail_streak = 0
             self._check_streak = 0
             self._pause_event.set()
-            self.phase = self._phase_before_pause
-            self.phase_started = time.time()
+            if self.phase == self.PHASE_PAUSED:
+                self.phase = self._phase_before_pause
+                self.phase_started = time.time()
             self._emit("Hunt RESUMED", "ok")
             return True
 
@@ -533,20 +534,25 @@ class HealthMixin:
                     self._push_history()
                     self._emit(f"Health check done: {ok_count} ok, {fail_count} failed", "ok")
             finally:
-                # Restore ALL counters and state unconditionally.
-                self.checking_total = saved_checking_total
-                self.checked = min(saved_checked, saved_checking_total)
-                self.working = saved_working
-                self.failed = saved_failed
-                self.downloaded = saved_downloaded
-                self.last_proxy = saved_last_proxy
-                self.last_country = saved_last_country
-                self.sources_total = saved_sources_total
-                self.sources_done = saved_sources_done
-                self.bl_sources_total = saved_bl_total
-                self.bl_sources_done = saved_bl_done
-                self.bl_results = saved_bl_results
-                self._source_fetch_status = saved_source_status
+                # Only restore counters/phase if we actually changed them
+                # (i.e. phase is still HEALTH). If the hunt cycle advanced
+                # past HEALTH while we were running, its state is authoritative.
+                if self.phase == self.PHASE_HEALTH:
+                    self.checking_total = saved_checking_total
+                    self.checked = min(saved_checked, saved_checking_total)
+                    self.working = saved_working
+                    self.failed = saved_failed
+                    self.downloaded = saved_downloaded
+                    self.last_proxy = saved_last_proxy
+                    self.last_country = saved_last_country
+                    self.sources_total = saved_sources_total
+                    self.sources_done = saved_sources_done
+                    self.bl_sources_total = saved_bl_total
+                    self.bl_sources_done = saved_bl_done
+                    self.bl_results = saved_bl_results
+                    self._source_fetch_status = saved_source_status
+                    self.phase = saved_phase
+                    self.phase_started = saved_phase_started
                 self._log_action("health.restore", "counters-restored", extra={
                     "checking_total": self.checking_total,
                     "checked": self.checked,
@@ -564,8 +570,6 @@ class HealthMixin:
                     self._pause_event.set()
                     self._emit("Hunt RESUMED", "ok")
 
-                self.phase = saved_phase
-                self.phase_started = saved_phase_started
                 self._health_running = False
                 self._health_manual = False
 

@@ -56,6 +56,7 @@ const router = {
     document.querySelectorAll('.nav-item').forEach(el => {
       el.classList.toggle('active', el.dataset.page === page);
     });
+    if (window.app) app.expandActiveSection(page);
     // Title
     const [titleKey, subKey] = this.titles[page] || [page, ''];
     const title = t(titleKey);

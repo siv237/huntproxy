@@ -20,7 +20,14 @@
     "downloads": "Downloads",
     "api": "API",
     "about": "About",
-    "blocklists": "Blocklists"
+    "blocklists": "Blocklists",
+    "section": {
+      "engine": "Proxy Engine",
+      "lists": "Lists & Filtering",
+      "routing": "Routing",
+      "insights": "Analytics & Logs",
+      "system": "System"
+    }
   },
   "topbar": {
     "searchPlaceholder": "Search proxies, IPs, countries...",
