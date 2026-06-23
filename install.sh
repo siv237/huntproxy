@@ -6,7 +6,7 @@
 set -euo pipefail
 
 REPO="https://github.com/siv237/huntproxy.git"
-INSTALL_DIR="${1:-$HOME/huntproxy}"
+INSTALL_DIR="${1:-/opt/huntproxy}"
 BRANCH="main"
 
 c_ok()   { echo -e "  \033[32m✓\033[0m $*"; }
@@ -14,8 +14,8 @@ c_info() { echo -e "  \033[36m→\033[0m $*"; }
 c_err()  { echo -e "  \033[31m✗\033[0m $*" >&2; }
 
 # --- root check ---
-if [ "$(id -u)" -eq 0 ]; then
-    c_err "Don't run as root. Run as a normal user."
+if [ "$(id -u)" -ne 0 ]; then
+    c_err "This installer must be run as root. Try:  curl ... | sudo bash"
     exit 1
 fi
 
@@ -36,8 +36,9 @@ echo ""
 
 # --- 1. system deps ---
 c_info "Installing system dependencies..."
-sudo apt-get update -qq
-sudo apt-get install -y -qq python3 python3-venv python3-pip git curl > /dev/null 2>&1
+export DEBIAN_FRONTEND=noninteractive
+apt-get update -qq
+apt-get install -y -qq python3 python3-venv python3-pip git curl > /dev/null 2>&1
 c_ok "System packages installed"
 
 # --- 2. clone / update ---
@@ -75,6 +76,26 @@ c_ok "Scripts made executable"
 mkdir -p data
 c_ok "Data directory ready"
 
+# --- 6. create systemd service ---
+c_info "Creating systemd service..."
+cat > /etc/systemd/system/huntproxy.service << EOF
+[Unit]
+Description=huntproxy — proxy hunter and manager
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=$INSTALL_DIR
+ExecStart=$INSTALL_DIR/.venv/bin/python $INSTALL_DIR/hunt.py --host 127.0.0.1 --port 17177
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+EOF
+systemctl daemon-reload
+c_ok "systemd service created (huntproxy.service)"
+
 # --- done ---
 echo ""
 echo "  ╔══════════════════════════════════════════════╗"
@@ -83,19 +104,25 @@ echo "  ╚═══════════════════════
 echo ""
 echo "  Location:  $INSTALL_DIR"
 echo ""
-echo "  Quick start (foreground):"
+echo "  Start as service:"
+echo "    systemctl start huntproxy"
+echo "    systemctl enable huntproxy   (auto-start on boot)"
+echo ""
+echo "  Check status:"
+echo "    systemctl status huntproxy"
+echo ""
+echo "  Stop / restart:"
+echo "    systemctl stop huntproxy"
+echo "    systemctl restart huntproxy"
+echo ""
+echo "  Or run manually (foreground):"
 echo "    cd $INSTALL_DIR && ./hunt.sh"
-echo ""
-echo "  Quick start (daemon):"
-echo "    cd $INSTALL_DIR && ./daemon.sh start"
-echo ""
-echo "  Stop daemon:"
-echo "    cd $INSTALL_DIR && ./daemon.sh stop"
-echo ""
-echo "  Web UI:  http://127.0.0.1:17177/"
 echo ""
 echo "  Public mode (listen on all interfaces):"
 echo "    cd $INSTALL_DIR && ./hunt.sh --public"
+echo ""
+echo "  Web UI:  http://127.0.0.1:17177/"
+echo "  Logs:    journalctl -u huntproxy -f"
 echo ""
 echo "  Run tests:"
 echo "    cd $INSTALL_DIR && ./test.sh"
