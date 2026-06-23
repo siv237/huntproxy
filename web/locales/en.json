@@ -162,7 +162,8 @@
       "phaseDownloading": "Downloading lists",
       "phaseHealthCheck": "Health checking",
       "phaseDone": "Complete",
-      "running": "Running"
+      "running": "Running",
+      "phaseBlacklists": "Downloading blacklists"
     },
     "hunt": {
       "title": "Hunt",

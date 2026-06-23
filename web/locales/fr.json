@@ -162,7 +162,8 @@
       "phaseDownloading": "Téléchargement des listes",
       "phaseHealthCheck": "Vérification",
       "phaseDone": "Terminé",
-      "running": "En cours"
+      "running": "En cours",
+      "phaseBlacklists": "Téléchargement des listes noires"
     },
     "hunt": {
       "title": "Chasse",

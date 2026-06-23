@@ -162,7 +162,8 @@
       "phaseDownloading": "Загрузка списков",
       "phaseHealthCheck": "Проверка прокси",
       "phaseDone": "Завершено",
-      "running": "Выполняется"
+      "running": "Выполняется",
+      "phaseBlacklists": "Загрузка чёрных списков"
     },
     "hunt": {
       "title": "Охота",

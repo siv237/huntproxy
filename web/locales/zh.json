@@ -162,7 +162,8 @@
       "phaseDownloading": "下载列表",
       "phaseHealthCheck": "健康检查",
       "phaseDone": "完成",
-      "running": "运行中"
+      "running": "运行中",
+      "phaseBlacklists": "下载黑名单"
     },
     "hunt": {
       "title": "搜索",

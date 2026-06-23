@@ -81,15 +81,39 @@ class HealthMixin:
                 self.downloaded = len(raw)
                 self._emit(f"Downloaded {len(raw)} unique candidates", "info")
 
+                self.phase = self.PHASE_BLACKLIST
+                self.phase_started = time.time()
+
+                # Combine IP blacklist + blocklist sources into one progress
+                ip_bl_sources = [s for s in self.get_ip_blacklist_sources() if s.get("enabled")]
+                bl_sources = [s for s in self.get_blocklist_sources() if s.get("enabled")]
+                self.bl_sources_total = len(ip_bl_sources) + len(bl_sources)
+                self.bl_sources_done = 0
+                self.bl_results = []
                 self._emit("Downloading IP blacklists...", "info")
                 ip_bl_results = await self._download_ip_blacklists()
                 total_ip_bl = sum(ip_bl_results.values())
                 self._emit(f"Downloaded {total_ip_bl} IP blacklist entries from {len(ip_bl_results)} sources", "info")
+                # Update blacklist download progress
+                for s in ip_bl_sources:
+                    self.bl_sources_done += 1
+                    self.bl_results.append({
+                        "id": s["id"], "name": s.get("name", s["id"]),
+                        "status": "ok" if s["id"] in ip_bl_results else "error",
+                        "count": ip_bl_results.get(s["id"], 0),
+                    })
 
                 self._emit("Downloading country blocklists...", "info")
                 bl_results = await self._download_blocklists()
                 total_bl = sum(bl_results.values())
                 self._emit(f"Downloaded {total_bl} blocklist entries from {len(bl_results)} sources", "info")
+                for s in bl_sources:
+                    self.bl_sources_done += 1
+                    self.bl_results.append({
+                        "id": s["id"], "name": s.get("name", s["id"]),
+                        "status": "ok" if s["id"] in bl_results else "error",
+                        "count": bl_results.get(s["id"], 0),
+                    })
 
                 self.phase = self.PHASE_VALIDATE
                 self.phase_started = time.time()

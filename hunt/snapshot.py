@@ -27,12 +27,16 @@ class SnapshotMixin:
                     "sources_total": self.sources_total,
                     "sources_done": self.sources_done,
                     "downloaded": self.downloaded,
+                    "bl_sources_total": self.bl_sources_total,
+                    "bl_sources_done": self.bl_sources_done,
+                    "bl_source_results": self.bl_results,
                     "checking_total": self.checking_total,
                     "checked": self.checked,
                     "working": self.working,
                     "failed": self.failed,
                     "last_proxy": self.last_proxy,
                     "last_country": self.last_country,
+                    "source_results": self._get_source_download_results(),
                 },
                 "counts": {
                     "ratings": len(self.ratings),
@@ -67,6 +71,24 @@ class SnapshotMixin:
                     "score": r.score if r else 0,
                 })
             return out
+
+    def _get_source_download_results(self) -> list:
+        """Return per-source download status for the downloading phase."""
+        try:
+            sources = self.get_proxy_sources()
+            enabled = [s for s in sources if s.get("enabled")]
+            return [
+                {
+                    "id": s["id"],
+                    "name": s.get("name", s["id"]),
+                    "status": s.get("last_fetch_status", ""),
+                    "count": s.get("last_fetch_count", 0),
+                    "current_entries": s.get("current_entries", 0),
+                }
+                for s in enabled
+            ]
+        except Exception:
+            return []
 
     def get_countries(self) -> list:
             alive = [r for r in self.ratings.values() if r.last_status == "ok" and not r.in_blacklist]

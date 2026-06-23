@@ -186,7 +186,8 @@ router.register('overview', (container) => {
     circle.innerHTML = `
       <svg width="80" height="80" viewBox="0 0 80 80">
         <circle class="track" cx="40" cy="40" r="34"/>
-        <circle class="fill" id="pool-circle-fill" cx="40" cy="40" r="34" stroke-dasharray="213.6" stroke-dashoffset="213.6"/>
+        <circle class="fill-err" id="pool-circle-err" cx="40" cy="40" r="34" stroke-dasharray="213.6" stroke-dashoffset="213.6" style="stroke:var(--danger);fill:none;stroke-width:6;stroke-linecap:round;transform:rotate(-90deg);transform-origin:50% 50%;transition:stroke-dashoffset 0.4s ease"/>
+        <circle class="fill" id="pool-circle-fill" cx="40" cy="40" r="34" stroke-dasharray="213.6" stroke-dashoffset="213.6" style="stroke:var(--success);fill:none;stroke-width:6;stroke-linecap:round;transform:rotate(-90deg);transform-origin:50% 50%;transition:stroke-dashoffset 0.4s ease"/>
       </svg>
       <div class="text">
         <span class="value" id="pool-pct">0%</span>
@@ -209,6 +210,9 @@ router.register('overview', (container) => {
     const currentProxy = ui.el('div', '', { id: 'pool-current-proxy', style: 'margin-top:10px;font-size:12px;color:var(--text-secondary);flex:1;min-width:0;overflow:hidden' });
     currentProxy.innerHTML = `<span style="color:var(--text-muted)">${t('common.ready')}</span>`;
     card.appendChild(currentProxy);
+
+    const sourceList = ui.el('div', '', { id: 'pool-source-list', style: 'margin-top:8px;max-height:120px;overflow-y:auto;display:none' });
+    card.appendChild(sourceList);
 
     const poolStats = ui.el('div', '', { id: 'pool-stats-row', style: 'display:grid;grid-template-columns:repeat(4, minmax(0, 1fr));gap:0.3em;margin-top:auto;min-width:0' });
     card.appendChild(poolStats);
@@ -1036,21 +1040,69 @@ router.register('overview', (container) => {
 
       // Pool progress
       const p = s.progress || {};
-      const poolTotal = p.checking_total || p.downloaded || 0;
-      const checked = p.checked || 0;
+      const isDownloading = s.phase === 'downloading' || s.phase === 'blacklists';
+      const isHealthCheck = s.phase === 'health';
+      const isBlacklists = s.phase === 'blacklists';
+      const poolTotal = isDownloading ? (isBlacklists ? (p.bl_sources_total || 0) : (p.sources_total || 0)) : (p.checking_total || p.downloaded || 0);
+      const checked = isDownloading ? (isBlacklists ? (p.bl_sources_done || 0) : (p.sources_done || 0)) : (p.checked || 0);
       const pct = poolTotal > 0 ? Math.round((checked / poolTotal) * 100) : 0;
       if (el('pool-pct')) el('pool-pct').textContent = pct + '%';
       if (el('pool-checked')) el('pool-checked').textContent = checked;
       if (el('pool-total')) el('pool-total').textContent = poolTotal;
-      if (el('pool-working')) el('pool-working').textContent = p.working || 0;
+      if (el('pool-working')) el('pool-working').textContent = isHealthCheck ? (p.working || 0) : (p.working || 0);
       if (el('pool-bar-fill')) el('pool-bar-fill').style.width = pct + '%';
       if (el('pool-circle-fill')) {
         const circumference = 2 * Math.PI * 34;
-        el('pool-circle-fill').style.strokeDashoffset = circumference - (pct / 100) * circumference;
+        let okPct, errPct;
+        if (isDownloading) {
+          const results = p.source_results || [];
+          const total = results.length || poolTotal || 1;
+          okPct = results.filter(r => r.status === 'ok').length / total;
+          errPct = results.filter(r => r.status === 'error').length / total;
+        } else {
+          okPct = poolTotal > 0 ? (p.working || 0) / poolTotal : 0;
+          errPct = poolTotal > 0 ? (p.failed || 0) / poolTotal : 0;
+        }
+        const errEl = el('pool-circle-err');
+        if (errEl) {
+          errEl.style.strokeDashoffset = circumference - (errPct * circumference);
+          errEl.style.transform = `rotate(${-90 + okPct * 360}deg)`;
+          errEl.style.transformOrigin = '50% 50%';
+        }
+        el('pool-circle-fill').style.strokeDashoffset = circumference - (okPct * circumference);
+      }
+      // Source download details (downloading phase)
+      const srcList = document.getElementById('pool-source-list');
+      if (srcList) {
+        const results = isBlacklists ? (p.bl_source_results || []) : (p.source_results || []);
+        if (isDownloading && results.length) {
+          srcList.style.display = '';
+          srcList.innerHTML = '';
+          const okCount = results.filter(r => r.status === 'ok').length;
+          const errCount = results.filter(r => r.status === 'error').length;
+          const pendingCount = results.length - okCount - errCount;
+          const summary = ui.el('div', '', { style: 'font-size:10px;color:var(--text-muted);margin-bottom:4px' });
+          summary.innerHTML = `<span style="color:var(--success)">${okCount} OK</span> / <span style="color:var(--danger)">${errCount} ERR</span> / <span style="color:var(--text-muted)">${pendingCount} pending</span>`;
+          srcList.appendChild(summary);
+          results.forEach(r => {
+            const row = ui.el('div', '', { style: 'display:flex;align-items:center;gap:4px;font-size:10px;padding:1px 0' });
+            const dot = ui.el('span', '', { style: 'width:6px;height:6px;border-radius:50%;flex-shrink:0' });
+            dot.style.background = r.status === 'ok' ? 'var(--success)' : r.status === 'error' ? 'var(--danger)' : 'var(--text-muted)';
+            row.appendChild(dot);
+            const name = ui.el('span', '', { style: 'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap', text: r.name });
+            row.appendChild(name);
+            const cnt = ui.el('span', '', { style: 'color:var(--text-muted);flex-shrink:0', text: r.count > 0 ? r.count : (r.status === 'ok' ? '0' : '—') });
+            row.appendChild(cnt);
+            srcList.appendChild(row);
+          });
+        } else {
+          srcList.style.display = 'none';
+        }
       }
       if (el('pool-phase')) {
         const phaseLabels = {
           'downloading': t('page.overview.phaseDownloading'),
+          'blacklists': t('page.overview.phaseBlacklists'),
           'validating': t('page.overview.validatingProxies'),
           'health': t('page.overview.phaseHealthCheck'),
           'done': t('page.overview.phaseDone'),
@@ -1060,6 +1112,7 @@ router.register('overview', (container) => {
         el('pool-phase').textContent = phaseLabels[s.phase] || (s.running ? t('page.overview.validatingProxies') : t('page.hunt.idle'));
       }
       if (el('pool-current-proxy')) {
+        el('pool-current-proxy').style.display = isDownloading ? 'none' : '';
         renderPoolProxyInfo(s.last_proxy_details);
       }
       if (el('pool-hunt-btn')) {
@@ -1091,6 +1144,7 @@ router.register('overview', (container) => {
         const p = s.paused || false, m = s.manual_pause || false;
         const phaseTitles = {
           'downloading': t('page.overview.phaseDownloading'),
+          'blacklists': t('page.overview.phaseBlacklists'),
           'validating': t('page.overview.validatingProxies'),
           'health': t('page.overview.phaseHealthCheck'),
           'done': t('page.overview.phaseDone'),

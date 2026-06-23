@@ -30,6 +30,8 @@ class HuntState(DbMixin, EventsMixin, SnapshotMixin, HealthMixin, CheckingMixin,
 
     PHASE_DOWNLOAD = "downloading"
 
+    PHASE_BLACKLIST = "blacklists"
+
     PHASE_VALIDATE = "validating"
 
     PHASE_HEALTH = "health"
@@ -82,6 +84,9 @@ class HuntState(DbMixin, EventsMixin, SnapshotMixin, HealthMixin, CheckingMixin,
             self.sources_total: int = 0
             self.sources_done: int = 0
             self.downloaded: int = 0
+            self.bl_sources_total: int = 0
+            self.bl_sources_done: int = 0
+            self.bl_results: list = []
             self.checked: int = 0
             self.checking_total: int = 0
             self.working: int = 0

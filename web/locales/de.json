@@ -162,7 +162,8 @@
       "phaseDownloading": "Listen laden",
       "phaseHealthCheck": "Prüfung",
       "phaseDone": "Abgeschlossen",
-      "running": "Läuft"
+      "running": "Läuft",
+      "phaseBlacklists": "Blacklists laden"
     },
     "hunt": {
       "title": "Jagd",
