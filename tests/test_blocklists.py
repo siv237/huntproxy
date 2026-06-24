@@ -107,7 +107,7 @@ class TestBlocklistParse:
         dl = state.get_domain_list("test-dom-bl")
         assert dl is not None
         assert dl["source"] == "blocklist"
-        assert dl["route"] == "proxy"
+        assert dl["route"] == "pool"
         assert dl["enabled"] == 1
         domains = set(dl["domains"])
         assert "example.com" in domains

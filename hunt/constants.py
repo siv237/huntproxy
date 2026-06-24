@@ -37,18 +37,21 @@ DEFAULT_IP_BLACKLIST_SOURCES = [
 
 # Country blocklist sources — organized by country and direction.
 #   direction "inside"  = resources blocked WITHIN that country (e.g. RKN blocks in RU)
-#   direction "outside" = resources of that country blocked ABROAD (e.g. RU services geo-blocked outside RU)
+#   direction "outside" = resources of that country blocked ABROAD (e.g. RU services geo-blocked outside RU),
+#                         OR foreign services that block users of that country (e.g. OpenAI blocking RU)
 #   list_type "ip"      = IP/CIDR list → fed into ip_blacklist scoring
-#   list_type "domain"  = domain list  → fed into domain routing (route=proxy)
+#   list_type "domain"  = domain list  → fed into domain routing (route=pool)
 DEFAULT_BLOCKLIST_SOURCES = [
     # Russia — inside (РКН blocks resources within Russia)
     ("ru-rkn-ip", "Russia RKN Blocked IPs", "RU", "inside", "ip",
      "https://antifilter.download/list/allyouneed.lst"),
     ("ru-rkn-domains", "Russia RKN Blocked Domains", "RU", "inside", "domain",
      "https://antifilter.download/list/domains.lst"),
-    # Russia — outside (foreign services block Russian users / RU geo-restricted content)
+    # Russia — outside (foreign services block Russian users — games, OpenAI/ChatGPT, etc.)
     ("ru-geoblock-domains", "Russia Geoblocked Domains", "RU", "outside", "domain",
      "https://raw.githubusercontent.com/itdoginfo/allow-domains/main/Russia/outside-raw.lst"),
+    ("ru-banned-domains", "Russia-Banned Services Domains", "RU", "outside", "domain",
+     "https://raw.githubusercontent.com/medvedeff-true/ru-gaming-blocklist/main/medvedeff-game-list-all.txt"),
 ]
 
 DEFAULT_SOURCES = [

@@ -8,7 +8,7 @@ Direction semantics:
 
 List types:
   "ip"     → parsed via _parse_ip_blacklist() → ip_blacklist_entries (proxy scoring)
-  "domain" → auto-creates domain_lists entry → domain_entries (routing, route=proxy)
+  "domain" → auto-creates domain_lists entry → domain_entries (routing, route=pool)
 """
 
 import asyncio
@@ -232,7 +232,7 @@ class BlocklistsMixin:
                 conn.execute(
                     "INSERT INTO domain_lists (id, name, source, url, route, enabled, priority, created_at, updated_at) "
                     "VALUES (?,?,?,?,?,?,?,?,?)",
-                    (source_id, name, "blocklist", "", "proxy", 1, priority, now, now)
+                    (source_id, name, "blocklist", "", "pool", 1, priority, now, now)
                 )
             conn.executemany(
                 "INSERT OR IGNORE INTO domain_entries (list_id, pattern) VALUES (?,?)",
