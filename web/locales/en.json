@@ -84,7 +84,10 @@
     "yes": "Yes",
     "no": "No",
     "recheckStarted": "Health check started",
-    "recheckAlreadyRunning": "Health check already running, please wait"
+    "recheckAlreadyRunning": "Health check already running, please wait",
+    "domains": "domains",
+    "moveUp": "Move up",
+    "moveDown": "Move down"
   },
   "route": {
     "direct": "Direct",
@@ -94,7 +97,8 @@
     "directNoProxy": "Direct (no proxy)",
     "poolBest": "Pool (best available)",
     "defaultRoute": "(default route)",
-    "viaList": "(via list: {name})"
+    "viaList": "(via list: {name})",
+    "customProxies": "Custom Proxies"
   },
   "ago": {
     "now": "now",

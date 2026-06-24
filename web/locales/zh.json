@@ -84,7 +84,10 @@
     "no": "No",
     "recheckAlreadyRunning": "Health check already running, please wait",
     "recheckStarted": "Health check started",
-    "yes": "Yes"
+    "yes": "Yes",
+    "domains": "域名",
+    "moveUp": "上移",
+    "moveDown": "下移"
   },
   "route": {
     "direct": "直连",
@@ -94,7 +97,8 @@
     "directNoProxy": "直连（无代理）",
     "poolBest": "池（最佳可用）",
     "defaultRoute": "（默认路由）",
-    "viaList": "（通过列表：{name}）"
+    "viaList": "（通过列表：{name}）",
+    "customProxies": "自定义代理"
   },
   "ago": {
     "now": "刚刚",

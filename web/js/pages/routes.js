@@ -21,9 +21,19 @@ router.register('routes', (container) => {
     container.innerHTML = '';
     setContainerStyle();
 
-    container.appendChild(buildModeCard());
+    container.appendChild(buildTopRow());
     container.appendChild(buildRulesCard());
-    container.appendChild(buildTestCard());
+  }
+
+  function buildTopRow() {
+    const row = ui.el('div', '', { style: 'display:flex;gap:10px;flex-shrink:0' });
+    const modeCard = buildModeCard();
+    modeCard.style.flex = '1';
+    const testCard = buildTestCard();
+    testCard.style.flex = '1';
+    row.appendChild(modeCard);
+    row.appendChild(testCard);
+    return row;
   }
 
   function buildModeCard() {
@@ -35,9 +45,9 @@ router.register('routes', (container) => {
     const toggleCb = ui.el('input', '', { id: 'routing-toggle', type: 'checkbox' });
     toggleCb.addEventListener('change', () => {
       if (toggleCb.checked) {
-        api.routingEnable().then(() => { app.toast('Routing enabled'); load(); }).catch(e => app.toast('Error: ' + e.message, 'error'));
+        api.routingEnable().then(() => { app.toast(t('page.routes.routingEnabled')); load(); }).catch(e => app.toast('Error: ' + e.message, 'error'));
       } else {
-        api.routingDisable().then(() => { app.toast('Routing disabled'); load(); }).catch(e => app.toast('Error: ' + e.message, 'error'));
+        api.routingDisable().then(() => { app.toast(t('page.routes.routingDisabled')); load(); }).catch(e => app.toast('Error: ' + e.message, 'error'));
       }
     });
     toggleLabel.appendChild(toggleCb);
@@ -49,7 +59,7 @@ router.register('routes', (container) => {
     card.appendChild(toggleRow);
 
     const defaultRow = ui.el('div', '', { style: 'display:flex;align-items:center;gap:8px;margin-bottom:4px' });
-    defaultRow.appendChild(ui.el('span', '', { style: 'font-size:12px;color:var(--text-secondary)', text: 'Default route for unmatched domains:' }));
+    defaultRow.appendChild(ui.el('span', '', { style: 'font-size:12px;color:var(--text-secondary)', text: t('page.routes.defaultRouteUnmatched') }));
     const routeSelect = ui.el('select', '', { id: 'default-route-select', style: 'padding:3px 8px;font-size:12px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--bg);color:var(--text-primary)' });
     populateRouteSelect(routeSelect);
     routeSelect.addEventListener('change', () => {
@@ -58,7 +68,7 @@ router.register('routes', (container) => {
     defaultRow.appendChild(routeSelect);
     card.appendChild(defaultRow);
 
-    const hint = ui.el('div', '', { style: 'font-size:11px;color:var(--text-muted);margin-top:4px', text: 'When routing is OFF, all traffic follows the Proxy Control settings (direct mode or selected upstream).' });
+    const hint = ui.el('div', '', { style: 'font-size:11px;color:var(--text-muted);margin-top:4px', text: t('page.routes.routingOffHint') });
     card.appendChild(hint);
 
     return card;
@@ -67,13 +77,21 @@ router.register('routes', (container) => {
   function buildRulesCard() {
     const card = ui.card(t('page.routes.activeRoutes'));
     card.id = 'card-routing-rules';
+    card.style.flex = '1';
+    card.style.display = 'flex';
+    card.style.flexDirection = 'column';
+    card.style.minHeight = '0';
 
-    const addBtn = ui.el('button', 'btn btn-sm btn-primary', { text: '+ Add Route', style: 'margin-bottom:8px' });
+    const headerRow = ui.el('div', '', { style: 'display:flex;align-items:center;justify-content:space-between;margin-bottom:10px' });
+    const addBtn = ui.el('button', 'btn btn-sm btn-primary', { text: t('page.routes.addRoute') });
     addBtn.addEventListener('click', () => showAddRouteModal());
-    card.appendChild(addBtn);
+    headerRow.appendChild(addBtn);
+    const countBadge = ui.el('span', 'badge badge-gray', { id: 'route-count-badge', style: 'font-size:10px' });
+    headerRow.appendChild(countBadge);
+    card.appendChild(headerRow);
 
     const tblWrap = ui.el('div', '', { id: 'routes-table-wrap', style: 'flex:1;min-height:0;overflow-y:auto' });
-    tblWrap.innerHTML = '<div class="empty" style="padding:8px;font-size:11px">No routes configured</div>';
+    tblWrap.innerHTML = '<div class="empty" style="padding:12px;font-size:12px">' + t('page.routes.noRoutesAdd') + '</div>';
     card.appendChild(tblWrap);
 
     return card;
@@ -83,8 +101,8 @@ router.register('routes', (container) => {
     const card = ui.card(t('page.routes.testRoute'));
     card.id = 'card-route-test';
 
-    const row = ui.el('div', '', { style: 'display:flex;gap:8px;align-items:center' });
-    const input = ui.el('input', '', { id: 'route-test-input', type: 'text', placeholder: 'e.g. twitter.com', style: 'flex:1;padding:6px 10px;font-size:13px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--bg);color:var(--text-primary)' });
+    const row = ui.el('div', '', { style: 'display:flex;gap:8px;align-items:center;flex-wrap:wrap' });
+    const input = ui.el('input', '', { id: 'route-test-input', type: 'text', placeholder: t('page.routes.testPlaceholder'), style: 'flex:1;min-width:120px;padding:5px 10px;font-size:12px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--bg);color:var(--text-primary)' });
     row.appendChild(input);
 
     const testBtn = ui.el('button', 'btn btn-sm btn-secondary', { text: t('common.test') });
@@ -92,33 +110,32 @@ router.register('routes', (container) => {
       const domain = input.value.trim();
       if (!domain) return;
       testBtn.disabled = true;
-      testBtn.textContent = 'Testing...';
+      testBtn.textContent = '...';
       api.routingTest(domain).then(result => {
         testBtn.disabled = false;
-        testBtn.textContent = 'Test';
+        testBtn.textContent = t('common.test');
         const resultEl = document.getElementById('route-test-result');
         if (resultEl) {
           const route = result.route || 'unknown';
           const matchedList = result.matched_list || null;
-          resultEl.innerHTML = '';
           resultEl.innerHTML = ui.formatRouteLabel(route);
           const viaSpan = document.createElement('span');
           viaSpan.style.color = 'var(--text-secondary)';
           viaSpan.style.marginLeft = '6px';
-          viaSpan.textContent = matchedList ? `(via list: ${matchedList})` : '(default route)';
+          viaSpan.textContent = matchedList ? t('route.viaList', { name: matchedList }) : t('route.defaultRoute');
           resultEl.appendChild(viaSpan);
         }
       }).catch(e => {
         testBtn.disabled = false;
-        testBtn.textContent = 'Test';
+        testBtn.textContent = t('common.test');
         app.toast('Error: ' + e.message, 'error');
       });
     });
     row.appendChild(testBtn);
-    card.appendChild(row);
 
-    const result = ui.el('div', '', { id: 'route-test-result', style: 'margin-top:8px;font-size:13px;min-height:20px' });
-    card.appendChild(result);
+    const result = ui.el('span', '', { id: 'route-test-result', style: 'font-size:12px;min-height:18px;display:flex;align-items:center;gap:4px;flex-shrink:0' });
+    row.appendChild(result);
+    card.appendChild(row);
 
     return card;
   }
@@ -126,15 +143,15 @@ router.register('routes', (container) => {
   function showAddRouteModal() {
     const unassigned = domainLists.filter(l => !l.route);
     if (!unassigned.length) {
-      app.toast('Create a domain list first (Domain Lists page)', 'error');
+      app.toast(t('page.routes.createDomainListFirst'), 'error');
       return;
     }
 
     const overlay = ui.el('div', '', { style: 'position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:1000;display:flex;align-items:center;justify-content:center' });
     const modal = ui.el('div', 'card', { style: 'width:400px;padding:20px' });
-    modal.appendChild(ui.el('div', 'card-title', { text: 'Add Route', style: 'margin-bottom:12px' }));
+    modal.appendChild(ui.el('div', 'card-title', { text: t('page.routes.addRouteTitle'), style: 'margin-bottom:12px' }));
 
-    modal.appendChild(ui.el('div', '', { style: 'font-size:12px;color:var(--text-secondary);margin-bottom:4px', text: 'Domain List:' }));
+    modal.appendChild(ui.el('div', '', { style: 'font-size:12px;color:var(--text-secondary);margin-bottom:4px', text: t('page.routes.domainList') }));
     const listSelect = ui.el('select', '', { id: 'modal-list-select', style: 'width:100%;padding:6px 8px;margin-bottom:12px;font-size:13px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--bg);color:var(--text-primary)' });
     unassigned.forEach(dl => {
       const o = ui.el('option', '', { value: dl.id, text: dl.name + ' (' + (dl.domain_count || 0) + ' domains)' });
@@ -142,7 +159,7 @@ router.register('routes', (container) => {
     });
     modal.appendChild(listSelect);
 
-    modal.appendChild(ui.el('div', '', { style: 'font-size:12px;color:var(--text-secondary);margin-bottom:4px', text: 'Route:' }));
+    modal.appendChild(ui.el('div', '', { style: 'font-size:12px;color:var(--text-secondary);margin-bottom:4px', text: t('page.routes.route') }));
     const routeSelect = ui.el('select', '', { id: 'modal-route-select', style: 'width:100%;padding:6px 8px;margin-bottom:16px;font-size:13px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--bg);color:var(--text-primary)' });
     populateRouteSelect(routeSelect);
     modal.appendChild(routeSelect);
@@ -162,7 +179,7 @@ router.register('routes', (container) => {
         const payload = { ...dl, route, enabled: true };
         api.domainListUpdate(dl.id, payload).then(() => {
           overlay.remove();
-          app.toast('Route added');
+          app.toast(t('page.routes.routeAdded'));
           load();
         }).catch(e => app.toast('Error: ' + e.message, 'error'));
       }
@@ -197,123 +214,295 @@ router.register('routes', (container) => {
     }
   }
 
+  function routeTypeOf(route) {
+    if (!route) return 'unknown';
+    if (route === 'direct') return 'direct';
+    if (route === 'pool') return 'pool';
+    if (route.startsWith('custom:')) return 'custom';
+    if (route.startsWith('proxy:')) return 'proxy';
+    return 'unknown';
+  }
+
+  function routeIconHtml(type) {
+    if (type === 'direct') return '◆';
+    if (type === 'pool') return '◈';
+    if (type === 'custom') return '◉';
+    if (type === 'proxy') return '◉';
+    return '•';
+  }
+
+  function routeLabelHtml(route) {
+    const type = routeTypeOf(route);
+    if (type === 'direct') return '<span class="route-label direct">' + t('route.direct') + '</span>';
+    if (type === 'pool') return '<span class="route-label pool">' + t('route.pool') + '</span>';
+    if (type === 'custom') {
+      const name = route.slice(7);
+      return '<span class="route-label custom">' + t('route.custom', { name: ui.escHtml(name) }) + '</span>';
+    }
+    if (type === 'proxy') return '<span class="route-label custom">' + ui.escHtml(route) + '</span>';
+    return '<span class="route-label">' + ui.escHtml(route || '—') + '</span>';
+  }
+
   function updateRulesCard(status, lists) {
     const wrap = document.getElementById('routes-table-wrap');
+    const countBadge = document.getElementById('route-count-badge');
     if (!wrap) return;
 
     const routedLists = (lists || []).filter(l => l.route);
+    if (countBadge) countBadge.textContent = routedLists.length;
+
     if (!routedLists.length) {
-      wrap.innerHTML = '<div class="empty" style="padding:8px;font-size:11px">No routes configured. Add a route to assign domain lists to proxy routes.</div>';
+      wrap.innerHTML = '<div class="empty" style="padding:12px;font-size:12px">' + t('page.routes.noRoutesAdd') + '</div>';
       return;
     }
 
-    const headers = [
-      { label: '#', width: '30px', align: 'center' },
-      { label: 'Domain List', width: '160px' },
-      { label: 'Domains', width: '80px', align: 'center' },
-      { label: 'Route', width: '120px' },
-      { label: 'Enabled', width: '60px', align: 'center' },
-      { label: '', width: '120px', align: 'center' },
-    ];
+    wrap.innerHTML = '';
+    const listEl = ui.el('div', 'route-list');
 
-    const rows = routedLists.map((l, i) => {
+    routedLists.forEach((l, i) => {
+      const type = routeTypeOf(l.route);
+      const enabled = !!l.enabled;
+
+      const row = ui.el('div', 'route-row' + (enabled ? '' : ' disabled'));
+      row.dataset.type = type;
+      row.dataset.listId = l.id;
+
+      // Priority badge
+      const prioClass = i === 0 ? 'p1' : i === 1 ? 'p2' : i === 2 ? 'p3' : 'p4-plus';
+      const prio = ui.el('div', 'route-priority ' + prioClass, { text: String(i + 1) });
+      row.appendChild(prio);
+
+      // Type icon
+      const icon = ui.el('div', 'route-type-icon ' + type, { text: routeIconHtml(type) });
+      row.appendChild(icon);
+
+      // Body: name + meta
+      const body = ui.el('div', 'route-body');
       const nameLink = document.createElement('a');
       nameLink.href = '#/domain-lists';
-      nameLink.style.cssText = 'color:var(--accent);cursor:pointer;text-decoration:none';
       nameLink.textContent = l.name || l.id;
-      const nameHtml = nameLink.outerHTML;
+      const nameDiv = ui.el('div', 'route-name');
+      nameDiv.appendChild(nameLink);
+      body.appendChild(nameDiv);
 
-      const enabledHtml = l.enabled
-        ? '<span style="color:var(--success)">✓</span>'
-        : '<span style="color:var(--text-muted)">✗</span>';
-
-      const actions = [];
-      const toggleBtn = document.createElement('button');
-      toggleBtn.className = 'btn btn-xs btn-ghost';
-      toggleBtn.style.cssText = 'padding:1px 4px;font-size:9px';
-      toggleBtn.textContent = l.enabled ? 'Disable' : 'Enable';
-      toggleBtn.dataset.listId = l.id;
-      toggleBtn.dataset.action = 'toggle';
-      actions.push(toggleBtn.outerHTML);
-
-      if (i > 0) {
-        const upBtn = document.createElement('button');
-        upBtn.className = 'btn btn-xs btn-ghost';
-        upBtn.style.cssText = 'padding:1px 4px;font-size:9px';
-        upBtn.textContent = '↑';
-        upBtn.dataset.listId = l.id;
-        upBtn.dataset.action = 'move-up';
-        actions.push(upBtn.outerHTML);
+      const meta = ui.el('div', 'route-meta');
+      const countPill = ui.el('span', 'route-domain-count', { text: ui.fmtNum(l.domain_count || 0) + ' ' + t('common.domains') });
+      meta.appendChild(countPill);
+      if (l.source === 'manual') {
+        const srcBadge = ui.el('span', 'badge badge-gray', { text: 'manual', style: 'font-size:9px' });
+        meta.appendChild(srcBadge);
       }
-      if (i < routedLists.length - 1) {
-        const downBtn = document.createElement('button');
-        downBtn.className = 'btn btn-xs btn-ghost';
-        downBtn.style.cssText = 'padding:1px 4px;font-size:9px';
-        downBtn.textContent = '↓';
-        downBtn.dataset.listId = l.id;
-        downBtn.dataset.action = 'move-down';
-        actions.push(downBtn.outerHTML);
+      body.appendChild(meta);
+      row.appendChild(body);
+
+      // Route label
+      const labelWrap = ui.el('div', '', { html: routeLabelHtml(l.route) });
+      row.appendChild(labelWrap);
+
+      // Toggle switch
+      const toggle = ui.el('div', 'route-toggle' + (enabled ? ' on' : ''));
+      toggle.title = enabled ? t('common.disable') : t('common.enable');
+      toggle.addEventListener('click', () => toggleRouteList(l.id));
+      row.appendChild(toggle);
+
+      // Reorder arrows
+      const reorder = ui.el('div', 'route-reorder');
+      const upBtn = ui.el('button', 'route-arrow', { html: '▲', title: t('common.moveUp') });
+      upBtn.disabled = (i === 0);
+      upBtn.addEventListener('click', () => moveRouteUpAnimated(l.id, row, 'up'));
+      reorder.appendChild(upBtn);
+
+      const downBtn = ui.el('button', 'route-arrow', { html: '▼', title: t('common.moveDown') });
+      downBtn.disabled = (i === routedLists.length - 1);
+      downBtn.addEventListener('click', () => moveRouteUpAnimated(l.id, row, 'down'));
+      reorder.appendChild(downBtn);
+      row.appendChild(reorder);
+
+      // Delete
+      const delBtn = ui.el('button', 'route-delete', { html: '✕', title: t('common.delete') });
+      delBtn.addEventListener('click', () => removeRoute(l.id));
+      row.appendChild(delBtn);
+
+      // Drag handle
+      const dragHandle = ui.el('div', 'route-drag-handle', { text: '⋮⋮', title: t('common.moveUp') });
+      row.appendChild(dragHandle);
+
+      attachDragHandlers(row, listEl);
+
+      listEl.appendChild(row);
+    });
+
+    wrap.appendChild(listEl);
+
+    listEl.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+    });
+    listEl.addEventListener('drop', (e) => {
+      e.preventDefault();
+      if (!_draggedRow) return;
+      // dropped on empty area of the list (not on a row)
+      if (e.target === listEl) {
+        const rows = Array.from(listEl.querySelectorAll('.route-row'));
+        const lastRow = rows[rows.length - 1];
+        if (lastRow) performDrop(listEl, _draggedRow, lastRow, false);
       }
-
-      const delBtn = document.createElement('button');
-      delBtn.className = 'btn btn-xs btn-danger';
-      delBtn.style.cssText = 'padding:1px 4px;font-size:9px';
-      delBtn.textContent = '✕';
-      delBtn.dataset.listId = l.id;
-      delBtn.dataset.action = 'remove';
-      actions.push(delBtn.outerHTML);
-
-      return [
-        `<span style="color:var(--text-muted)">${i + 1}</span>`,
-        nameHtml,
-        (l.domain_count || 0),
-        ui.formatRouteLabel(l.route),
-        enabledHtml,
-        actions.join(''),
-      ];
     });
-    wrap.innerHTML = '';
-    wrap.appendChild(ui.table(headers, rows));
+  }
 
-    wrap.querySelectorAll('[data-action]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const id = btn.dataset.listId;
-        const action = btn.dataset.action;
-        if (action === 'toggle') toggleRouteList(id);
-        else if (action === 'move-up') moveRouteUp(id);
-        else if (action === 'move-down') moveRouteDown(id);
-        else if (action === 'remove') removeRoute(id);
-      });
+  let _draggedRow = null;
+  let _placeholder = null;
+  let _dropTimer = null;
+
+  function ensurePlaceholder(listEl) {
+    if (!_placeholder || !_placeholder.parentNode) {
+      _placeholder = ui.el('div', 'route-drop-placeholder');
+    }
+    if (_placeholder.parentNode !== listEl) {
+      listEl.appendChild(_placeholder);
+    }
+    return _placeholder;
+  }
+
+  function attachDragHandlers(row, listEl) {
+    const handle = row.querySelector('.route-drag-handle');
+    if (!handle) return;
+
+    row.draggable = false;
+
+    handle.addEventListener('mousedown', () => { row.draggable = true; });
+    row.addEventListener('dragend', () => { row.draggable = false; });
+
+    row.addEventListener('dragstart', (e) => {
+      _draggedRow = row;
+      row.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', row.dataset.listId);
+      const ghost = document.createElement('div');
+      ghost.style.cssText = 'position:absolute;top:-9999px;width:1px;height:1px';
+      document.body.appendChild(ghost);
+      e.dataTransfer.setDragImage(ghost, 0, 0);
+      setTimeout(() => ghost.remove(), 0);
+      hidePlaceholder();
     });
+
+    row.addEventListener('dragend', () => {
+      row.classList.remove('dragging');
+      row.draggable = false;
+      _draggedRow = null;
+      hidePlaceholder();
+    });
+
+    row.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      if (!_draggedRow || _draggedRow === row) return;
+
+      const rect = row.getBoundingClientRect();
+      const midpoint = rect.top + rect.height / 2;
+      const insertBefore = e.clientY < midpoint;
+
+      movePlaceholder(listEl, row, insertBefore);
+    });
+
+    row.addEventListener('drop', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!_draggedRow || _draggedRow === row) return;
+      const rect = row.getBoundingClientRect();
+      const midpoint = rect.top + rect.height / 2;
+      const insertBefore = e.clientY < midpoint;
+      performDrop(listEl, _draggedRow, row, insertBefore);
+    });
+  }
+
+  function hidePlaceholder() {
+    if (!_placeholder) return;
+    _placeholder.classList.remove('active');
+    if (_placeholder.parentNode) _placeholder.parentNode.removeChild(_placeholder);
+  }
+
+  function movePlaceholder(listEl, refRow, insertBefore) {
+    const ph = ensurePlaceholder(listEl);
+
+    // already in the right spot?
+    const prev = insertBefore ? refRow.previousSibling : (refRow.nextSibling && refRow.nextSibling !== ph ? refRow.nextSibling : null);
+    if (ph === refRow.previousSibling && insertBefore) return;
+    if (ph === refRow.nextSibling && !insertBefore) return;
+
+    if (insertBefore) {
+      listEl.insertBefore(ph, refRow);
+    } else {
+      const next = refRow.nextSibling;
+      if (next && next !== ph) listEl.insertBefore(ph, next);
+      else if (next === ph) { /* already after */ }
+      else listEl.appendChild(ph);
+    }
+
+    requestAnimationFrame(() => ph.classList.add('active'));
+  }
+
+  function performDrop(listEl, draggedRow, refRow, insertBefore) {
+    const rows = Array.from(listEl.querySelectorAll('.route-row'));
+    const currentOrder = rows.map(r => r.dataset.listId);
+
+    const draggedId = draggedRow.dataset.listId;
+    const refId = refRow.dataset.listId;
+
+    const order = currentOrder.filter(id => id !== draggedId);
+    const refIdx = order.indexOf(refId);
+    if (refIdx < 0) { hidePlaceholder(); return; }
+
+    if (insertBefore) {
+      order.splice(refIdx, 0, draggedId);
+    } else {
+      order.splice(refIdx + 1, 0, draggedId);
+    }
+
+    hidePlaceholder();
+    api.routingReorder(order).then(() => { app.toast(t('page.routes.reordered')); load(); }).catch(e => app.toast('Error: ' + e.message, 'error'));
   }
 
   function toggleRouteList(id) {
-    api.domainListToggle(id).then(() => { app.toast('Toggled'); load(); }).catch(e => app.toast('Error: ' + e.message, 'error'));
+    api.domainListToggle(id).then(() => { app.toast(t('page.routes.toggled')); load(); }).catch(e => app.toast('Error: ' + e.message, 'error'));
+  }
+
+  function getRoutedOrder() {
+    if (!routingStatus || !Array.isArray(routingStatus.lists)) return [];
+    return routingStatus.lists.filter(l => l.route).map(l => l.id);
+  }
+
+  function moveRouteUpAnimated(id, rowEl, dir) {
+    const order = getRoutedOrder();
+    const idx = order.indexOf(id);
+    if (dir === 'up') {
+      if (idx <= 0) return;
+      [order[idx - 1], order[idx]] = [order[idx], order[idx - 1]];
+    } else {
+      if (idx < 0 || idx >= order.length - 1) return;
+      [order[idx], order[idx + 1]] = [order[idx + 1], order[idx]];
+    }
+    const animClass = dir === 'up' ? 'moving-up' : 'moving-down';
+    if (rowEl) rowEl.classList.add(animClass);
+    const delay = rowEl ? 250 : 0;
+    setTimeout(() => {
+      api.routingReorder(order).then(() => { app.toast(t('page.routes.reordered')); load(); }).catch(e => app.toast('Error: ' + e.message, 'error'));
+    }, delay);
   }
 
   function moveRouteUp(id) {
-    if (!routingStatus || !Array.isArray(routingStatus.lists)) return;
-    const order = routingStatus.lists.filter(l => l.route).map(l => l.id);
-    const idx = order.indexOf(id);
-    if (idx <= 0) return;
-    [order[idx - 1], order[idx]] = [order[idx], order[idx - 1]];
-    api.routingReorder(order).then(() => { app.toast('Reordered'); load(); }).catch(e => app.toast('Error: ' + e.message, 'error'));
+    moveRouteUpAnimated(id, null, 'up');
   }
 
   function moveRouteDown(id) {
-    if (!routingStatus || !Array.isArray(routingStatus.lists)) return;
-    const order = routingStatus.lists.filter(l => l.route).map(l => l.id);
-    const idx = order.indexOf(id);
-    if (idx < 0 || idx >= order.length - 1) return;
-    [order[idx], order[idx + 1]] = [order[idx + 1], order[idx]];
-    api.routingReorder(order).then(() => { app.toast('Reordered'); load(); }).catch(e => app.toast('Error: ' + e.message, 'error'));
+    moveRouteUpAnimated(id, null, 'down');
   }
 
   function removeRoute(id) {
     const dl = domainLists.find(l => l.id === id);
     if (dl) {
       const payload = { ...dl, route: '', enabled: false };
-      api.domainListUpdate(id, payload).then(() => { app.toast('Route removed'); load(); }).catch(e => app.toast('Error: ' + e.message, 'error'));
+      api.domainListUpdate(id, payload).then(() => { app.toast(t('page.routes.routeRemoved')); load(); }).catch(e => app.toast('Error: ' + e.message, 'error'));
     }
   }
 
@@ -325,7 +514,7 @@ router.register('routes', (container) => {
       selectEl.appendChild(o);
     });
     if (customProxies.length) {
-      const grp = ui.el('optgroup', '', { label: 'Custom Proxies' });
+      const grp = ui.el('optgroup', '', { label: t('route.customProxies') });
       customProxies.filter(p => p.enabled).forEach(p => {
         const label = p.name + ' (' + p.protocol.toUpperCase() + ' ' + p.host + ':' + p.port + ')';
         const o = ui.el('option', '', { value: 'custom:' + p.id, text: label });

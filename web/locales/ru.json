@@ -84,7 +84,10 @@
     "yes": "Да",
     "no": "Нет",
     "recheckStarted": "Проверка запущена",
-    "recheckAlreadyRunning": "Проверка уже выполняется, подождите"
+    "recheckAlreadyRunning": "Проверка уже выполняется, подождите",
+    "domains": "доменов",
+    "moveUp": "Выше",
+    "moveDown": "Ниже"
   },
   "route": {
     "direct": "Напрямую",
@@ -94,7 +97,8 @@
     "directNoProxy": "Напрямую (без прокси)",
     "poolBest": "Пул (лучший доступный)",
     "defaultRoute": "(маршрут по умолчанию)",
-    "viaList": "(через список: {name})"
+    "viaList": "(через список: {name})",
+    "customProxies": "Кастомные прокси"
   },
   "ago": {
     "now": "сейчас",
