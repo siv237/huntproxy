@@ -58,14 +58,16 @@ router.register('domain-lists', (container) => {
     body.innerHTML = '';
     editingId = dl ? dl.id : null;
 
+    const currentSource = dl ? (dl.source || 'manual') : 'manual';
+
     const nameRow = ui.el('div', '', { style: 'margin-bottom:10px' });
-    nameRow.appendChild(ui.el('div', '', { style: 'font-size:12px;color:var(--text-secondary);margin-bottom:4px', text: 'List Name:' }));
+    nameRow.appendChild(ui.el('div', '', { style: 'font-size:12px;color:var(--text-secondary);margin-bottom:4px', text: t('page.domainLists.listName') }));
     const nameInput = ui.el('input', '', { id: 'editor-name', type: 'text', value: dl ? dl.name : '', placeholder: 'e.g. Social Media, Blocked Sites', style: 'width:100%;padding:6px 10px;font-size:13px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--bg);color:var(--text-primary)' });
     nameRow.appendChild(nameInput);
     body.appendChild(nameRow);
 
     const idRow = ui.el('div', '', { style: 'margin-bottom:10px' });
-    idRow.appendChild(ui.el('div', '', { style: 'font-size:12px;color:var(--text-secondary);margin-bottom:4px', text: 'List ID (auto-generated from name):' }));
+    idRow.appendChild(ui.el('div', '', { style: 'font-size:12px;color:var(--text-secondary);margin-bottom:4px', text: t('page.domainLists.listId') }));
     const idInput = ui.el('input', '', { id: 'editor-id', type: 'text', value: dl ? dl.id : '', placeholder: 'auto-generated from name', style: 'width:100%;padding:6px 10px;font-size:13px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--bg);color:var(--text-primary);' + (dl ? 'opacity:0.6' : '') });
     if (dl) idInput.disabled = true;
     idRow.appendChild(idInput);
@@ -77,27 +79,118 @@ router.register('domain-lists', (container) => {
       }
     });
 
-    const domainsRow = ui.el('div', '', { style: 'margin-bottom:10px' });
-    domainsRow.appendChild(ui.el('div', '', { style: 'font-size:12px;color:var(--text-secondary);margin-bottom:4px', text: 'Domains (one per line):' }));
-    const domainsArea = ui.el('textarea', '', { id: 'editor-domains', rows: '10', placeholder: 'example.com\n.facebook.com\nexact:twitter.com\n*.google.com', style: 'width:100%;padding:8px 10px;font-size:12px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--bg);color:var(--text-primary);resize:vertical' });
-    domainsArea.value = dl && dl.domains ? dl.domains.join('\n') : '';
-    domainsRow.appendChild(domainsArea);
-    body.appendChild(domainsRow);
-
-    const hints = ui.el('div', '', { style: 'font-size:10px;color:var(--text-muted);line-height:1.5;margin-bottom:12px;padding:6px 8px;background:var(--surface-raised);border-radius:var(--radius-xs)' });
-    hints.innerHTML = '<b>Patterns:</b><br>example.com — exact + subdomains (*.example.com)<br>.example.com — subdomains only<br>exact:example.com — strict match (no subdomains)<br>*.example.com — same as .example.com';
-    body.appendChild(hints);
-
-    const sourceRow = ui.el('div', '', { style: 'margin-bottom:12px' });
-    sourceRow.appendChild(ui.el('div', '', { style: 'font-size:12px;color:var(--text-secondary);margin-bottom:4px', text: 'Source:' }));
+    const sourceRow = ui.el('div', '', { style: 'margin-bottom:10px' });
+    sourceRow.appendChild(ui.el('div', '', { style: 'font-size:12px;color:var(--text-secondary);margin-bottom:4px', text: t('page.domainLists.source') }));
     const sourceSelect = ui.el('select', '', { id: 'editor-source', style: 'width:100%;padding:6px 8px;font-size:13px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--bg);color:var(--text-primary)' });
-    sourceSelect.appendChild(ui.el('option', '', { value: 'manual', text: 'Manual', selected: 'selected' }));
-    sourceSelect.appendChild(ui.el('option', '', { value: 'url', text: 'URL (Phase 2 — auto-download)', disabled: 'disabled' }));
     sourceRow.appendChild(sourceSelect);
     body.appendChild(sourceRow);
 
+    const domainsRow = ui.el('div', '', { style: 'margin-bottom:10px' });
+    domainsRow.appendChild(ui.el('div', '', { style: 'font-size:12px;color:var(--text-secondary);margin-bottom:4px', text: t('page.domainLists.domainsOnePerLine') }));
+    const domainsArea = ui.el('textarea', '', { id: 'editor-domains', rows: '10', placeholder: 'example.com\n.facebook.com\nexact:twitter.com\n*.google.com', style: 'width:100%;padding:8px 10px;font-size:12px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--bg);color:var(--text-primary);resize:vertical' });
+    domainsArea.value = dl && dl.domains ? dl.domains.join('\n') : '';
+    domainsRow.appendChild(domainsArea);
+
+    const hints = ui.el('div', '', { style: 'font-size:10px;color:var(--text-muted);line-height:1.5;margin-bottom:12px;padding:6px 8px;background:var(--surface-raised);border-radius:var(--radius-xs)' });
+    hints.innerHTML = '<b>Patterns:</b><br>example.com — exact + subdomains (*.example.com)<br>.example.com — subdomains only<br>exact:example.com — strict match (no subdomains)<br>*.example.com — same as .example.com';
+    domainsRow.appendChild(hints);
+    body.appendChild(domainsRow);
+
+    const searchRow = ui.el('div', '', { id: 'search-row', style: 'margin-bottom:10px;display:none' });
+    const searchBox = ui.el('input', '', { id: 'bl-search', type: 'text', placeholder: t('page.domainLists.searchPlaceholder'), style: 'width:100%;padding:6px 10px;font-size:13px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--bg);color:var(--text-primary)' });
+    searchRow.appendChild(searchBox);
+    const searchInfo = ui.el('div', '', { id: 'bl-info', style: 'font-size:11px;color:var(--text-secondary);margin-top:4px' });
+    searchRow.appendChild(searchInfo);
+    body.appendChild(searchRow);
+
+    let allDomains = [];
+    let showCount = 200;
+    let filteredCount = 0;
+
+    function applySearch() {
+      const q = (document.getElementById('bl-search').value || '').trim().toLowerCase();
+      if (!q) {
+        domainsArea.value = allDomains.join('\n');
+        filteredCount = allDomains.length;
+      } else {
+        const filtered = allDomains.filter(d => d.includes(q));
+        filteredCount = filtered.length;
+        domainsArea.value = filtered.slice(0, 5000).join('\n');
+      }
+      const info = document.getElementById('bl-info');
+      if (info) {
+        let txt = `${filteredCount} / ${allDomains.length}`;
+        if (q && filteredCount > 5000) txt += ' (showing first 5000)';
+        info.textContent = txt;
+      }
+    }
+
+    function setManualMode() {
+      domainsArea.disabled = false;
+      domainsArea.style.opacity = '1';
+      searchRow.style.display = 'none';
+      hints.style.display = '';
+    }
+
+    function setBlocklistMode(blId) {
+      domainsArea.disabled = true;
+      domainsArea.style.opacity = '0.6';
+      hints.style.display = 'none';
+      searchRow.style.display = '';
+      domainsArea.value = 'Loading...';
+      api.domainListGet(blId).then(d => {
+        allDomains = (d && d.domains) || [];
+        showCount = 200;
+        applySearch();
+      }).catch(e => {
+        domainsArea.value = '';
+        app.toast(t('common.error', { message: e.message }), 'error');
+      });
+    }
+
+    let blocklistSources = [];
+    sourceSelect.appendChild(ui.el('option', '', { value: 'manual', text: t('page.domainLists.manual') }));
+    api.blocklists().then(r => {
+      const sources = (r && r.sources) || [];
+      blocklistSources = sources.filter(s => s.list_type === 'domain');
+      blocklistSources.forEach(s => {
+        const opt = ui.el('option', '', { value: s.id, text: `${s.name} (${s.entry_count || 0})` });
+        sourceSelect.appendChild(opt);
+      });
+      if (currentSource === 'blocklist' && dl) {
+        sourceSelect.value = dl.id;
+        setBlocklistMode(dl.id);
+      } else {
+        sourceSelect.value = 'manual';
+        setManualMode();
+      }
+    }).catch(() => {
+      sourceSelect.value = 'manual';
+      setManualMode();
+    });
+
+    if (currentSource === 'blocklist' && dl) {
+      allDomains = dl.domains || [];
+      sourceSelect.value = dl.id;
+      setBlocklistMode(dl.id);
+    } else {
+      sourceSelect.value = 'manual';
+      setManualMode();
+    }
+
+    sourceSelect.addEventListener('change', () => {
+      const val = sourceSelect.value;
+      if (val === 'manual') {
+        setManualMode();
+      } else {
+        setBlocklistMode(val);
+      }
+    });
+
+    searchBox.addEventListener('input', () => { applySearch(); });
+
     const btnRow = ui.el('div', '', { style: 'display:flex;gap:8px' });
-    const saveBtn = ui.el('button', 'btn btn-sm btn-primary', { text: dl ? 'Save Changes' : 'Create List' });
+    const saveBtn = ui.el('button', 'btn btn-sm btn-primary', { text: dl ? t('page.domainLists.saveChanges') : t('page.domainLists.createList') });
     saveBtn.addEventListener('click', () => {
       const name = document.getElementById('editor-name').value.trim();
       let listId = document.getElementById('editor-id').value.trim().replace(/[^a-z0-9-_]/gi, '-').toLowerCase();
@@ -107,30 +200,31 @@ router.register('domain-lists', (container) => {
 
       if (!name) { app.toast('Name is required', 'error'); return; }
 
+      const sourceVal = sourceSelect.value;
       const existingDl = editingId ? domainLists.find(l => l.id === editingId) : null;
       const data = {
         id: listId,
         name,
         domains,
-        source: 'manual',
+        source: sourceVal === 'manual' ? 'manual' : 'blocklist',
         route: existingDl ? existingDl.route : '',
         enabled: existingDl ? existingDl.enabled : true,
       };
 
       if (editingId) {
         api.domainListUpdate(editingId, data).then(() => {
-          app.toast('List updated');
+          app.toast(t('page.domainLists.listUpdated'));
           editingId = null;
           load();
           resetEditor();
-        }).catch(e => app.toast('Error: ' + e.message, 'error'));
+        }).catch(e => app.toast(t('common.error', { message: e.message }), 'error'));
       } else {
         api.domainListCreate(data).then(() => {
-          app.toast('List created');
+          app.toast(t('page.domainLists.listCreated'));
           editingId = null;
           load();
           resetEditor();
-        }).catch(e => app.toast('Error: ' + e.message, 'error'));
+        }).catch(e => app.toast(t('common.error', { message: e.message }), 'error'));
       }
     });
     btnRow.appendChild(saveBtn);
@@ -171,6 +265,7 @@ router.register('domain-lists', (container) => {
     ];
 
     const sourceLabel = (source) => {
+      if (source === 'blocklist') return '<span style="color:var(--success);font-size:11px">Blocklist</span>';
       if (source === 'url') return '<span style="color:var(--info);font-size:11px">URL</span>';
       return '<span style="color:var(--text-muted);font-size:11px">Manual</span>';
     };

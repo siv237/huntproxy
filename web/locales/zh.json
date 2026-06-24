@@ -492,6 +492,7 @@
       "patternWildcard": "*.example.com — 同.example.com",
       "source": "来源：",
       "manual": "手动",
+      "searchPlaceholder": "搜索域名...",
       "urlPhase2": "URL（第二阶段 — 自动下载）",
       "saveChanges": "保存更改",
       "createList": "创建列表",

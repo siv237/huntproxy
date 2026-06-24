@@ -3,6 +3,7 @@ router.register('blocklists', (container) => {
   let editingId = null;
   let _loading = false;
   let fetchProgress = {};
+  let progressPoller = null;
 
   function fmtBytes(n) {
     if (!n) return '0B';
@@ -40,7 +41,6 @@ router.register('blocklists', (container) => {
     btnRow.appendChild(addBtn);
 
     const refreshBtn = ui.el('button', 'btn btn-sm btn-secondary', { text: t('page.blocklists.refresh') });
-    let progressPoller = null;
     function startFetch() {
       refreshBtn.disabled = true;
       refreshBtn.textContent = t('page.blocklists.fetching');

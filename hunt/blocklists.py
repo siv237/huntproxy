@@ -49,6 +49,14 @@ class BlocklistsMixin:
             added = 0
             for i, (sid, name, country, direction, list_type, url) in enumerate(DEFAULT_BLOCKLIST_SOURCES):
                 if sid in existing_ids:
+                    # Update URL/direction/type for existing default sources whose
+                    # definition changed (e.g. ru-geoblock-domains switched to
+                    # Categories/geoblock.lst). Only touch auto-created sources.
+                    conn.execute(
+                        "UPDATE blocklist_sources SET name=?, country=?, direction=?, "
+                        "list_type=?, url=?, updated_at=? WHERE id=?",
+                        (name, country, direction, list_type, url, now, sid)
+                    )
                     continue
                 conn.execute(
                     "INSERT OR IGNORE INTO blocklist_sources "
@@ -58,6 +66,22 @@ class BlocklistsMixin:
                 )
                 existing_ids.add(sid)
                 added += 1
+            # Remove sources that were auto-created from a previous default set
+            # but are no longer in the current defaults (e.g. ru-banned-domains).
+            current_sids = {s[0] for s in DEFAULT_BLOCKLIST_SOURCES}
+            stale = existing_ids - current_sids
+            for sid in stale:
+                row = conn.execute("SELECT list_type FROM blocklist_sources WHERE id=?", (sid,)).fetchone()
+                if not row:
+                    continue
+                if row["list_type"] == "ip":
+                    conn.execute("DELETE FROM ip_blacklist_entries WHERE source_id=?", (sid,))
+                else:
+                    conn.execute("DELETE FROM domain_entries WHERE list_id=?", (sid,))
+                    conn.execute("DELETE FROM domain_lists WHERE id=? AND source LIKE 'blocklist%%'", (sid,))
+                conn.execute("DELETE FROM blocklist_sources WHERE id=?", (sid,))
+            if stale:
+                logger.info("Migrated blocklists: removed %d stale sources", len(stale))
             conn.commit()
             conn.close()
             if added:

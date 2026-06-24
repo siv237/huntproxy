@@ -531,6 +531,7 @@
       "patternWildcard": "*.example.com — то же что .example.com",
       "source": "Источник:",
       "manual": "Вручную",
+      "searchPlaceholder": "Поиск доменов...",
       "urlPhase2": "URL (Фаза 2 — автозагрузка)",
       "saveChanges": "Сохранить изменения",
       "createList": "Создать список",

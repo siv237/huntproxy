@@ -6,10 +6,11 @@ import sqlite3
 class TestBlocklistSources:
     def test_seed_default_blocklists(self, state):
         sources = state.get_blocklist_sources()
-        assert len(sources) >= 3
+        assert len(sources) >= 4
         ids = {s["id"] for s in sources}
         assert "ru-rkn-ip" in ids
         assert "ru-rkn-domains" in ids
+        assert "ru-inside-domains" in ids
         assert "ru-geoblock-domains" in ids
 
     def test_seed_idempotent(self, state):
@@ -139,4 +140,46 @@ class TestBlocklistMigration:
         conn.close()
         state._migrate_blocklists()
         sources = state.get_blocklist_sources()
-        assert len(sources) >= 3
+        assert len(sources) >= 4
+
+    def test_migrate_updates_changed_url(self, state):
+        from hunt.constants import DEFAULT_BLOCKLIST_SOURCES
+        bl = {b[0]: b for b in DEFAULT_BLOCKLIST_SOURCES}
+        sid = "ru-geoblock-domains"
+        new_url = bl[sid][5]
+        conn = state._db()
+        conn.execute(
+            "UPDATE blocklist_sources SET url='https://old.example/stale.lst' WHERE id=?",
+            (sid,)
+        )
+        conn.commit()
+        conn.close()
+        state._migrate_blocklists()
+        src = state.get_blocklist_source(sid)
+        assert src["url"] == new_url
+
+    def test_migrate_removes_stale_sources(self, state):
+        from hunt.constants import DEFAULT_BLOCKLIST_SOURCES
+        current_sids = {s[0] for s in DEFAULT_BLOCKLIST_SOURCES}
+        conn = state._db()
+        conn.execute(
+            "INSERT INTO blocklist_sources "
+            "(id, name, country, direction, list_type, url, enabled, priority, created_at, updated_at) "
+            "VALUES ('ru-banned-domains','Stale','RU','outside','domain','https://stale.example/x',1,99,0,0)"
+        )
+        conn.execute(
+            "INSERT INTO domain_lists (id, name, source, url, route, enabled, priority, created_at, updated_at) "
+            "VALUES ('ru-banned-domains','Stale','blocklist','','pool',1,99,0,0)"
+        )
+        conn.execute("INSERT INTO domain_entries (list_id, pattern) VALUES ('ru-banned-domains','dzen.ru')")
+        conn.commit()
+        conn.close()
+        assert "ru-banned-domains" not in current_sids
+        state._migrate_blocklists()
+        assert state.get_blocklist_source("ru-banned-domains") is None
+        conn = state._db()
+        dl = conn.execute("SELECT id FROM domain_lists WHERE id='ru-banned-domains'").fetchone()
+        de = conn.execute("SELECT list_id FROM domain_entries WHERE list_id='ru-banned-domains'").fetchone()
+        conn.close()
+        assert dl is None
+        assert de is None

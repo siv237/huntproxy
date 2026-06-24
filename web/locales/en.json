@@ -531,6 +531,7 @@
       "patternWildcard": "*.example.com — same as .example.com",
       "source": "Source:",
       "manual": "Manual",
+      "searchPlaceholder": "Search domains...",
       "urlPhase2": "URL (Phase 2 — auto-download)",
       "saveChanges": "Save Changes",
       "createList": "Create List",
