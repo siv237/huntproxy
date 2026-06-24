@@ -232,11 +232,31 @@ const app = {
 
   async pollDirectMode() {
     try {
-      const ps = await api.proxyStatus();
+      const [ps, rs] = await Promise.all([
+        api.proxyStatus().catch(() => null),
+        api.routingStatus().catch(() => null),
+      ]);
       const badge = document.getElementById('direct-mode-badge');
       if (!badge) return;
-      if (ps && ps.direct_mode) {
+      const span = badge.querySelector('span');
+      if (rs && rs.enabled) {
         badge.style.display = '';
+        badge.style.borderColor = 'var(--accent)';
+        badge.style.background = 'var(--accent-bg)';
+        badge.style.color = 'var(--accent)';
+        if (span) span.textContent = t('topbar.routingModeText');
+      } else if (ps && ps.direct_mode) {
+        badge.style.display = '';
+        badge.style.borderColor = 'var(--warning)';
+        badge.style.background = 'var(--warning-bg)';
+        badge.style.color = 'var(--warning)';
+        if (span) span.textContent = t('topbar.directModeText');
+      } else if (ps && ps.active_proxy) {
+        badge.style.display = '';
+        badge.style.borderColor = 'var(--info)';
+        badge.style.background = 'var(--info-bg)';
+        badge.style.color = 'var(--info)';
+        if (span) span.textContent = t('topbar.cascadeModeText') + ': ' + (ps.active_proxy.address || '');
       } else {
         badge.style.display = 'none';
       }
