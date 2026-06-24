@@ -3,9 +3,10 @@
     "overview": "Resumen",
     "hunt": "Caza",
     "sources": "Fuentes",
-    "proxies": "Proxis",
-    "proxyControl": "Monitor de Tráfico",
-    "proxyPool": "Grupo de Proxis",
+    "proxies": "Base de datos",
+    "proxyControl": "Control de Clientes",
+    "proxyPool": "Gestión del Pool",
+    "server": "Servidor",
     "blacklist": "Lista Negra",
     "favorites": "Favoritos",
     "ipBlacklists": "IP Blacklists",
@@ -15,7 +16,7 @@
     "routes": "Rutas",
     "domainLists": "Listas de Dominios",
     "customProxies": "Proxis Personalizados",
-    "connectivity": "Conectividad",
+    "connectivity": "Control de Enlace",
     "downloads": "Descargas",
     "api": "API",
     "about": "Acerca de",
@@ -23,9 +24,9 @@
     "blocklists": "Listas de bloqueo",
     "section": {
       "engine": "Motor de Proxy",
-      "lists": "Listas y Filtros",
-      "routing": "Enrutamiento",
-      "insights": "Analíticas y Logs",
+      "proxies": "Pool de Proxis",
+      "lists": "Listas",
+      "insights": "Registros",
       "system": "Sistema"
     }
   },
@@ -36,7 +37,9 @@
     "trafficCounter": "Live proxy traffic",
     "trafficIn": "In",
     "trafficOut": "Out",
-    "trafficTotal": "Total"
+    "trafficTotal": "Total",
+    "directMode": "Modo directo — diagnóstico, sin upstream",
+    "directModeText": "Modo Directo"
   },
   "sidebar": {
     "allSystemsOperational": "Todos los sistemas operativos",
@@ -344,6 +347,28 @@
       "socks5Stopped": "SOCKS5 detenido",
       "unknown": "Desconocido",
       "recheckAll": "Recheck all"
+    },
+    "server": {
+      "title": "Servidor",
+      "subtitle": "Control del servidor proxy local — puertos, iniciar/detener, registro de clientes",
+      "proxyServer": "Servidor Proxy",
+      "stopped": "detenido",
+      "running": "en ejecución",
+      "http": "HTTP",
+      "socks5": "SOCKS5",
+      "port": "Puerto:",
+      "start": "Iniciar",
+      "stop": "Detener",
+      "directMode": "Modo directo",
+      "noUpstream": " (sin upstream)",
+      "directModeOn": "Modo directo ON",
+      "directModeOff": "Modo directo OFF",
+      "clientLog": "Registro de Clientes",
+      "proxyNotStarted": "proxy no iniciado",
+      "proxyStarted": "Proxy iniciado",
+      "proxyStopped": "Proxy detenido",
+      "socks5Started": "SOCKS5 iniciado",
+      "socks5Stopped": "SOCKS5 detenido"
     },
     "blacklist": {
       "title": "Lista Negra",

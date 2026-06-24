@@ -3,9 +3,10 @@
     "overview": "Aperçu",
     "hunt": "Chasse",
     "sources": "Sources",
-    "proxies": "Proxys",
-    "proxyControl": "Moniteur de Trafic",
-    "proxyPool": "Pool de Proxys",
+    "proxies": "Base de données",
+    "proxyControl": "Contrôle Clients",
+    "proxyPool": "Gestion du Pool",
+    "server": "Serveur",
     "blacklist": "Liste noire",
     "favorites": "Favoris",
     "ipBlacklists": "IP Blacklists",
@@ -15,7 +16,7 @@
     "routes": "Routage",
     "domainLists": "Listes de domaines",
     "customProxies": "Proxys personnalisés",
-    "connectivity": "Connectivité",
+    "connectivity": "Contrôle de Lien",
     "downloads": "Téléchargements",
     "api": "API",
     "about": "À propos",
@@ -23,9 +24,9 @@
     "blocklists": "Listes de blocage",
     "section": {
       "engine": "Moteur Proxy",
-      "lists": "Listes et Filtrage",
-      "routing": "Routage",
-      "insights": "Analytique et Logs",
+      "proxies": "Pool de Proxys",
+      "lists": "Listes",
+      "insights": "Journaux",
       "system": "Système"
     }
   },
@@ -36,7 +37,9 @@
     "trafficCounter": "Live proxy traffic",
     "trafficIn": "In",
     "trafficOut": "Out",
-    "trafficTotal": "Total"
+    "trafficTotal": "Total",
+    "directMode": "Mode direct — diagnostic, sans upstream",
+    "directModeText": "Mode Direct"
   },
   "sidebar": {
     "allSystemsOperational": "Tous les systèmes opérationnels",
@@ -344,6 +347,28 @@
       "socks5Stopped": "SOCKS5 arrêté",
       "unknown": "Inconnu",
       "recheckAll": "Recheck all"
+    },
+    "server": {
+      "title": "Serveur",
+      "subtitle": "Contrôle du serveur proxy local — ports, démarrage/arrêt, journal clients",
+      "proxyServer": "Serveur Proxy",
+      "stopped": "arrêté",
+      "running": "en cours",
+      "http": "HTTP",
+      "socks5": "SOCKS5",
+      "port": "Port :",
+      "start": "Démarrer",
+      "stop": "Arrêter",
+      "directMode": "Mode direct",
+      "noUpstream": " (sans upstream)",
+      "directModeOn": "Mode direct ON",
+      "directModeOff": "Mode direct OFF",
+      "clientLog": "Journal Clients",
+      "proxyNotStarted": "proxy non démarré",
+      "proxyStarted": "Proxy démarré",
+      "proxyStopped": "Proxy arrêté",
+      "socks5Started": "SOCKS5 démarré",
+      "socks5Stopped": "SOCKS5 arrêté"
     },
     "blacklist": {
       "title": "Liste noire",

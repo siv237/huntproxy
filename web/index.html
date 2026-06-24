@@ -13,7 +13,7 @@
     <link rel="apple-touch-icon" sizes="180x180" href="/assets/apple-touch-icon.png?v=3">
     <link rel="manifest" href="/assets/site.webmanifest?v=3">
     <link rel="stylesheet" href="/css/theme.css?v=13">
-    <link rel="stylesheet" href="/css/layout.css?v=14">
+    <link rel="stylesheet" href="/css/layout.css?v=15">
     <link rel="stylesheet" href="/css/components.css?v=21">
 </head>
 <body>
@@ -75,25 +75,55 @@
           <svg class="nav-section-chevron"><use href="#icon-chevron-down"/></svg>
         </button>
         <div class="nav-section-items">
+          <button class="nav-item" data-page="server" onclick="router.navigate('server')">
+            <svg><use href="#icon-settings"/></svg>
+            <span data-i18n="nav.server">Server</span>
+          </button>
+          <button class="nav-item" data-page="proxy-control" onclick="router.navigate('proxy-control')">
+            <svg><use href="#icon-control"/></svg>
+            <span data-i18n="nav.proxyControl">Client Control</span>
+          </button>
+          <button class="nav-item" data-page="connectivity" onclick="router.navigate('connectivity')">
+            <svg><use href="#icon-connectivity"/></svg>
+            <span data-i18n="nav.connectivity">Link Control</span>
+          </button>
+          <button class="nav-item" data-page="routes" onclick="router.navigate('routes')">
+            <svg><use href="#icon-routes"/></svg>
+            <span data-i18n="nav.routes">Routes</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="nav-section" data-section="proxies">
+        <button class="nav-section-header" onclick="app.toggleSection('proxies')">
+          <svg class="nav-section-icon"><use href="#icon-pool"/></svg>
+          <span data-i18n="nav.section.proxies">Proxy Pool</span>
+          <svg class="nav-section-chevron"><use href="#icon-chevron-down"/></svg>
+        </button>
+        <div class="nav-section-items">
+          <button class="nav-item" data-page="proxy-pool" onclick="router.navigate('proxy-pool')">
+            <svg><use href="#icon-pool"/></svg>
+            <span data-i18n="nav.proxyPool">Pool Management</span>
+          </button>
           <button class="nav-item" data-page="hunt" onclick="router.navigate('hunt')">
             <svg><use href="#icon-pool"/></svg>
             <span data-i18n="nav.hunt">Hunt</span>
           </button>
-          <button class="nav-item" data-page="proxy-sources" onclick="router.navigate('proxy-sources')">
-            <svg><use href="#icon-proxy-sources"/></svg>
-            <span data-i18n="nav.sources">Sources</span>
-          </button>
           <button class="nav-item" data-page="proxies" onclick="router.navigate('proxies')">
             <svg><use href="#icon-proxies"/></svg>
-            <span data-i18n="nav.proxies">Proxies</span>
+            <span data-i18n="nav.proxies">Database</span>
           </button>
-          <button class="nav-item" data-page="proxy-pool" onclick="router.navigate('proxy-pool')">
-            <svg><use href="#icon-pool"/></svg>
-            <span data-i18n="nav.proxyPool">Proxy Pool</span>
+          <button class="nav-item" data-page="favorites" onclick="router.navigate('favorites')">
+            <svg><use href="#icon-star"/></svg>
+            <span data-i18n="nav.favorites">Favorites</span>
           </button>
-          <button class="nav-item" data-page="proxy-control" onclick="router.navigate('proxy-control')">
-            <svg><use href="#icon-control"/></svg>
-            <span data-i18n="nav.proxyControl">Proxy Control</span>
+          <button class="nav-item" data-page="analytics" onclick="router.navigate('analytics')">
+            <svg><use href="#icon-analytics"/></svg>
+            <span data-i18n="nav.analytics">Analytics</span>
+          </button>
+          <button class="nav-item" data-page="custom-proxies" onclick="router.navigate('custom-proxies')">
+            <svg><use href="#icon-custom-proxies"/></svg>
+            <span data-i18n="nav.customProxies">Custom Proxies</span>
           </button>
         </div>
       </div>
@@ -101,17 +131,17 @@
       <div class="nav-section" data-section="lists">
         <button class="nav-section-header" onclick="app.toggleSection('lists')">
           <svg class="nav-section-icon"><use href="#icon-blacklist"/></svg>
-          <span data-i18n="nav.section.lists">Lists &amp; Filtering</span>
+          <span data-i18n="nav.section.lists">Lists</span>
           <svg class="nav-section-chevron"><use href="#icon-chevron-down"/></svg>
         </button>
         <div class="nav-section-items">
+          <button class="nav-item" data-page="proxy-sources" onclick="router.navigate('proxy-sources')">
+            <svg><use href="#icon-proxy-sources"/></svg>
+            <span data-i18n="nav.sources">Sources</span>
+          </button>
           <button class="nav-item" data-page="blacklist" onclick="router.navigate('blacklist')">
             <svg><use href="#icon-blacklist"/></svg>
             <span data-i18n="nav.blacklist">Blacklist</span>
-          </button>
-          <button class="nav-item" data-page="favorites" onclick="router.navigate('favorites')">
-            <svg><use href="#icon-star"/></svg>
-            <span data-i18n="nav.favorites">Favorites</span>
           </button>
           <button class="nav-item" data-page="ip-blacklists" onclick="router.navigate('ip-blacklists')">
             <svg><use href="#icon-shield"/></svg>
@@ -121,42 +151,20 @@
             <svg><use href="#icon-blocklists"/></svg>
             <span data-i18n="nav.blocklists">Blocklists</span>
           </button>
-        </div>
-      </div>
-
-      <div class="nav-section" data-section="routing">
-        <button class="nav-section-header" onclick="app.toggleSection('routing')">
-          <svg class="nav-section-icon"><use href="#icon-routes"/></svg>
-          <span data-i18n="nav.section.routing">Routing</span>
-          <svg class="nav-section-chevron"><use href="#icon-chevron-down"/></svg>
-        </button>
-        <div class="nav-section-items">
-          <button class="nav-item" data-page="routes" onclick="router.navigate('routes')">
-            <svg><use href="#icon-routes"/></svg>
-            <span data-i18n="nav.routes">Routes</span>
-          </button>
           <button class="nav-item" data-page="domain-lists" onclick="router.navigate('domain-lists')">
             <svg><use href="#icon-domain-lists"/></svg>
             <span data-i18n="nav.domainLists">Domain Lists</span>
-          </button>
-          <button class="nav-item" data-page="custom-proxies" onclick="router.navigate('custom-proxies')">
-            <svg><use href="#icon-custom-proxies"/></svg>
-            <span data-i18n="nav.customProxies">Custom Proxies</span>
           </button>
         </div>
       </div>
 
       <div class="nav-section" data-section="insights">
         <button class="nav-section-header" onclick="app.toggleSection('insights')">
-          <svg class="nav-section-icon"><use href="#icon-analytics"/></svg>
-          <span data-i18n="nav.section.insights">Analytics &amp; Logs</span>
+          <svg class="nav-section-icon"><use href="#icon-logs"/></svg>
+          <span data-i18n="nav.section.insights">Logs</span>
           <svg class="nav-section-chevron"><use href="#icon-chevron-down"/></svg>
         </button>
         <div class="nav-section-items">
-          <button class="nav-item" data-page="analytics" onclick="router.navigate('analytics')">
-            <svg><use href="#icon-analytics"/></svg>
-            <span data-i18n="nav.analytics">Analytics</span>
-          </button>
           <button class="nav-item" data-page="logs" onclick="router.navigate('logs')">
             <svg><use href="#icon-logs"/></svg>
             <span data-i18n="nav.logs">Logs</span>
@@ -164,10 +172,6 @@
           <button class="nav-item" data-page="actions" onclick="router.navigate('actions')">
             <svg><use href="#icon-actions"/></svg>
             <span data-i18n="nav.actions">Actions</span>
-          </button>
-          <button class="nav-item" data-page="connectivity" onclick="router.navigate('connectivity')">
-            <svg><use href="#icon-connectivity"/></svg>
-            <span data-i18n="nav.connectivity">Connectivity</span>
           </button>
         </div>
       </div>
@@ -250,6 +254,10 @@
             <span class="tc-value" id="traffic-total">—</span>
           </div>
         </div>
+        <button class="direct-mode-badge" id="direct-mode-badge" onclick="router.navigate('server')" data-i18n="topbar.directMode" style="display:none">
+          <svg width="14" height="14"><use href="#icon-shield"/></svg>
+          <span data-i18n="topbar.directModeText">Direct Mode</span>
+        </button>
         <button class="topbar-btn" id="quick-actions-btn">
            <span data-i18n="topbar.quickActions">Quick Actions</span>
           <svg width="14" height="14"><use href="#icon-chevron-down"/></svg>
@@ -278,7 +286,7 @@
     <script src="/js/pages/proxies.js?v=14"></script>
     <script src="/js/pages/proxy-card.js?v=19"></script>
     <script src="/js/pages/proxy-control.js?v=15"></script>
-    <script src="/js/pages/proxy-pool.js?v=15"></script>
+    <script src="/js/pages/proxy-pool.js?v=16"></script>
     <script src="/js/pages/blacklist.js?v=14"></script>
     <script src="/js/pages/favorites.js?v=14"></script>
     <script src="/js/pages/ip-blacklists.js?v=13"></script>
@@ -290,10 +298,11 @@
     <script src="/js/pages/routes.js?v=13"></script>
     <script src="/js/pages/domain-lists.js?v=13"></script>
     <script src="/js/pages/custom-proxies.js?v=13"></script>
+    <script src="/js/pages/server.js?v=1"></script>
     <script src="/js/pages/connectivity.js?v=13"></script>
     <script src="/js/pages/downloads.js?v=16"></script>
     <script src="/js/pages/api-docs.js?v=13"></script>
     <script src="/js/pages/about.js?v=13"></script>
-    <script src="/js/app.js?v=15"></script>
+    <script src="/js/app.js?v=20"></script>
 </body>
 </html>

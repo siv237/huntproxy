@@ -8,6 +8,7 @@ const router = {
     proxies: ['page.proxies.title', 'page.proxies.subtitle'],
     'proxy-control': ['page.proxyControl.title', 'page.proxyControl.subtitle'],
     'proxy-pool': ['page.proxyPool.title', 'page.proxyPool.subtitle'],
+    'server': ['page.server.title', 'page.server.subtitle'],
     blacklist: ['page.blacklist.title', 'page.blacklist.subtitle'],
     favorites: ['page.favorites.title', 'page.favorites.subtitle'],
     'ip-blacklists': ['page.ipBlacklists.title', 'page.ipBlacklists.subtitle'],

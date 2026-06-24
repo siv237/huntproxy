@@ -3,11 +3,11 @@ const app = {
   _lastSeq: 0,
   _pollers: [],
   _sectionOf: {
-    hunt: 'engine', 'proxy-sources': 'engine', proxies: 'engine',
-    'proxy-pool': 'engine', 'proxy-control': 'engine',
-    blacklist: 'lists', favorites: 'lists', 'ip-blacklists': 'lists', blocklists: 'lists',
-    routes: 'routing', 'domain-lists': 'routing', 'custom-proxies': 'routing',
-    analytics: 'insights', logs: 'insights', actions: 'insights', connectivity: 'insights',
+    server: 'engine', 'proxy-control': 'engine', connectivity: 'engine', routes: 'engine',
+    'proxy-pool': 'proxies', hunt: 'proxies', proxies: 'proxies', favorites: 'proxies',
+    analytics: 'proxies', 'custom-proxies': 'proxies',
+    'proxy-sources': 'lists', blacklist: 'lists', 'ip-blacklists': 'lists', blocklists: 'lists', 'domain-lists': 'lists',
+    logs: 'insights', actions: 'insights',
     settings: 'system', downloads: 'system', api: 'system', about: 'system',
   },
 
@@ -150,8 +150,10 @@ const app = {
     this._pollers.push(setInterval(() => this.pollEvents(), 2000));
     this._pollers.push(setInterval(() => this.pollCanary(), 30000));
     this._pollers.push(setInterval(() => this.pollTraffic(), 2000));
+    this._pollers.push(setInterval(() => this.pollDirectMode(), 3000));
     this.pollCanary();
     this.pollTraffic();
+    this.pollDirectMode();
   },
 
   stopPollers() {
@@ -226,6 +228,19 @@ const app = {
     } catch (e) {
       // Silently ignore network errors during polling
     }
+  },
+
+  async pollDirectMode() {
+    try {
+      const ps = await api.proxyStatus();
+      const badge = document.getElementById('direct-mode-badge');
+      if (!badge) return;
+      if (ps && ps.direct_mode) {
+        badge.style.display = '';
+      } else {
+        badge.style.display = 'none';
+      }
+    } catch (e) { /* ignore */ }
   },
 };
 

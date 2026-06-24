@@ -3,9 +3,10 @@
     "overview": "概览",
     "hunt": "搜索",
     "sources": "来源",
-    "proxies": "代理",
-    "proxyControl": "流量监控",
-    "proxyPool": "代理池",
+    "proxies": "数据库",
+    "proxyControl": "客户端控制",
+    "proxyPool": "池管理",
+    "server": "服务器",
     "blacklist": "黑名单",
     "favorites": "收藏",
     "ipBlacklists": "IP 黑名单",
@@ -15,7 +16,7 @@
     "routes": "路由",
     "domainLists": "域名列表",
     "customProxies": "自定义代理",
-    "connectivity": "连接性",
+    "connectivity": "链路控制",
     "downloads": "下载",
     "api": "API",
     "about": "关于",
@@ -23,9 +24,9 @@
     "blocklists": "封锁列表",
     "section": {
       "engine": "代理引擎",
-      "lists": "列表与过滤",
-      "routing": "路由",
-      "insights": "分析与日志",
+      "proxies": "代理池",
+      "lists": "列表",
+      "insights": "日志",
       "system": "系统"
     }
   },
@@ -36,7 +37,9 @@
     "trafficCounter": "Live proxy traffic",
     "trafficIn": "In",
     "trafficOut": "Out",
-    "trafficTotal": "Total"
+    "trafficTotal": "Total",
+    "directMode": "直连模式 — 诊断，无上游",
+    "directModeText": "直连模式"
   },
   "sidebar": {
     "allSystemsOperational": "所有系统正常运行",
@@ -344,6 +347,28 @@
       "socks5Stopped": "SOCKS5已停止",
       "unknown": "未知",
       "recheckAll": "Recheck all"
+    },
+    "server": {
+      "title": "服务器",
+      "subtitle": "本地代理服务器控制 — 端口、启停、客户端日志",
+      "proxyServer": "代理服务器",
+      "stopped": "已停止",
+      "running": "运行中",
+      "http": "HTTP",
+      "socks5": "SOCKS5",
+      "port": "端口:",
+      "start": "启动",
+      "stop": "停止",
+      "directMode": "直连模式",
+      "noUpstream": " (无上游)",
+      "directModeOn": "直连模式 开",
+      "directModeOff": "直连模式 关",
+      "clientLog": "客户端日志",
+      "proxyNotStarted": "代理未启动",
+      "proxyStarted": "代理已启动",
+      "proxyStopped": "代理已停止",
+      "socks5Started": "SOCKS5 已启动",
+      "socks5Stopped": "SOCKS5 已停止"
     },
     "blacklist": {
       "title": "黑名单",

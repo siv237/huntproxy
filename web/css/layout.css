@@ -328,6 +328,33 @@
   height: 14px;
 }
 
+.direct-mode-badge {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--warning);
+  background: var(--warning-bg);
+  color: var(--warning);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: var(--transition);
+  height: 28px;
+  white-space: nowrap;
+}
+
+.direct-mode-badge:hover {
+  filter: brightness(0.9);
+}
+
+.direct-mode-badge svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
 .user-avatar {
   width: 28px;
   height: 28px;
