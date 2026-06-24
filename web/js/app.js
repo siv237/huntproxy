@@ -4,9 +4,9 @@ const app = {
   _pollers: [],
   _sectionOf: {
     hunt: 'engine', 'proxy-sources': 'engine', proxies: 'engine',
-    'custom-proxies': 'engine', 'proxy-pool': 'engine', 'proxy-control': 'engine',
+    'proxy-pool': 'engine', 'proxy-control': 'engine',
     blacklist: 'lists', favorites: 'lists', 'ip-blacklists': 'lists', blocklists: 'lists',
-    routes: 'routing', 'domain-lists': 'routing',
+    routes: 'routing', 'domain-lists': 'routing', 'custom-proxies': 'routing',
     analytics: 'insights', logs: 'insights', actions: 'insights', connectivity: 'insights',
     settings: 'system', downloads: 'system', api: 'system', about: 'system',
   },
