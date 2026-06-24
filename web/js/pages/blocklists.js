@@ -2,6 +2,14 @@ router.register('blocklists', (container) => {
   let sources = [];
   let editingId = null;
   let _loading = false;
+  let fetchProgress = {};
+
+  function fmtBytes(n) {
+    if (!n) return '0B';
+    if (n >= 1048576) return (n / 1048576).toFixed(1) + 'MB';
+    if (n >= 1024) return (n / 1024).toFixed(0) + 'KB';
+    return n + 'B';
+  }
 
   function setContainerStyle() {
     container.style.display = 'flex';
@@ -32,12 +40,25 @@ router.register('blocklists', (container) => {
     btnRow.appendChild(addBtn);
 
     const refreshBtn = ui.el('button', 'btn btn-sm btn-secondary', { text: t('page.blocklists.refresh') });
-    refreshBtn.addEventListener('click', () => {
+    let progressPoller = null;
+    function startFetch() {
       refreshBtn.disabled = true;
       refreshBtn.textContent = t('page.blocklists.fetching');
+      fetchProgress = {};
+      progressPoller = setInterval(() => {
+        api.blocklistProgress().then(r => {
+          if (r && r.progress) {
+            fetchProgress = r.progress;
+            updateSourcesCard(sources);
+          }
+        }).catch(() => {});
+      }, 2000);
       api.blocklistFetch().then(r => {
+        clearInterval(progressPoller);
+        progressPoller = null;
         refreshBtn.disabled = false;
         refreshBtn.textContent = t('page.blocklists.refresh');
+        fetchProgress = {};
         if (r.ok) {
           app.toast(t('page.blocklists.fetchDone', { count: r.total_entries || 0 }));
         } else {
@@ -45,11 +66,15 @@ router.register('blocklists', (container) => {
         }
         load();
       }).catch(e => {
+        clearInterval(progressPoller);
+        progressPoller = null;
         refreshBtn.disabled = false;
         refreshBtn.textContent = t('page.blocklists.refresh');
+        fetchProgress = {};
         app.toast(t('common.error', { message: e.message }), 'error');
       });
-    });
+    }
+    refreshBtn.addEventListener('click', startFetch);
     btnRow.appendChild(refreshBtn);
 
     card.appendChild(btnRow);
@@ -194,6 +219,14 @@ router.register('blocklists', (container) => {
   }
 
   function statusBadge(s) {
+    const p = fetchProgress[s.id];
+    if (p) {
+      if (p.status === 'downloading') return `<span style="color:var(--info);font-size:11px">↓ ${fmtBytes(p.downloaded)}</span>`;
+      if (p.status === 'connecting') return `<span style="color:var(--info);font-size:11px">…</span>`;
+      if (p.status === 'parsing') return `<span style="color:var(--warning);font-size:11px">⏳</span>`;
+      if (p.status === 'done') return `<span style="color:var(--success);font-size:11px">✓ ${p.count || 0}</span>`;
+      if (p.status === 'error') return `<span style="color:var(--danger);font-size:11px">ERR</span>`;
+    }
     if (!s.last_fetched_at) return `<span style="color:var(--text-muted);font-size:11px">${t('page.blocklists.never')}</span>`;
     if (s.last_fetch_status === 'ok') return `<span style="color:var(--success);font-size:11px">OK</span>`;
     return `<span style="color:var(--danger);font-size:11px" title="${ui.escHtml(s.last_fetch_error || '')}">ERR</span>`;

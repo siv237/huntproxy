@@ -126,6 +126,7 @@ const api = {
   blocklistDelete(id) { return this.request(`/api/blocklists/${encodeURIComponent(id)}`, 'DELETE'); },
   blocklistToggle(id) { return this.request(`/api/blocklists/${encodeURIComponent(id)}/toggle`, 'POST'); },
   blocklistFetch() { return this.request('/api/blocklists/fetch', 'POST'); },
+  blocklistProgress() { return this.request('/api/blocklists/progress'); },
 
   // Custom Proxies
   customProxies() { return this.request('/api/custom-proxies'); },

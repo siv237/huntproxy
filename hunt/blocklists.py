@@ -251,6 +251,7 @@ class BlocklistsMixin:
     async def _download_blocklists(self) -> dict:
         """Download all enabled blocklist sources. Returns {source_id: count}."""
         self._fetching_blocklists = True
+        self._blocklist_fetch_progress = {}
         results = {}
         try:
             conn = self._db()
@@ -261,14 +262,22 @@ class BlocklistsMixin:
             if not enabled_sources:
                 return results
 
+            STALL_TIMEOUT = 45  # seconds without any data → abort
+            CHUNK = 65536
+
             async def fetch(s):
                 source_id = s["id"]
                 source_name = s["name"]
                 list_type = s["list_type"]
                 url = s["url"]
                 proxy = s["download_proxy"] if "download_proxy" in s.keys() else ""
+                self._blocklist_fetch_progress[source_id] = {
+                    "name": source_name, "status": "connecting",
+                    "downloaded": 0, "started_at": time.time(),
+                }
+                self._emit(f"Fetching blocklist {source_name}...", "info")
                 try:
-                    curl_args = ["curl", "-sS", "-L", "--max-time", "300", "-A", "huntproxy/1.0"]
+                    curl_args = ["curl", "-sS", "-L", "-A", "huntproxy/1.0"]
                     if proxy:
                         curl_args += ["--proxy", proxy]
                     curl_args.append(url)
@@ -277,16 +286,42 @@ class BlocklistsMixin:
                         stdout=asyncio.subprocess.PIPE,
                         stderr=asyncio.subprocess.DEVNULL,
                     )
-                    stdout, _ = await proc.communicate()
+                    chunks = []
+                    downloaded = 0
+                    last_emit = 0
+                    while True:
+                        try:
+                            chunk = await asyncio.wait_for(
+                                proc.stdout.read(CHUNK), timeout=STALL_TIMEOUT)
+                        except asyncio.TimeoutError:
+                            proc.kill()
+                            await proc.wait()
+                            self._update_blocklist_fetch_error(
+                                source_id, "stall: no data for %ds" % STALL_TIMEOUT, source_name)
+                            return
+                        if not chunk:
+                            break
+                        chunks.append(chunk)
+                        downloaded += len(chunk)
+                        self._blocklist_fetch_progress[source_id]["downloaded"] = downloaded
+                        self._blocklist_fetch_progress[source_id]["status"] = "downloading"
+                        now = time.time()
+                        if now - last_emit > 5:
+                            last_emit = now
+                            self._emit(f"Blocklist {source_name}: {downloaded // 1024}KB", "info")
+                    await proc.wait()
                     now = time.time()
                     if proc.returncode == 0:
-                        text = stdout.decode(errors="replace")
+                        text = b"".join(chunks).decode(errors="replace")
+                        self._blocklist_fetch_progress[source_id]["status"] = "parsing"
                         if list_type == "ip":
                             count = self._parse_ip_blacklist(text, source_id, source_name, persist=True)
                         else:
                             count = self._parse_domain_blocklist(text, source_id, source_name)
                             self._update_blocklist_domain_url(source_id)
                         results[source_id] = count
+                        self._blocklist_fetch_progress[source_id]["status"] = "done"
+                        self._blocklist_fetch_progress[source_id]["count"] = count
                         c = None
                         try:
                             c = self._db()
@@ -304,11 +339,13 @@ class BlocklistsMixin:
                                 except Exception: pass
                         self._emit(f"Blocklist {source_name}: {count} entries", "info")
                     else:
-                        err_msg = f"HTTP {proc.returncode}"
+                        err_msg = f"curl exit {proc.returncode}"
                         self._update_blocklist_fetch_error(source_id, err_msg, source_name)
+                        self._blocklist_fetch_progress[source_id]["status"] = "error"
                 except Exception as e:
                     err_msg = str(e)[:200]
                     self._update_blocklist_fetch_error(source_id, err_msg, source_name)
+                    self._blocklist_fetch_progress[source_id]["status"] = "error"
 
             tasks = [asyncio.create_task(fetch(s)) for s in enabled_sources]
             await asyncio.gather(*tasks)
@@ -319,6 +356,9 @@ class BlocklistsMixin:
         finally:
             self._fetching_blocklists = False
         return results
+
+    def get_blocklist_fetch_progress(self) -> dict:
+        return getattr(self, '_blocklist_fetch_progress', {})
 
     def _update_blocklist_domain_url(self, source_id: str):
         """Sync the URL from blocklist_sources into the auto-created domain_list."""

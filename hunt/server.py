@@ -1624,6 +1624,9 @@ class HuntServer:
                 logger.error("blocklists/fetch: %s", e)
                 return json.dumps({"ok": False, "error": str(e)}), 500, "application/json"
 
+        if path == "/api/blocklists/progress" and method == "GET":
+            return json.dumps({"progress": self.state.get_blocklist_fetch_progress()}), 200, "application/json"
+
         if path.startswith("/api/blocklists/") and not path.endswith("/toggle") and not path.endswith("/fetch"):
             source_id = unquote(path[len("/api/blocklists/"):])
             if method == "GET":
