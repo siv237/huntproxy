@@ -96,6 +96,56 @@ router.register('domain-lists', (container) => {
     domainsRow.appendChild(hints);
     body.appendChild(domainsRow);
 
+    const routeRow = ui.el('div', '', { style: 'margin-bottom:10px' });
+    routeRow.appendChild(ui.el('div', '', { style: 'font-size:12px;color:var(--text-secondary);margin-bottom:4px', text: t('page.domainLists.routeLabel') }));
+    const routeSelect = ui.el('select', '', { id: 'editor-route', style: 'width:100%;padding:6px 8px;font-size:13px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--bg);color:var(--text-primary)' });
+    routeRow.appendChild(routeSelect);
+    body.appendChild(routeRow);
+
+    function populateRouteSelect(selected) {
+      routeSelect.innerHTML = '';
+      const opts = [
+        { value: 'direct', text: t('route.directNoProxy') },
+        { value: 'pool', text: t('route.poolBest') },
+      ];
+      opts.forEach(o => {
+        const el = ui.el('option', '', { value: o.value, text: o.text });
+        if (o.value === selected) el.selected = true;
+        routeSelect.appendChild(el);
+      });
+      api.customProxies().then(r => {
+        const cps = (r && r.proxies) || [];
+        const enabled = cps.filter(p => p.enabled);
+        if (enabled.length) {
+          const grp = ui.el('optgroup', '', { label: t('page.domainLists.customProxies') });
+          enabled.forEach(p => {
+            const label = p.name + ' (' + (p.protocol || 'socks5').toUpperCase() + ' ' + p.host + ':' + p.port + ')';
+            const o = ui.el('option', '', { value: 'custom:' + p.id, text: label });
+            if (('custom:' + p.id) === selected) o.selected = true;
+            grp.appendChild(o);
+          });
+          routeSelect.appendChild(grp);
+        }
+      }).catch(() => {});
+      api.proxies({ status: 'ok', limit: 200 }).then(r => {
+        const proxies = (r && r.proxies) || r || [];
+        const alive = Array.isArray(proxies) ? proxies.filter(p => p.last_status === 'ok' || p.alive) : [];
+        if (alive.length) {
+          const grp = ui.el('optgroup', '', { label: t('page.domainLists.workingProxies') });
+          alive.slice(0, 200).forEach(p => {
+            const addr = p.address || (p.host + ':' + p.port);
+            const label = addr + ' (' + (p.protocol || '').toUpperCase() + ' ' + (p.country || '?') + ')';
+            const o = ui.el('option', '', { value: 'proxy:' + addr, text: label });
+            if (('proxy:' + addr) === selected) o.selected = true;
+            grp.appendChild(o);
+          });
+          routeSelect.appendChild(grp);
+        }
+      }).catch(() => {});
+    }
+
+    populateRouteSelect(dl ? (dl.route || '') : 'pool');
+
     const searchRow = ui.el('div', '', { id: 'search-row', style: 'margin-bottom:10px;display:none' });
     const searchBox = ui.el('input', '', { id: 'bl-search', type: 'text', placeholder: t('page.domainLists.searchPlaceholder'), style: 'width:100%;padding:6px 10px;font-size:13px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--bg);color:var(--text-primary)' });
     searchRow.appendChild(searchBox);
@@ -207,7 +257,7 @@ router.register('domain-lists', (container) => {
         name,
         domains,
         source: sourceVal === 'manual' ? 'manual' : 'blocklist',
-        route: existingDl ? existingDl.route : '',
+        route: document.getElementById('editor-route').value || 'pool',
         enabled: existingDl ? existingDl.enabled : true,
       };
 
