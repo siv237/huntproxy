@@ -268,7 +268,7 @@ class BlocklistsMixin:
                 url = s["url"]
                 proxy = s["download_proxy"] if "download_proxy" in s.keys() else ""
                 try:
-                    curl_args = ["curl", "-sS", "-L", "--max-time", "120", "-A", "huntproxy/1.0"]
+                    curl_args = ["curl", "-sS", "-L", "--max-time", "300", "-A", "huntproxy/1.0"]
                     if proxy:
                         curl_args += ["--proxy", proxy]
                     curl_args.append(url)
