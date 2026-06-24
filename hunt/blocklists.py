@@ -263,6 +263,7 @@ class BlocklistsMixin:
                 return results
 
             STALL_TIMEOUT = 45  # seconds without any data → abort
+            CONNECT_TIMEOUT = 90  # seconds to wait for first byte
             CHUNK = 65536
 
             async def fetch(s):
@@ -289,18 +290,22 @@ class BlocklistsMixin:
                     chunks = []
                     downloaded = 0
                     last_emit = 0
+                    first_byte = True
                     while True:
+                        to = CONNECT_TIMEOUT if first_byte else STALL_TIMEOUT
                         try:
                             chunk = await asyncio.wait_for(
-                                proc.stdout.read(CHUNK), timeout=STALL_TIMEOUT)
+                                proc.stdout.read(CHUNK), timeout=to)
                         except asyncio.TimeoutError:
                             proc.kill()
                             await proc.wait()
+                            label = "connect" if first_byte else "stall"
                             self._update_blocklist_fetch_error(
-                                source_id, "stall: no data for %ds" % STALL_TIMEOUT, source_name)
+                                source_id, "%s: no data for %ds" % (label, to), source_name)
                             return
                         if not chunk:
                             break
+                        first_byte = False
                         chunks.append(chunk)
                         downloaded += len(chunk)
                         self._blocklist_fetch_progress[source_id]["downloaded"] = downloaded

@@ -302,11 +302,22 @@ router.register('blocklists', (container) => {
         delBtn.dataset.sourceId = s.id;
         delBtn.dataset.action = 'delete';
 
+        const p = fetchProgress[s.id];
+        let entryCell;
+        if (p) {
+          if (p.status === 'downloading') entryCell = `<span style="color:var(--info);font-size:11px">↓ ${fmtBytes(p.downloaded)}</span>`;
+          else if (p.status === 'parsing') entryCell = `<span style="color:var(--warning);font-size:11px">⏳ parse</span>`;
+          else if (p.status === 'done' && p.count != null) entryCell = `<span style="color:var(--success);font-size:11px">✓ ${p.count}</span>`;
+          else entryCell = s.entry_count ?? s.last_fetch_count ?? 0;
+        } else {
+          entryCell = s.entry_count ?? s.last_fetch_count ?? 0;
+        }
+
         return [
           nameSpan.outerHTML,
           `<span style="font-size:10px;color:var(--text-muted)">${typeLabel(s.list_type)}</span>`,
           statusBadge(s),
-          s.entry_count ?? s.last_fetch_count ?? 0,
+          entryCell,
           s.download_proxy ? `<span style="font-size:9px;color:var(--text-muted)">via proxy</span>` : `<span style="font-size:9px;color:var(--text-muted)">direct</span>`,
           toggleBtn.outerHTML,
           editBtn.outerHTML + delBtn.outerHTML,
@@ -352,6 +363,7 @@ router.register('blocklists', (container) => {
 
   async function load() {
     if (_loading) return;
+    if (progressPoller) return;
     _loading = true;
     try {
       const result = await api.blocklists();
