@@ -79,7 +79,7 @@ class BlocklistsMixin:
                 counts[r["source_id"]] = r["c"]
             for r in conn.execute(
                 "SELECT dl.id as sid, (SELECT COUNT(*) FROM domain_entries WHERE list_id=dl.id) as c "
-                "FROM domain_lists dl WHERE dl.source LIKE 'blocklist%%'"
+                "FROM domain_lists dl WHERE dl.id IN (SELECT id FROM blocklist_sources WHERE list_type='domain')"
             ).fetchall():
                 counts[r["sid"]] = r["c"]
             conn.close()

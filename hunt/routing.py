@@ -149,15 +149,17 @@ class RoutingMixin:
             now = time.time()
             try:
                 conn = self._db()
-                existing = conn.execute("SELECT id FROM domain_lists WHERE id=?", (list_id,)).fetchone()
+                existing = conn.execute("SELECT source, url FROM domain_lists WHERE id=?", (list_id,)).fetchone()
                 if not existing:
                     conn.close()
                     return None
                 name = data.get("name", "").strip()
                 if name:
+                    source = data.get("source", "") or existing["source"] or "manual"
+                    url = data.get("url", "") if "url" in data else existing["url"]
                     conn.execute(
                         "UPDATE domain_lists SET name=?, source=?, url=?, route=?, enabled=?, updated_at=? WHERE id=?",
-                        (name, data.get("source", "manual"), data.get("url", ""), data.get("route", ""),
+                        (name, source, url, data.get("route", ""),
                          1 if data.get("enabled", True) else 0, now, list_id)
                     )
                 if "domains" in data:

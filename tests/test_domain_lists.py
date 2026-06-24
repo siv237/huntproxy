@@ -27,6 +27,7 @@ class TestDomainLists:
         state.create_domain_list({
             "id": "test-list",
             "name": "Test List",
+            "source": "manual",
             "domains": ["example.com"],
         })
         updated = state.update_domain_list("test-list", {
@@ -36,6 +37,22 @@ class TestDomainLists:
         assert updated is not None
         assert updated["name"] == "Renamed List"
         assert set(updated["domains"]) == {"example.com", "new.org"}
+
+    def test_update_domain_list_preserves_source(self, state):
+        state.create_domain_list({
+            "id": "test-list",
+            "name": "Test List",
+            "source": "blocklist",
+            "route": "pool",
+            "domains": ["example.com"],
+        })
+        updated = state.update_domain_list("test-list", {
+            "name": "Renamed List",
+            "route": "direct",
+        })
+        assert updated is not None
+        assert updated["source"] == "blocklist"
+        assert updated["route"] == "direct"
 
     def test_delete_domain_list(self, state):
         state.create_domain_list({
