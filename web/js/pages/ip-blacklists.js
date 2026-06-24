@@ -2,6 +2,15 @@ router.register('ip-blacklists', (container) => {
   let sources = [];
   let editingId = null;
   let _loading = false;
+  let fetchProgress = {};
+  let progressPoller = null;
+
+  function fmtBytes(n) {
+    if (!n) return '0B';
+    if (n >= 1048576) return (n / 1048576).toFixed(1) + 'MB';
+    if (n >= 1024) return (n / 1024).toFixed(0) + 'KB';
+    return n + 'B';
+  }
 
   function setContainerStyle() {
     container.style.display = 'flex';
@@ -34,12 +43,21 @@ router.register('ip-blacklists', (container) => {
     });
 
     const refreshBtn = ui.el('button', 'btn btn-sm btn-secondary', { text: t('page.ipBlacklists.refresh'), style: 'margin-bottom:8px;margin-left:6px' });
-    refreshBtn.addEventListener('click', () => {
+    function startFetch() {
       refreshBtn.disabled = true;
       refreshBtn.textContent = t('page.ipBlacklists.fetching');
+      fetchProgress = {};
+      progressPoller = setInterval(() => {
+        api.ipBlacklistProgress().then(r => {
+          if (r && r.progress) { fetchProgress = r.progress; updateSourcesCard(sources); }
+        }).catch(() => {});
+      }, 2000);
       api.ipBlacklistFetch().then(r => {
+        clearInterval(progressPoller);
+        progressPoller = null;
         refreshBtn.disabled = false;
         refreshBtn.textContent = t('page.ipBlacklists.refresh');
+        fetchProgress = {};
         if (r.ok) {
           app.toast(`Fetched ${r.total_entries || 0} IP blacklist entries`);
         } else {
@@ -47,11 +65,15 @@ router.register('ip-blacklists', (container) => {
         }
         load();
       }).catch(e => {
+        clearInterval(progressPoller);
+        progressPoller = null;
         refreshBtn.disabled = false;
         refreshBtn.textContent = t('page.ipBlacklists.refresh');
+        fetchProgress = {};
         app.toast(t('common.error', {message: e.message}), 'error');
       });
-    });
+    }
+    refreshBtn.addEventListener('click', startFetch);
 
     card.appendChild(addBtn);
     card.appendChild(refreshBtn);
@@ -192,6 +214,13 @@ router.register('ip-blacklists', (container) => {
   }
 
   function statusBadge(src) {
+    const p = fetchProgress[src.id];
+    if (p) {
+      if (p.status === 'downloading') return `<span style="color:var(--info);font-size:11px">↓ ${fmtBytes(p.downloaded)}</span>`;
+      if (p.status === 'connecting') return `<span style="color:var(--info);font-size:11px">…</span>`;
+      if (p.status === 'done') return `<span style="color:var(--success);font-size:11px">✓ ${p.count || 0}</span>`;
+      if (p.status === 'error') return `<span style="color:var(--danger);font-size:11px">ERR</span>`;
+    }
     if (!src.last_fetched_at) return `<span style="color:var(--text-muted);font-size:11px">${t('page.ipBlacklists.never')}</span>`;
     if (src.last_fetch_status === 'ok') return `<span style="color:var(--success);font-size:11px">OK</span>`;
     return `<span style="color:var(--danger);font-size:11px" title="${ui.escHtml(src.last_fetch_error || '')}">ERR</span>`;
@@ -257,11 +286,21 @@ router.register('ip-blacklists', (container) => {
       toggleBtn.dataset.sourceId = s.id;
       toggleBtn.dataset.action = 'toggle';
 
-      return [
-        nameCell.outerHTML,
-        statusBadge(s),
-        ui.ago(s.last_fetched_at),
-        s.current_entries ?? s.last_fetch_count ?? '0',
+        const p = fetchProgress[s.id];
+        let entryCell;
+        if (p) {
+          if (p.status === 'downloading') entryCell = `<span style="color:var(--info);font-size:11px">↓ ${fmtBytes(p.downloaded)}</span>`;
+          else if (p.status === 'done' && p.count != null) entryCell = `<span style="color:var(--success)">${p.count}</span>`;
+          else entryCell = s.current_entries ?? s.last_fetch_count ?? '0';
+        } else {
+          entryCell = s.current_entries ?? s.last_fetch_count ?? '0';
+        }
+
+        return [
+          nameCell.outerHTML,
+          statusBadge(s),
+          ui.ago(s.last_fetched_at),
+          entryCell,
         toggleBtn.outerHTML,
         editBtn.outerHTML + delBtn.outerHTML,
       ];
@@ -350,6 +389,7 @@ router.register('ip-blacklists', (container) => {
 
   async function load() {
     if (_loading) return;
+    if (progressPoller) return;
     _loading = true;
     try {
       let result = [];

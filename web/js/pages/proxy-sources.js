@@ -2,6 +2,15 @@ router.register('proxy-sources', (container) => {
   let sources = [];
   let editingId = null;
   let _loading = false;
+  let fetchProgress = {};
+  let progressPoller = null;
+
+  function fmtBytes(n) {
+    if (!n) return '0B';
+    if (n >= 1048576) return (n / 1048576).toFixed(1) + 'MB';
+    if (n >= 1024) return (n / 1024).toFixed(0) + 'KB';
+    return n + 'B';
+  }
 
   function setContainerStyle() {
     container.style.display = 'flex';
@@ -32,12 +41,21 @@ router.register('proxy-sources', (container) => {
     });
 
     const refreshBtn = ui.el('button', 'btn btn-sm btn-secondary', { text: t('page.proxySources.refresh'), style: 'margin-bottom:8px;margin-left:6px' });
-    refreshBtn.addEventListener('click', () => {
+    function startFetch() {
       refreshBtn.disabled = true;
       refreshBtn.textContent = t('page.proxySources.fetching');
+      fetchProgress = {};
+      progressPoller = setInterval(() => {
+        api.proxySourceProgress().then(r => {
+          if (r && r.progress) { fetchProgress = r.progress; updateSourcesCard(sources); }
+        }).catch(() => {});
+      }, 2000);
       api.proxySourcesFetch().then(r => {
+        clearInterval(progressPoller);
+        progressPoller = null;
         refreshBtn.disabled = false;
         refreshBtn.textContent = t('page.proxySources.refresh');
+        fetchProgress = {};
         if (r.ok) {
           const parts = [];
           if (r.sources) {
@@ -64,11 +82,15 @@ router.register('proxy-sources', (container) => {
         }
         load();
       }).catch(e => {
+        clearInterval(progressPoller);
+        progressPoller = null;
         refreshBtn.disabled = false;
         refreshBtn.textContent = t('page.proxySources.refresh');
+        fetchProgress = {};
         app.toast(t('common.error', {message: e.message}), 'error');
       });
-    });
+    }
+    refreshBtn.addEventListener('click', startFetch);
 
     card.appendChild(addBtn);
     card.appendChild(refreshBtn);
@@ -230,6 +252,13 @@ router.register('proxy-sources', (container) => {
   }
 
   function statusBadge(src) {
+    const p = fetchProgress[src.id];
+    if (p) {
+      if (p.status === 'downloading') return `<span style="color:var(--info);font-size:11px">↓ ${fmtBytes(p.downloaded)}</span>`;
+      if (p.status === 'connecting') return `<span style="color:var(--info);font-size:11px">…</span>`;
+      if (p.status === 'done') return `<span style="color:var(--success);font-size:11px">✓ ${p.count || 0}</span>`;
+      if (p.status === 'error') return `<span style="color:var(--danger);font-size:11px">ERR</span>`;
+    }
     if (!src.last_fetched_at) return `<span style="color:var(--text-muted);font-size:11px">${t('page.proxySources.never')}</span>`;
     if (src.last_fetch_status === 'ok') return `<span style="color:var(--success);font-size:11px">OK</span>`;
     return `<span style="color:var(--danger);font-size:11px" title="${ui.escHtml(src.last_fetch_error || '')}">ERR</span>`;
@@ -299,13 +328,23 @@ router.register('proxy-sources', (container) => {
       toggleBtn.dataset.sourceId = s.id;
       toggleBtn.dataset.action = 'toggle';
 
-      return [
-        nameCell.outerHTML,
-        protocolBadge(s.protocol),
-        statusBadge(s),
-        ui.ago(s.last_fetched_at),
-        qualityBadge(s.last_working, s.last_dead),
-        `<span style="color:var(--text-secondary)">${s.current_entries ?? s.last_fetch_count ?? '0'}</span>`,
+        const p = fetchProgress[s.id];
+        let addrCell;
+        if (p) {
+          if (p.status === 'downloading') addrCell = `<span style="color:var(--info);font-size:11px">↓ ${fmtBytes(p.downloaded)}</span>`;
+          else if (p.status === 'done' && p.count != null) addrCell = `<span style="color:var(--success)">${p.count}</span>`;
+          else addrCell = `<span style="color:var(--text-secondary)">${s.current_entries ?? s.last_fetch_count ?? '0'}</span>`;
+        } else {
+          addrCell = `<span style="color:var(--text-secondary)">${s.current_entries ?? s.last_fetch_count ?? '0'}</span>`;
+        }
+
+        return [
+          nameCell.outerHTML,
+          protocolBadge(s.protocol),
+          statusBadge(s),
+          ui.ago(s.last_fetched_at),
+          qualityBadge(s.last_working, s.last_dead),
+          addrCell,
         `<span style="color:var(--success)">${s.last_working}</span>`,
         `<span style="color:var(--danger)">${s.last_dead}</span>`,
         toggleBtn.outerHTML,
@@ -356,6 +395,7 @@ router.register('proxy-sources', (container) => {
 
   async function load() {
     if (_loading) return;
+    if (progressPoller) return;
     _loading = true;
     try {
       let result = [];

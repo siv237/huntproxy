@@ -14,6 +14,7 @@ List types:
 import asyncio
 import time
 from hunt.constants import DEFAULT_BLOCKLIST_SOURCES, logger
+from hunt.download import stream_download
 
 
 class BlocklistsMixin:
@@ -262,10 +263,6 @@ class BlocklistsMixin:
             if not enabled_sources:
                 return results
 
-            STALL_TIMEOUT = 45  # seconds without any data → abort
-            CONNECT_TIMEOUT = 90  # seconds to wait for first byte
-            CHUNK = 65536
-
             async def fetch(s):
                 source_id = s["id"]
                 source_name = s["name"]
@@ -287,37 +284,22 @@ class BlocklistsMixin:
                         stdout=asyncio.subprocess.PIPE,
                         stderr=asyncio.subprocess.DEVNULL,
                     )
-                    chunks = []
-                    downloaded = 0
-                    last_emit = 0
-                    first_byte = True
-                    while True:
-                        to = CONNECT_TIMEOUT if first_byte else STALL_TIMEOUT
-                        try:
-                            chunk = await asyncio.wait_for(
-                                proc.stdout.read(CHUNK), timeout=to)
-                        except asyncio.TimeoutError:
-                            proc.kill()
-                            await proc.wait()
-                            label = "connect" if first_byte else "stall"
-                            self._update_blocklist_fetch_error(
-                                source_id, "%s: no data for %ds" % (label, to), source_name)
-                            return
-                        if not chunk:
-                            break
-                        first_byte = False
-                        chunks.append(chunk)
-                        downloaded += len(chunk)
-                        self._blocklist_fetch_progress[source_id]["downloaded"] = downloaded
+                    last_emit = [0]
+                    def on_chunk(dl):
+                        self._blocklist_fetch_progress[source_id]["downloaded"] = dl
                         self._blocklist_fetch_progress[source_id]["status"] = "downloading"
                         now = time.time()
-                        if now - last_emit > 5:
-                            last_emit = now
-                            self._emit(f"Blocklist {source_name}: {downloaded // 1024}KB", "info")
-                    await proc.wait()
+                        if now - last_emit[0] > 5:
+                            last_emit[0] = now
+                            self._emit(f"Blocklist {source_name}: {dl // 1024}KB", "info")
+                    try:
+                        text = await stream_download(proc, on_chunk=on_chunk)
+                    except TimeoutError as e:
+                        self._update_blocklist_fetch_error(source_id, str(e), source_name)
+                        self._blocklist_fetch_progress[source_id]["status"] = "error"
+                        return
                     now = time.time()
                     if proc.returncode == 0:
-                        text = b"".join(chunks).decode(errors="replace")
                         self._blocklist_fetch_progress[source_id]["status"] = "parsing"
                         if list_type == "ip":
                             count = self._parse_ip_blacklist(text, source_id, source_name, persist=True)

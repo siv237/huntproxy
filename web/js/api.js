@@ -103,6 +103,7 @@ const api = {
   proxySourceDelete(id) { return this.request(`/api/proxy-sources/${encodeURIComponent(id)}`, 'DELETE'); },
   proxySourceToggle(id) { return this.request(`/api/proxy-sources/${encodeURIComponent(id)}/toggle`, 'POST'); },
   proxySourcesFetch() { return this.request('/api/proxy-sources/fetch', 'POST'); },
+  proxySourceProgress() { return this.request('/api/proxy-sources/progress'); },
 
   // IP Blacklist Sources
   ipBlacklistSources() { return this.request('/api/ip-blacklists'); },
@@ -112,6 +113,7 @@ const api = {
   ipBlacklistDelete(id) { return this.request(`/api/ip-blacklists/${encodeURIComponent(id)}`, 'DELETE'); },
   ipBlacklistToggle(id) { return this.request(`/api/ip-blacklists/${encodeURIComponent(id)}/toggle`, 'POST'); },
   ipBlacklistFetch() { return this.request('/api/ip-blacklists/fetch', 'POST'); },
+  ipBlacklistProgress() { return this.request('/api/ip-blacklists/progress'); },
   ipBlacklistEntries(params = {}) {
     const q = new URLSearchParams(params).toString();
     return this.request(`/api/ip-blacklist/entries?${q}`);

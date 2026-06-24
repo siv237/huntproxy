@@ -1486,6 +1486,9 @@ class HuntServer:
             finally:
                 self.state._fetching_sources = False
 
+        if path == "/api/proxy-sources/progress" and method == "GET":
+            return json.dumps({"progress": self.state.get_proxy_source_fetch_progress()}), 200, "application/json"
+
         if path.startswith("/api/proxy-sources/") and not path.endswith("/toggle"):
             source_id = unquote(path[len("/api/proxy-sources/"):])
             if method == "GET":
@@ -1544,6 +1547,9 @@ class HuntServer:
                 return json.dumps({"ok": False, "error": str(e)}), 500, "application/json"
             finally:
                 self.state._fetching_ip_blacklists = False
+
+        if path == "/api/ip-blacklists/progress" and method == "GET":
+            return json.dumps({"progress": self.state.get_ip_blacklist_fetch_progress()}), 200, "application/json"
 
         if path.startswith("/api/ip-blacklists/") and not path.endswith("/toggle") and not path.endswith("/fetch"):
             source_id = unquote(path[len("/api/ip-blacklists/"):])
