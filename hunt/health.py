@@ -202,8 +202,6 @@ class HealthMixin:
                 self._emit(f"Initial validation done. Starting health-check loop", "info")
                 self.phase = self.PHASE_DONE
                 self._emit("Hunt cycle complete", "ok")
-
-                asyncio.create_task(self._health_loop())
             except asyncio.CancelledError:
                 self._emit("Hunt cancelled", "warn")
             except Exception as e:

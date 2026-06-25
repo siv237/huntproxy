@@ -6,6 +6,7 @@ import signal
 import yaml
 from hunt.constants import CONFIG_PATH, DATA_DIR
 from hunt.logging_config import setup_logging
+from hunt.scheduler import SchedulerEngine
 from hunt.server import HuntServer
 from hunt.state import HuntState
 
@@ -41,15 +42,11 @@ async def amain(config: dict):
     if restored:
         state._emit(f"Restored services after restart: {', '.join(restored)}", "info")
 
-    # Start periodic history recording (every 60s)
-    asyncio.create_task(state._history_loop())
-
-    # Start periodic IP blacklist refresh
-    if state.ip_blacklist_enabled:
-        asyncio.create_task(state._ip_blacklist_loop())
-
-    # Start periodic country blocklist refresh
-    asyncio.create_task(state._blocklist_loop())
+    # Start the unified scheduler (replaces individual _history_loop,
+    # _ip_blacklist_loop, _blocklist_loop, and _health_loop tasks).
+    scheduler = SchedulerEngine(state)
+    state.scheduler = scheduler
+    await scheduler.start()
 
     print("=" * 56)
     print(f"  huntproxy HUNT — web UI: http://{host}:{port}/")
@@ -58,6 +55,7 @@ async def amain(config: dict):
     print("=" * 56)
 
     async def shutdown():
+        await scheduler.stop()
         tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
         for task in tasks:
             task.cancel()

@@ -1727,6 +1727,118 @@ class HuntServer:
                 result = await self.state.test_custom_proxy(proxy_id)
                 return json.dumps(result), 200, "application/json"
 
+        # === Scheduler ===
+        if path == "/api/schedules" and method == "GET":
+            sched = getattr(self.state, "scheduler", None)
+            if sched is None:
+                return json.dumps({"schedules": [], "status": {"running": False, "paused": False, "running_tasks": []}}), 200, "application/json"
+            return json.dumps({"schedules": sched.list_schedules(), "status": sched.get_status()}), 200, "application/json"
+
+        if path == "/api/schedules" and method == "POST":
+            try:
+                data = json.loads(body or b"{}")
+            except Exception:
+                data = {}
+            sched = getattr(self.state, "scheduler", None)
+            if sched is None:
+                return json.dumps({"ok": False, "error": "scheduler not initialized"}), 500, "application/json"
+            try:
+                result = await sched.add_schedule(
+                    sid=data.get("id", ""),
+                    name=data.get("name", ""),
+                    task_type=data.get("task_type", ""),
+                    interval_sec=int(data.get("interval_sec", 3600)),
+                    config=data.get("config", {}),
+                    enabled=data.get("enabled", True),
+                )
+                self.state._log_action("schedule.add", data.get("id", ""))
+                return json.dumps({"ok": True, "schedule": result}), 200, "application/json"
+            except ValueError as e:
+                return json.dumps({"ok": False, "error": str(e)}), 400, "application/json"
+
+        if path.startswith("/api/schedules/status") and method == "GET":
+            sched = getattr(self.state, "scheduler", None)
+            if sched is None:
+                return json.dumps({"running": False, "paused": False, "running_tasks": []}), 200, "application/json"
+            return json.dumps(sched.get_status()), 200, "application/json"
+
+        if path == "/api/schedules/pause" and method == "POST":
+            sched = getattr(self.state, "scheduler", None)
+            if sched is None:
+                return json.dumps({"ok": False, "error": "scheduler not initialized"}), 500, "application/json"
+            sched.pause_all()
+            self.state._log_action("schedule.pause_all")
+            return json.dumps({"ok": True, "paused": True}), 200, "application/json"
+
+        if path == "/api/schedules/resume" and method == "POST":
+            sched = getattr(self.state, "scheduler", None)
+            if sched is None:
+                return json.dumps({"ok": False, "error": "scheduler not initialized"}), 500, "application/json"
+            sched.resume_all()
+            self.state._log_action("schedule.resume_all")
+            return json.dumps({"ok": True, "paused": False}), 200, "application/json"
+
+        if path.startswith("/api/schedules/") and path.endswith("/toggle") and method == "POST":
+            sid = path[len("/api/schedules/"):-len("/toggle")]
+            sched = getattr(self.state, "scheduler", None)
+            if sched is None:
+                return json.dumps({"ok": False, "error": "scheduler not initialized"}), 500, "application/json"
+            result = await sched.toggle_schedule(sid)
+            if result is None:
+                return json.dumps({"ok": False, "error": "not found"}), 404, "application/json"
+            self.state._log_action("schedule.toggle", sid)
+            return json.dumps({"ok": True, "enabled": result["enabled"]}), 200, "application/json"
+
+        if path.startswith("/api/schedules/") and path.endswith("/run") and method == "POST":
+            sid = path[len("/api/schedules/"):-len("/run")]
+            sched = getattr(self.state, "scheduler", None)
+            if sched is None:
+                return json.dumps({"ok": False, "error": "scheduler not initialized"}), 500, "application/json"
+            ok = await sched.trigger_now(sid)
+            if not ok:
+                return json.dumps({"ok": False, "error": "not found"}), 404, "application/json"
+            self.state._log_action("schedule.run_now", sid)
+            return json.dumps({"ok": True}), 200, "application/json"
+
+        if path.startswith("/api/schedules/") and method == "POST":
+            sid = path[len("/api/schedules/"):]
+            try:
+                data = json.loads(body or b"{}")
+            except Exception:
+                data = {}
+            sched = getattr(self.state, "scheduler", None)
+            if sched is None:
+                return json.dumps({"ok": False, "error": "scheduler not initialized"}), 500, "application/json"
+            try:
+                result = await sched.update_schedule(sid, **data)
+                if result is None:
+                    return json.dumps({"ok": False, "error": "not found"}), 404, "application/json"
+                self.state._log_action("schedule.update", sid)
+                return json.dumps({"ok": True, "schedule": result}), 200, "application/json"
+            except ValueError as e:
+                return json.dumps({"ok": False, "error": str(e)}), 400, "application/json"
+
+        if path.startswith("/api/schedules/") and method == "DELETE":
+            sid = path[len("/api/schedules/"):]
+            sched = getattr(self.state, "scheduler", None)
+            if sched is None:
+                return json.dumps({"ok": False, "error": "scheduler not initialized"}), 500, "application/json"
+            ok = await sched.delete_schedule(sid)
+            if ok:
+                self.state._log_action("schedule.delete", sid)
+            return json.dumps({"ok": ok}), 200, "application/json"
+
+        if path.startswith("/api/schedules/") and path.endswith("/run") and method == "POST":
+            sid = path[len("/api/schedules/"):-len("/run")]
+            sched = getattr(self.state, "scheduler", None)
+            if sched is None:
+                return json.dumps({"ok": False, "error": "scheduler not initialized"}), 500, "application/json"
+            ok = await sched.trigger_now(sid)
+            if not ok:
+                return json.dumps({"ok": False, "error": "not found"}), 404, "application/json"
+            self.state._log_action("schedule.run_now", sid)
+            return json.dumps({"ok": True}), 200, "application/json"
+
         # === Canary / Internet Connectivity ===
         if path == "/api/canary/status" and method == "GET":
             result = self.state.get_canary_status()

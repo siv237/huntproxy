@@ -158,4 +158,15 @@ const api = {
     return res.blob();
   },
   restoreBackup(groups, data) { return this.request('/api/restore', 'POST', { groups, data }); },
+
+  // Scheduler
+  schedules() { return this.request('/api/schedules'); },
+  scheduleCreate(data) { return this.request('/api/schedules', 'POST', data); },
+  scheduleUpdate(id, data) { return this.request(`/api/schedules/${encodeURIComponent(id)}`, 'POST', data); },
+  scheduleDelete(id) { return this.request(`/api/schedules/${encodeURIComponent(id)}`, 'DELETE'); },
+  scheduleToggle(id) { return this.request(`/api/schedules/${encodeURIComponent(id)}/toggle`, 'POST'); },
+  scheduleRun(id) { return this.request(`/api/schedules/${encodeURIComponent(id)}/run`, 'POST'); },
+  schedulesStatus() { return this.request('/api/schedules/status'); },
+  schedulesPause() { return this.request('/api/schedules/pause', 'POST'); },
+  schedulesResume() { return this.request('/api/schedules/resume', 'POST'); },
 };

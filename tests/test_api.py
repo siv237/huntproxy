@@ -214,3 +214,161 @@ class TestApiStatic:
         assert status in (200, 404)
         if status == 200:
             assert headers.get("content-type", "").startswith("application/javascript")
+
+
+class TestApiSchedules:
+    @pytest.mark.asyncio
+    async def test_schedules_list_empty(self, http_client, api_server):
+        _, state = api_server
+        resp = await http_client("GET", "/api/schedules")
+        status, data = json_body(resp)
+        assert status == 200
+        assert "schedules" in data
+        assert isinstance(data["schedules"], list)
+
+    @pytest.mark.asyncio
+    async def test_schedules_list_with_scheduler(self, http_client, api_server):
+        _, state = api_server
+        from hunt.scheduler import SchedulerEngine
+        sched = SchedulerEngine(state)
+        await sched._load_schedules()
+        await sched._seed_defaults_if_empty()
+        state.scheduler = sched
+        try:
+            resp = await http_client("GET", "/api/schedules")
+            status, data = json_body(resp)
+            assert status == 200
+            assert len(data["schedules"]) > 0
+            assert "status" in data
+        finally:
+            await sched.stop()
+
+    @pytest.mark.asyncio
+    async def test_schedule_create(self, http_client, api_server):
+        _, state = api_server
+        from hunt.scheduler import SchedulerEngine
+        sched = SchedulerEngine(state)
+        await sched._load_schedules()
+        await sched._seed_defaults_if_empty()
+        state.scheduler = sched
+        try:
+            body = json.dumps({
+                "id": "test_api_sched",
+                "name": "Test API Schedule",
+                "task_type": "clear_dead",
+                "interval_sec": 600,
+            })
+            resp = await http_client("POST", "/api/schedules", body)
+            status, data = json_body(resp)
+            assert status == 200
+            assert data["ok"] is True
+            assert data["schedule"]["id"] == "test_api_sched"
+        finally:
+            await sched.stop()
+
+    @pytest.mark.asyncio
+    async def test_schedule_update(self, http_client, api_server):
+        _, state = api_server
+        from hunt.scheduler import SchedulerEngine
+        sched = SchedulerEngine(state)
+        await sched._load_schedules()
+        await sched._seed_defaults_if_empty()
+        state.scheduler = sched
+        try:
+            body = json.dumps({"interval_sec": 300})
+            resp = await http_client("POST", "/api/schedules/history", body)
+            status, data = json_body(resp)
+            assert status == 200
+            assert data["ok"] is True
+            assert data["schedule"]["interval_sec"] == 300
+        finally:
+            await sched.stop()
+
+    @pytest.mark.asyncio
+    async def test_schedule_delete(self, http_client, api_server):
+        _, state = api_server
+        from hunt.scheduler import SchedulerEngine
+        sched = SchedulerEngine(state)
+        await sched._load_schedules()
+        await sched._seed_defaults_if_empty()
+        state.scheduler = sched
+        try:
+            resp = await http_client("DELETE", "/api/schedules/history")
+            status, data = json_body(resp)
+            assert status == 200
+            assert data["ok"] is True
+        finally:
+            await sched.stop()
+
+    @pytest.mark.asyncio
+    async def test_schedule_toggle(self, http_client, api_server):
+        _, state = api_server
+        from hunt.scheduler import SchedulerEngine
+        sched = SchedulerEngine(state)
+        await sched._load_schedules()
+        await sched._seed_defaults_if_empty()
+        state.scheduler = sched
+        try:
+            resp = await http_client("POST", "/api/schedules/history/toggle")
+            status, data = json_body(resp)
+            assert status == 200
+            assert data["ok"] is True
+            assert "enabled" in data
+        finally:
+            await sched.stop()
+
+    @pytest.mark.asyncio
+    async def test_schedule_run_now(self, http_client, api_server):
+        _, state = api_server
+        from hunt.scheduler import SchedulerEngine
+        sched = SchedulerEngine(state)
+        await sched._load_schedules()
+        await sched._seed_defaults_if_empty()
+        state.scheduler = sched
+        try:
+            resp = await http_client("POST", "/api/schedules/history/run")
+            status, data = json_body(resp)
+            assert status == 200
+            assert data["ok"] is True
+        finally:
+            await sched.stop()
+
+    @pytest.mark.asyncio
+    async def test_schedules_status(self, http_client, api_server):
+        _, state = api_server
+        from hunt.scheduler import SchedulerEngine
+        sched = SchedulerEngine(state)
+        await sched._load_schedules()
+        await sched._seed_defaults_if_empty()
+        state.scheduler = sched
+        try:
+            resp = await http_client("GET", "/api/schedules/status")
+            status, data = json_body(resp)
+            assert status == 200
+            assert "running" in data
+            assert "paused" in data
+        finally:
+            await sched.stop()
+
+    @pytest.mark.asyncio
+    async def test_schedules_pause_resume(self, http_client, api_server):
+        _, state = api_server
+        from hunt.scheduler import SchedulerEngine
+        sched = SchedulerEngine(state)
+        await sched._load_schedules()
+        await sched._seed_defaults_if_empty()
+        state.scheduler = sched
+        try:
+            resp = await http_client("POST", "/api/schedules/pause")
+            status, data = json_body(resp)
+            assert status == 200
+            assert data["ok"] is True
+            assert data["paused"] is True
+
+            resp = await http_client("POST", "/api/schedules/resume")
+            status, data = json_body(resp)
+            assert status == 200
+            assert data["ok"] is True
+            assert data["paused"] is False
+        finally:
+            await sched.stop()

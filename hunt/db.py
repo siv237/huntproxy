@@ -315,6 +315,19 @@ class DbMixin:
                     latency REAL NOT NULL DEFAULT 0,
                     score REAL NOT NULL DEFAULT 0
                 );
+                CREATE TABLE IF NOT EXISTS schedules (
+                    id              TEXT PRIMARY KEY,
+                    name            TEXT NOT NULL,
+                    task_type       TEXT NOT NULL,
+                    enabled         INTEGER NOT NULL DEFAULT 1,
+                    interval_sec    INTEGER NOT NULL DEFAULT 3600,
+                    config          TEXT NOT NULL DEFAULT '{}',
+                    last_run        REAL NOT NULL DEFAULT 0,
+                    next_run        REAL NOT NULL DEFAULT 0,
+                    last_status     TEXT NOT NULL DEFAULT 'never',
+                    last_duration_s REAL NOT NULL DEFAULT 0,
+                    last_error      TEXT NOT NULL DEFAULT ''
+                );
             """)
             conn.commit()
             self._migrate_state_db_columns(conn)

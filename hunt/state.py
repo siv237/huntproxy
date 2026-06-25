@@ -131,6 +131,9 @@ class HuntState(DbMixin, EventsMixin, SnapshotMixin, HealthMixin, CheckingMixin,
             self.ip_blacklist_enabled = ip_bl_cfg.get("enabled", True)
             self.ip_blacklist_fetch_interval = ip_bl_cfg.get("fetch_interval", 3600)
 
+            # Scheduler (set by main.py after construction)
+            self.scheduler = None
+
             self.started_at = time.time()
             self._db_path = DATA_DIR / "stats.db"
             self._state_db_path = DATA_DIR / "state.db"

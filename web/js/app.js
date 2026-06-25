@@ -8,7 +8,7 @@ const app = {
     analytics: 'proxies', 'custom-proxies': 'proxies',
     'proxy-sources': 'lists', blacklist: 'lists', 'ip-blacklists': 'lists', blocklists: 'lists', 'domain-lists': 'lists',
     logs: 'insights', actions: 'insights',
-    settings: 'system', downloads: 'system', api: 'system', about: 'system',
+    settings: 'system', schedules: 'system', downloads: 'system', api: 'system', about: 'system',
   },
 
   init() {

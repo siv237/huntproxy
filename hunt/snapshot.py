@@ -64,6 +64,7 @@ class SnapshotMixin:
                 "uptime_seconds": int(time.time() - self.started_at),
                 "last_proxy_details": self.ratings.get(self.last_proxy, ProxyRating(address=self.last_proxy or "")).to_dict() if self.last_proxy else None,
                 "resources": self._get_system(),
+                "scheduler": self._get_scheduler_snapshot(),
             }
 
     def _blacklist_view(self) -> list:
@@ -327,6 +328,18 @@ class SnapshotMixin:
             except Exception as e:
                 logger.error("DB live traffic query: %s", e)
                 return {"in_bytes": 0, "out_bytes": 0, "total_bytes": 0, "requests": 0}
+
+    def _get_scheduler_snapshot(self) -> dict:
+            sched = getattr(self, "scheduler", None)
+            if sched is None:
+                return {"running": False, "paused": False, "running_tasks": [], "schedules": []}
+            status = sched.get_status()
+            return {
+                "running": status["running"],
+                "paused": status["paused"],
+                "running_tasks": status["running_tasks"],
+                "schedules": sched.list_schedules(),
+            }
 
     def _get_system(self) -> dict:
             try:
