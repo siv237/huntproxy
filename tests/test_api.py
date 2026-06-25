@@ -60,6 +60,14 @@ class TestApiHunt:
         assert status == 200
         assert data.get("ok") is True
 
+    @pytest.mark.asyncio
+    async def test_hunt_skip_rejected_when_idle(self, http_client, api_server):
+        _, state = api_server
+        resp = await http_client("POST", "/api/hunt/skip")
+        status, data = json_body(resp)
+        assert status == 200
+        assert data.get("ok") is False
+
 
 class TestApiLogs:
     @pytest.mark.asyncio

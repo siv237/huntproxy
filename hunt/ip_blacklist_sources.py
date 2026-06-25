@@ -78,6 +78,7 @@ class IPBlacklistSourcesMixin:
             self.ip_blacklist_networks.clear()
             results: dict[str, int] = {}
             self._ip_blacklist_fetch_progress = {}
+            self._active_dl_procs = []
 
             async def fetch(src: dict):
                 nonlocal results
@@ -95,6 +96,7 @@ class IPBlacklistSourcesMixin:
                             stdout=asyncio.subprocess.PIPE,
                             stderr=asyncio.subprocess.DEVNULL,
                         )
+                        self._active_dl_procs.append(proc)
                         def on_chunk(dl):
                             self._ip_blacklist_fetch_progress[source_id]["downloaded"] = dl
                             self._ip_blacklist_fetch_progress[source_id]["status"] = "downloading"
@@ -179,7 +181,7 @@ class IPBlacklistSourcesMixin:
                         self._emit(f"IP blacklist failed: {source_name}: {e}", "warn")
 
             tasks = [asyncio.create_task(fetch(s)) for s in enabled_sources]
-            await asyncio.gather(*tasks)
+            await self._gather_skip_aware(tasks)
             self._load_ip_blacklist_from_db(accumulate=False)
             self._save_ip_blacklist()
             self._refresh_ip_blacklist_hits()

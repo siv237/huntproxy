@@ -277,6 +277,7 @@ class BlocklistsMixin:
         """Download all enabled blocklist sources. Returns {source_id: count}."""
         self._fetching_blocklists = True
         self._blocklist_fetch_progress = {}
+        self._active_dl_procs = []
         results = {}
         try:
             conn = self._db()
@@ -308,6 +309,7 @@ class BlocklistsMixin:
                         stdout=asyncio.subprocess.PIPE,
                         stderr=asyncio.subprocess.DEVNULL,
                     )
+                    self._active_dl_procs.append(proc)
                     last_emit = [0]
                     def on_chunk(dl):
                         self._blocklist_fetch_progress[source_id]["downloaded"] = dl
@@ -359,7 +361,7 @@ class BlocklistsMixin:
                     self._blocklist_fetch_progress[source_id]["status"] = "error"
 
             tasks = [asyncio.create_task(fetch(s)) for s in enabled_sources]
-            await asyncio.gather(*tasks)
+            await self._gather_skip_aware(tasks)
 
             if any(s["list_type"] == "ip" for s in enabled_sources):
                 self._load_ip_blacklist_from_db(accumulate=False)

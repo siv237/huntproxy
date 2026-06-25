@@ -79,6 +79,62 @@ class HealthMixin:
             self._emit("Hunt RESUMED", "ok")
             return True
 
+    def skip_phase(self) -> bool:
+            """Abort the current download/blacklist/validation phase and let the
+            hunt cycle continue with whatever has been collected so far."""
+            if not self.task or self.task.done():
+                return False
+            if self.phase not in (self.PHASE_DOWNLOAD, self.PHASE_BLACKLIST, self.PHASE_VALIDATE):
+                return False
+            self._skip_requested = True
+            self._skip_event.set()
+            self._emit(f"Skipping {self.phase} phase...", "warn")
+            return True
+
+    def _reset_skip(self):
+            self._skip_requested = False
+            try:
+                self._skip_event.clear()
+            except Exception:
+                pass
+
+    async def _kill_active_downloads(self):
+            procs = getattr(self, '_active_dl_procs', None)
+            if not procs:
+                return
+            for p in procs:
+                try:
+                    p.kill()
+                except Exception:
+                    pass
+            self._active_dl_procs = []
+
+    async def _gather_skip_aware(self, tasks):
+            """Await ``gather(tasks, return_exceptions=True)``.
+
+            If a skip was requested via :meth:`skip_phase`, pending tasks are
+            cancelled, in-flight download subprocesses are killed and an empty
+            list is returned so the caller can proceed to the next phase.
+            """
+            gather_task = asyncio.ensure_future(asyncio.gather(*tasks, return_exceptions=True))
+            skip_task = asyncio.ensure_future(self._skip_event.wait())
+            done, _pending = await asyncio.wait(
+                {gather_task, skip_task}, return_when=asyncio.FIRST_COMPLETED,
+            )
+            if skip_task in done and not gather_task.done():
+                for t in tasks:
+                    if not t.done():
+                        t.cancel()
+                await self._kill_active_downloads()
+                try:
+                    await gather_task
+                except Exception:
+                    pass
+                self._reset_skip()
+                return []
+            skip_task.cancel()
+            return gather_task.result()
+
     async def _hunt_cycle(self):
             try:
                 self._canary_task = asyncio.create_task(self._canary_loop())
@@ -132,6 +188,8 @@ class HealthMixin:
                 self.checking_total = len(raw)
                 self.checked = 0
                 self.working = 0
+                self.new_working = 0
+                self.confirmed_working = 0
                 self.failed = 0
                 self._emit(f"Validating {len(raw)} proxies...", "info")
 
@@ -404,6 +462,8 @@ class HealthMixin:
             saved_checking_total = self.checking_total
             saved_checked = self.checked
             saved_working = self.working
+            saved_new_working = self.new_working
+            saved_confirmed_working = self.confirmed_working
             saved_failed = self.failed
             saved_downloaded = self.downloaded
             saved_last_proxy = self.last_proxy
@@ -439,6 +499,8 @@ class HealthMixin:
                     self.checking_total = len(candidates)
                     self.checked = 0
                     self.working = 0
+                    self.new_working = 0
+                    self.confirmed_working = 0
                     self.failed = 0
                     self._fail_streak = 0
                     self._check_streak = 0
@@ -520,6 +582,7 @@ class HealthMixin:
                                     if ok:
                                         ok_count += 1
                                         self.working = ok_count
+                                        self.confirmed_working = ok_count
                                         self.last_proxy = r.address
                                         self.last_country = country
                                     else:
@@ -571,6 +634,8 @@ class HealthMixin:
                     self.checking_total = saved_checking_total
                     self.checked = min(saved_checked, saved_checking_total)
                     self.working = saved_working
+                    self.new_working = saved_new_working
+                    self.confirmed_working = saved_confirmed_working
                     self.failed = saved_failed
                     self.downloaded = saved_downloaded
                     self.last_proxy = saved_last_proxy

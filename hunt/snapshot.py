@@ -35,6 +35,8 @@ class SnapshotMixin:
                     "checking_total": self.checking_total,
                     "checked": self.checked,
                     "working": self.working,
+                    "new_working": self.new_working,
+                    "confirmed_working": self.confirmed_working,
                     "failed": self.failed,
                     "last_proxy": self.last_proxy,
                     "last_country": self.last_country,

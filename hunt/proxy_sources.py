@@ -115,6 +115,7 @@ class ProxySourcesMixin:
             self.sources_done = 0
             self._source_fetch_status = {s["id"]: "pending" for s in enabled_sources}
             self._source_fetch_progress = {}
+            self._active_dl_procs = []
             seen = set()
             source_proxies: dict[str, set] = {}
 
@@ -132,6 +133,7 @@ class ProxySourcesMixin:
                             stdout=asyncio.subprocess.PIPE,
                             stderr=asyncio.subprocess.DEVNULL,
                         )
+                        self._active_dl_procs.append(proc)
                         def on_chunk(dl):
                             self._source_fetch_progress[source_id]["downloaded"] = dl
                             self._source_fetch_progress[source_id]["status"] = "downloading"
@@ -225,7 +227,7 @@ class ProxySourcesMixin:
                         self._emit(f"Source failed: {src['name']}: {e}", "warn")
 
             tasks = [asyncio.create_task(fetch(s)) for s in enabled_sources]
-            await asyncio.gather(*tasks)
+            await self._gather_skip_aware(tasks)
             self._load_all_proxy_source_entries()
             # Build the candidate set from all enabled sources currently in the DB.
             # This keeps addresses from sources that failed to fetch this cycle.

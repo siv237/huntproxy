@@ -179,6 +179,14 @@ router.register('hunt', (container) => {
     stopBtn.addEventListener('click', () => api.huntStop().then(() => app.toast(t('page.hunt.huntStopped'))));
     btnRow.appendChild(stopBtn);
 
+    const skipBtn = ui.el('button', 'btn btn-secondary', { text: t('page.hunt.skip') });
+    skipBtn.id = 'btn-hunt-skip';
+    skipBtn.style.fontSize = '10px';
+    skipBtn.style.padding = '2px 8px';
+    skipBtn.style.display = 'none';
+    skipBtn.addEventListener('click', () => api.huntSkip().then(r => app.toast(r.ok ? t('page.hunt.skipped') : r.error)).catch(e => app.toast(t('common.error', { message: e.message }), 'error')));
+    btnRow.appendChild(skipBtn);
+
     header.appendChild(btnRow);
     card.appendChild(header);
 
@@ -193,7 +201,7 @@ router.register('hunt', (container) => {
     card.appendChild(ui.el('div', '', {
       id: 'progress-text',
       style: 'display:flex;justify-content:space-between;font-size:11px;color:var(--text-secondary)',
-      html: `<span>${t('page.hunt.checked')} <b id="p-checked">0</b> / <b id="p-total">0</b></span><span>${t('page.hunt.working')} <b id="p-working" style="color:var(--success)">0</b></span>`
+      html: `<span>${t('page.hunt.checked')} <b id="p-checked">0</b> / <b id="p-total">0</b></span><span>${t('page.hunt.newWorking')} <b id="p-new-working" style="color:var(--info)">0</b></span><span>${t('page.hunt.confirmedWorking')} <b id="p-confirmed-working" style="color:var(--success)">0</b></span>`
     }));
 
     const lp = ui.el('div', '', { id: 'last-proxy-row', style: 'margin-top:4px;font-size:11px;color:var(--text-secondary);display:flex;align-items:center;gap:4px;visibility:hidden' });
@@ -456,6 +464,12 @@ router.register('hunt', (container) => {
     if (el('btn-hunt-resume')) el('btn-hunt-resume').disabled = !paused;
     if (el('btn-hunt-stop')) el('btn-hunt-stop').disabled = !s.running && !paused;
 
+    const skipBtn = el('btn-hunt-skip');
+    if (skipBtn) {
+      const skippable = s.running && !paused && (s.phase === 'downloading' || s.phase === 'blacklists' || s.phase === 'validating');
+      skipBtn.style.display = skippable ? '' : 'none';
+    }
+
     if (el('phase-badge')) {
       const badge = el('phase-badge');
       if (paused) {
@@ -481,7 +495,8 @@ router.register('hunt', (container) => {
     if (el('progress-fill')) el('progress-fill').style.width = pct + '%';
     if (el('p-checked')) el('p-checked').textContent = c;
     if (el('p-total')) el('p-total').textContent = total;
-    if (el('p-working')) el('p-working').textContent = p.working || 0;
+    if (el('p-new-working')) el('p-new-working').textContent = p.new_working || 0;
+    if (el('p-confirmed-working')) el('p-confirmed-working').textContent = p.confirmed_working || 0;
 
     if (el('last-proxy-row')) {
       if (p.last_proxy) {

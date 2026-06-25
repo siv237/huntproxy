@@ -23,12 +23,14 @@ class CheckingMixin:
             lock = asyncio.Lock()
             ok_count = 0
             fail_count = 0
+            new_count = 0
+            confirmed_count = 0
             self._fail_streak = 0
             self._check_streak = 0
             _ctr = [0]
 
             async def check_one(addr: str):
-                nonlocal ok_count, fail_count
+                nonlocal ok_count, fail_count, new_count, confirmed_count
                 wid = _ctr[0]; _ctr[0] += 1
                 try:
                     _p = int(addr.rsplit(":", 1)[1])
@@ -120,6 +122,13 @@ class CheckingMixin:
                                     if ok:
                                         ok_count += 1
                                         self.working = ok_count
+                                        existing = self.ratings.get(addr)
+                                        if existing is not None and existing.checks_ok > 0:
+                                            confirmed_count += 1
+                                            self.confirmed_working = confirmed_count
+                                        else:
+                                            new_count += 1
+                                            self.new_working = new_count
                                         self.last_proxy = addr
                                         self.last_country = country
                                         self._fail_streak = 0
@@ -147,16 +156,30 @@ class CheckingMixin:
                     self._active_checks.pop(wid, None)
 
             tasks = [asyncio.create_task(check_one(p)) for p in proxies]
-            try:
-                await asyncio.wait_for(
-                    asyncio.gather(*tasks, return_exceptions=True),
-                    timeout=len(proxies) * (self.timeout + 10) // max(1, self.parallel) + 60,
-                )
-            except asyncio.TimeoutError:
+            gather_task = asyncio.ensure_future(asyncio.gather(*tasks, return_exceptions=True))
+            skip_task = asyncio.ensure_future(self._skip_event.wait())
+            overall_timeout = len(proxies) * (self.timeout + 10) // max(1, self.parallel) + 60
+            done, pending = await asyncio.wait(
+                {gather_task, skip_task}, timeout=overall_timeout,
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            if skip_task in done and not gather_task.done():
+                for t in tasks:
+                    if not t.done():
+                        t.cancel()
+                try:
+                    await gather_task
+                except Exception:
+                    pass
+                self._reset_skip()
+                self._emit("Validation skipped by user", "warn")
+            elif not gather_task.done():
                 for t in tasks:
                     if not t.done():
                         t.cancel()
                 self._emit("Validation timed out, cancelling stuck tasks", "warn")
+            else:
+                skip_task.cancel()
             self._save_state()
             self._save_working_file()
             self._rating_updates_since_save = 0

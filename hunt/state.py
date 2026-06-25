@@ -93,7 +93,14 @@ class HuntState(DbMixin, EventsMixin, SnapshotMixin, HealthMixin, CheckingMixin,
             self.checked: int = 0
             self.checking_total: int = 0
             self.working: int = 0
+            self.new_working: int = 0
+            self.confirmed_working: int = 0
             self.failed: int = 0
+            # Skip control: lets the operator abort the current download or
+            # validation phase and continue with what has been collected so far.
+            self._skip_requested: bool = False
+            self._skip_event: asyncio.Event = asyncio.Event()
+            self._active_dl_procs: list = []
             self.last_event: str = ""
             self.last_proxy: Optional[str] = None
             self.last_country: str = ""

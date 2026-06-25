@@ -177,6 +177,10 @@ router.register('overview', (container) => {
     stopBtn.textContent = '■';
     stopBtn.title = t('page.overview.stopHunt');
     btns.appendChild(stopBtn);
+    const skipBtn = ui.el('button', '', { id: 'pool-skip-btn', style: bstyle + ';color:var(--warning,#9a6700);display:none' });
+    skipBtn.textContent = '⏭';
+    skipBtn.title = t('page.overview.skipPhase');
+    btns.appendChild(skipBtn);
     header.appendChild(btns);
     card.appendChild(header);
 
@@ -202,7 +206,7 @@ router.register('overview', (container) => {
     details.appendChild(bar);
 
     const stats = ui.el('div', '', { style: 'display:flex;justify-content:space-between;font-size:12px;color:var(--text-secondary);gap:8px;min-width:0' });
-    stats.innerHTML = `<span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t('page.overview.checked')} <b id="pool-checked" style="color:var(--text-primary)">0</b> / <b id="pool-total" style="color:var(--text-primary)">0</b></span><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t('page.overview.working')} <b id="pool-working" style="color:var(--success)">0</b></span>`;
+    stats.innerHTML = `<span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t('page.overview.checked')} <b id="pool-checked" style="color:var(--text-primary)">0</b> / <b id="pool-total" style="color:var(--text-primary)">0</b></span><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t('page.overview.newWorking')} <b id="pool-new-working" style="color:var(--info)">0</b></span><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t('page.overview.confirmedWorking')} <b id="pool-confirmed-working" style="color:var(--success)">0</b></span>`;
     details.appendChild(stats);
     body.appendChild(details);
     card.appendChild(body);
@@ -1049,7 +1053,8 @@ router.register('overview', (container) => {
       if (el('pool-pct')) el('pool-pct').textContent = pct + '%';
       if (el('pool-checked')) el('pool-checked').textContent = checked;
       if (el('pool-total')) el('pool-total').textContent = poolTotal;
-      if (el('pool-working')) el('pool-working').textContent = isHealthCheck ? (p.working || 0) : (p.working || 0);
+      if (el('pool-new-working')) el('pool-new-working').textContent = p.new_working || 0;
+      if (el('pool-confirmed-working')) el('pool-confirmed-working').textContent = p.confirmed_working || 0;
       if (el('pool-bar-fill')) el('pool-bar-fill').style.width = pct + '%';
       if (el('pool-circle-fill')) {
         const circumference = 2 * Math.PI * 34;
@@ -1141,6 +1146,12 @@ router.register('overview', (container) => {
           stop.style.display = (s.running || s.paused) ? '' : 'none';
           stop.style.color = 'var(--danger)';
           stop.onclick = () => api.huntStop().then(() => app.toast(t('page.hunt.huntStopped'))).catch(e => app.toast(t('common.error', { message: e.message }), 'error'));
+        }
+        const skip = el('pool-skip-btn');
+        if (skip) {
+          const skippable = s.running && !s.paused && (s.phase === 'downloading' || s.phase === 'blacklists' || s.phase === 'validating');
+          skip.style.display = skippable ? '' : 'none';
+          skip.onclick = () => api.huntSkip().then(r => app.toast(r.ok ? t('page.overview.phaseSkipped') : r.error)).catch(e => app.toast(t('common.error', { message: e.message }), 'error'));
         }
       }
       if (el('pool-title')) {

@@ -579,6 +579,11 @@ class HuntServer:
             self.state._log_action("hunt.resume", "ok" if ok else "not-paused")
             return json.dumps({"ok": ok, "error": None if ok else "not paused or manual pause requires manual resume"}), 200, "application/json"
 
+        if path == "/api/hunt/skip" and method == "POST":
+            ok = self.state.skip_phase()
+            self.state._log_action("hunt.skip", "ok" if ok else "not-skippable")
+            return json.dumps({"ok": ok, "error": None if ok else "nothing to skip right now"}), 200, "application/json"
+
         if path == "/api/blacklist/add" and method == "POST":
             try:
                 data = json.loads(body or b"{}")
