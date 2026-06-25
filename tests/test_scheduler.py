@@ -457,10 +457,81 @@ class TestSchedulerExecutorHistory:
             def fake_push():
                 called.append("push")
             state._push_history = fake_push
-
             entry = ScheduleEntry(id="history", name="History", task_type="history")
             await sched._execute_history(entry)
             assert "push" in called
             await sched.stop()
 
         asyncio.run(run())
+
+
+class TestStartupCycle:
+    """run_startup_cycle must run revalidate → full hunt, in that order,
+    and only return after the hunt cycle reaches DONE/IDLE. The unified
+    scheduler is started by the caller only after this returns."""
+
+    def test_startup_cycle_order_and_completion(self, state):
+        async def run():
+            order = []
+
+            async def fake_revalidate():
+                order.append("revalidate")
+
+            async def fake_hunt_cycle():
+                order.append("hunt_start")
+                self_phase = state
+                self_phase.phase = state.PHASE_DOWNLOAD
+                await asyncio.sleep(0)
+                self_phase.phase = state.PHASE_DONE
+                order.append("hunt_done")
+
+            state._revalidate_stale_proxies = fake_revalidate
+            state._hunt_cycle = fake_hunt_cycle
+
+            await state.run_startup_cycle()
+
+            assert order == ["revalidate", "hunt_start", "hunt_done"]
+            assert state.phase == state.PHASE_DONE
+            assert state._hunt_running is True
+
+        asyncio.run(run())
+
+    def test_startup_cycle_starts_hunt_even_if_flag_was_restored(self, state):
+        async def run():
+            # Simulate a restart where _hunt_running was persisted True but
+            # no live task survived — a fresh hunt must still be started.
+            state._hunt_running = True
+            started = []
+
+            async def fake_revalidate():
+                pass
+
+            async def fake_hunt_cycle():
+                started.append(True)
+                state.phase = state.PHASE_DONE
+
+            state._revalidate_stale_proxies = fake_revalidate
+            state._hunt_cycle = fake_hunt_cycle
+
+            await state.run_startup_cycle()
+            assert started == [True]
+
+        asyncio.run(run())
+
+    def test_startup_cycle_revalidate_failure_still_runs_hunt(self, state):
+        async def run():
+            async def boom():
+                raise RuntimeError("net down")
+
+            async def fake_hunt_cycle():
+                state.phase = state.PHASE_DONE
+
+            state._revalidate_stale_proxies = boom
+            state._hunt_cycle = fake_hunt_cycle
+
+            # Should not raise despite revalidate failure.
+            await state.run_startup_cycle()
+            assert state.phase == state.PHASE_DONE
+
+        asyncio.run(run())
+

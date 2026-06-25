@@ -743,3 +743,46 @@ class HealthMixin:
             self._save_working_file()
             self._rating_updates_since_save = 0
             self._emit(f"Startup re-validation done: {ok_count} ok, {fail_count} failed", "ok")
+
+    async def run_startup_cycle(self):
+            """Run the full startup check cycle before the scheduler takes over.
+
+            Restores the pre-scheduler startup ordering: all checks complete
+            first, only then the unified scheduler may start its periodic
+            tasks. The cycle is:
+
+              1. re-validate previously-working (stale) proxies
+              2. a fresh full hunt cycle — read lists → blacklists → validate
+                 new candidates
+
+            The method blocks until both steps finish (or a 2h safety cap
+            expires), so callers can ``await`` it before starting the
+            scheduler.
+            """
+            self._emit("Startup cycle: re-validating previously-working proxies", "phase")
+            try:
+                await self._revalidate_stale_proxies()
+            except Exception as e:
+                logger.error(f"Startup re-validation failed: {e}")
+
+            self._emit("Startup cycle: starting full hunt (read lists → validate)", "phase")
+            # Always start a fresh hunt cycle on restart. A previously restored
+            # _hunt_running flag does not correspond to a live task after a
+            # restart, so force a new cycle.
+            if self.task is not None and not self.task.done():
+                self.stop_hunt()
+            self._hunt_running = False
+            self.phase = self.PHASE_IDLE
+            if not self.start_hunt():
+                logger.warning("Could not start startup hunt cycle")
+                self._emit("Startup cycle: could not start hunt", "error")
+                return
+
+            deadline = time.time() + 7200  # 2h safety cap
+            while self.task is not None and not self.task.done():
+                if time.time() > deadline:
+                    logger.error("Startup hunt cycle exceeded 2 hours, proceeding to scheduler")
+                    self._emit("Startup cycle: hunt exceeded 2h cap", "warn")
+                    break
+                await asyncio.sleep(2)
+            self._emit("Startup cycle complete — starting scheduler", "ok")

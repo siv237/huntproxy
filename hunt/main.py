@@ -19,14 +19,12 @@ async def amain(config: dict):
     server = HuntServer(state, host, port)
     state.proxy_runner = server.proxy
 
-    # Re-check stale proxies from the main working list at startup
-    asyncio.create_task(state._revalidate_stale_proxies())
+    # Start the web UI immediately so startup-cycle progress is visible.
+    server_task = asyncio.create_task(server.start())
 
-    # Restore services that were running before restart
+    # Restore proxy/SOCKS services that were running before restart.
+    # (The hunt itself is (re)started as part of the startup cycle below.)
     restored = []
-    if getattr(state, '_hunt_running', False):
-        if state.start_hunt():
-            restored.append("hunt")
     if getattr(state, '_proxy_running', False):
         proxy_port = getattr(state, '_proxy_port', 17277)
         await server.proxy.start(proxy_port)
@@ -42,20 +40,27 @@ async def amain(config: dict):
     if restored:
         state._emit(f"Restored services after restart: {', '.join(restored)}", "info")
 
-    # Start the unified scheduler (replaces individual _history_loop,
-    # _ip_blacklist_loop, _blocklist_loop, and _health_loop tasks).
-    scheduler = SchedulerEngine(state)
-    state.scheduler = scheduler
-    await scheduler.start()
-
     print("=" * 56)
     print(f"  huntproxy HUNT — web UI: http://{host}:{port}/")
     print(f"  data dir: {DATA_DIR}")
     print("  Ctrl+C to stop")
     print("=" * 56)
 
+    # Run the full startup cycle BEFORE the scheduler takes over — this
+    # restores the pre-scheduler ordering: read lists → re-validate
+    # previously-working proxies → new hunt cycle, and only then the
+    # scheduler's periodic tasks may start.
+    await state.run_startup_cycle()
+
+    # Start the unified scheduler (replaces individual _history_loop,
+    # _ip_blacklist_loop, _blocklist_loop, and _health_loop tasks).
+    scheduler = SchedulerEngine(state)
+    state.scheduler = scheduler
+    await scheduler.start()
+
     async def shutdown():
         await scheduler.stop()
+        server_task.cancel()
         tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
         for task in tasks:
             task.cancel()
@@ -69,7 +74,7 @@ async def amain(config: dict):
             pass
 
     try:
-        await server.start()
+        await server_task
     except asyncio.CancelledError:
         pass
     finally:

@@ -393,9 +393,9 @@ class SchedulerEngine:
         ok = self.state.start_hunt()
         if not ok:
             raise RuntimeError("start_hunt() returned False")
-        # Wait for the cycle to finish (phase returns to done/idle)
+        # Wait for the hunt cycle task to finish (download → blacklist → validate).
         deadline = time.time() + 3600  # 1h max
-        while self.state._hunt_running and self.state.phase not in ("done", "idle"):
+        while self.state.task is not None and not self.state.task.done():
             if time.time() > deadline:
                 raise TimeoutError("Hunt cycle exceeded 1 hour")
             await asyncio.sleep(2)
