@@ -2590,20 +2590,44 @@
 }
 
 /* === Traffic Flow Diagram === */
+.flow-controls {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
 .flow-wrap {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  display: flex;
-  justify-content: center;
   padding: 8px 4px;
 }
 
-.flow-svg {
+.card .flow-wrap .flow-svg {
+  display: block;
+  margin: 0 auto;
   width: 100%;
-  max-width: 820px;
+  max-width: none;
+  max-height: none;
   height: auto;
   min-height: 400px;
+  transition: width 0.12s ease;
+}
+
+.flow-zoom {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.flow-zoom-label {
+  font-size: 11px;
+  color: var(--text-secondary);
+  min-width: 38px;
+  text-align: center;
+  user-select: none;
 }
 
 .flow-edge-active {
@@ -2613,7 +2637,6 @@
 .flow-legend {
   display: flex;
   gap: 16px;
-  margin-top: 10px;
   flex-wrap: wrap;
 }
 

@@ -650,6 +650,7 @@
       "matchDecision": "Domain match?",
       "noMatch": "no match → default",
       "defaultRoute": "Default Route",
+      "domainRules": "Domain Rules",
       "directMode": "Direct mode",
       "serverRunning": "Server running",
       "stopped": "Server stopped"

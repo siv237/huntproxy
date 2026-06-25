@@ -5,6 +5,12 @@ router.register('traffic-flow', (container) => {
   let customProxies = [];
   let traceResult = null;
   let _loading = false;
+  let zoom = 1;
+
+  const ZOOM_MIN = 0.4;
+  const ZOOM_MAX = 3;
+  const ZOOM_STEP = 0.15;
+  const BASE_W = 820;
 
   function setContainerStyle() {
     container.style.display = 'flex';
@@ -17,53 +23,80 @@ router.register('traffic-flow', (container) => {
   function build() {
     container.innerHTML = '';
     setContainerStyle();
-    container.appendChild(buildTopCard());
-    const flowCard = ui.card(t('page.trafficFlow.diagram'));
+
+    const flowCard = ui.card(t('page.trafficFlow.title'));
     flowCard.id = 'card-traffic-flow';
     flowCard.style.flex = '1';
     flowCard.style.display = 'flex';
     flowCard.style.flexDirection = 'column';
     flowCard.style.minHeight = '0';
-    const wrap = ui.el('div', 'flow-wrap', { id: 'flow-wrap' });
-    flowCard.appendChild(wrap);
-    container.appendChild(flowCard);
-  }
 
-  function buildTopCard() {
-    const card = ui.card(t('page.trafficFlow.title'));
-    card.id = 'card-flow-top';
-
-    const row = ui.el('div', '', { style: 'display:flex;gap:8px;align-items:center;flex-wrap:wrap' });
+    const controls = ui.el('div', 'flow-controls');
 
     const statusBadge = ui.el('span', '', { id: 'flow-routing-badge', style: 'font-size:11px;padding:3px 10px;border-radius:10px;font-weight:600' });
-    row.appendChild(statusBadge);
+    controls.appendChild(statusBadge);
 
     const serverBadge = ui.el('span', '', { id: 'flow-server-badge', style: 'font-size:11px;padding:3px 10px;border-radius:10px;font-weight:600' });
-    row.appendChild(serverBadge);
-
-    const spacer = ui.el('div', '', { style: 'flex:1' });
-    row.appendChild(spacer);
-
-    const input = ui.el('input', '', { id: 'flow-trace-input', type: 'text', placeholder: t('page.trafficFlow.tracePlaceholder'), style: 'width:200px;padding:5px 10px;font-size:12px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--bg);color:var(--text-primary)' });
-    row.appendChild(input);
-
-    const traceBtn = ui.el('button', 'btn btn-sm btn-primary', { text: t('page.trafficFlow.trace') });
-    traceBtn.addEventListener('click', () => doTrace(input.value.trim()));
-    row.appendChild(traceBtn);
-
-    const clearBtn = ui.el('button', 'btn btn-sm btn-ghost', { text: t('common.clear') });
-    clearBtn.addEventListener('click', () => { input.value = ''; traceResult = null; renderFlow(); });
-    row.appendChild(clearBtn);
-
-    card.appendChild(row);
+    controls.appendChild(serverBadge);
 
     const legend = ui.el('div', 'flow-legend');
     legend.appendChild(legendItem('var(--success)', t('page.trafficFlow.activePath')));
     legend.appendChild(legendItem('var(--border)', t('page.trafficFlow.inactivePath')));
     legend.appendChild(legendItem('var(--accent)', t('page.trafficFlow.decision')));
-    card.appendChild(legend);
+    controls.appendChild(legend);
 
-    return card;
+    const spacer = ui.el('div', '', { style: 'flex:1' });
+    controls.appendChild(spacer);
+
+    const zoomGroup = ui.el('div', 'flow-zoom');
+    const zOut = ui.el('button', 'btn btn-sm btn-ghost', { text: '\u2212' });
+    zOut.addEventListener('click', () => setZoom(zoom - ZOOM_STEP));
+    zoomGroup.appendChild(zOut);
+
+    const zLabel = ui.el('span', 'flow-zoom-label', { id: 'flow-zoom-label', text: '100%' });
+    zoomGroup.appendChild(zLabel);
+
+    const zIn = ui.el('button', 'btn btn-sm btn-ghost', { text: '+' });
+    zIn.addEventListener('click', () => setZoom(zoom + ZOOM_STEP));
+    zoomGroup.appendChild(zIn);
+
+    const zReset = ui.el('button', 'btn btn-sm btn-ghost', { text: '1:1' });
+    zReset.addEventListener('click', () => setZoom(1));
+    zoomGroup.appendChild(zReset);
+    controls.appendChild(zoomGroup);
+
+    const input = ui.el('input', '', { id: 'flow-trace-input', type: 'text', placeholder: t('page.trafficFlow.tracePlaceholder'), style: 'width:200px;padding:5px 10px;font-size:12px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--bg);color:var(--text-primary)' });
+    controls.appendChild(input);
+
+    const traceBtn = ui.el('button', 'btn btn-sm btn-primary', { text: t('page.trafficFlow.trace') });
+    traceBtn.addEventListener('click', () => doTrace(input.value.trim()));
+    controls.appendChild(traceBtn);
+
+    const clearBtn = ui.el('button', 'btn btn-sm btn-ghost', { text: t('common.clear') });
+    clearBtn.addEventListener('click', () => { input.value = ''; traceResult = null; renderFlow(); });
+    controls.appendChild(clearBtn);
+
+    flowCard.appendChild(controls);
+
+    const wrap = ui.el('div', 'flow-wrap', { id: 'flow-wrap' });
+    wrap.addEventListener('wheel', (e) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      setZoom(zoom + (e.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP));
+    }, { passive: false });
+    flowCard.appendChild(wrap);
+
+    container.appendChild(flowCard);
+  }
+
+  function setZoom(v) {
+    zoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, Math.round(v * 100) / 100));
+    const label = document.getElementById('flow-zoom-label');
+    if (label) label.textContent = Math.round(zoom * 100) + '%';
+    const svg = document.querySelector('#flow-wrap .flow-svg');
+    if (svg) {
+      svg.style.width = (BASE_W * zoom) + 'px';
+    }
   }
 
   function legendItem(color, label) {
@@ -98,15 +131,7 @@ router.register('traffic-flow', (container) => {
       return cp ? cp.name : route.slice(7);
     }
     if (route.startsWith('proxy:')) return route.slice(6);
-    return route || '—';
-  }
-
-  function currentActiveRoute() {
-    if (traceResult && traceResult.route) return traceResult.route;
-    if (routingStatus && routingStatus.enabled) return routingStatus.default_route || 'direct';
-    if (proxyStatus && proxyStatus.direct_mode) return 'direct';
-    if (proxyStatus && proxyStatus.active_proxy) return 'proxy:' + (proxyStatus.active_proxy.address || '');
-    return 'pool';
+    return route || '\u2014';
   }
 
   function renderFlow() {
@@ -118,83 +143,85 @@ router.register('traffic-flow', (container) => {
     const running = !!(proxyStatus && proxyStatus.running);
     const directMode = !!(proxyStatus && proxyStatus.direct_mode);
     const activeProxy = proxyStatus && proxyStatus.active_proxy ? proxyStatus.active_proxy.address : null;
-    const port = proxyStatus ? proxyStatus.port : '—';
-    const activeRoute = currentActiveRoute();
-    const activeType = routeTypeOf(activeRoute);
+    const port = proxyStatus ? proxyStatus.port : '\u2014';
 
     const routedLists = (domainLists || []).filter(l => l.route && l.enabled);
     const defaultRoute = routingStatus ? (routingStatus.default_route || 'direct') : 'direct';
+    const tracedRoute = traceResult ? traceResult.route : null;
+    const hasMatch = !!(traceResult && traceResult.matched_list);
 
-    const W = 760;
-    const nodeW = 170;
-    const nodeH = 50;
-    const cx = W / 2;
-
-    const layers = [];
-    layers.push({ id: 'client', label: t('page.trafficFlow.client'), sub: '', kind: 'io', x: cx, active: running });
-    layers.push({ id: 'server', label: t('page.trafficFlow.proxyServer'), sub: running ? ('127.0.0.1:' + port) : t('page.trafficFlow.stopped'), kind: 'engine', x: cx, active: running });
-    layers.push({ id: 'routing', label: t('page.trafficFlow.routingEngine'), sub: enabled ? 'ON' : 'OFF', kind: 'decision', x: cx, active: running });
-
-    const offNode = { id: 'off', label: t('page.trafficFlow.routingOff'), sub: t('page.trafficFlow.proxyControl'), kind: 'branch', x: 150, active: running && !enabled };
-    if (directMode) offNode.sub2 = t('page.trafficFlow.directExit');
-    else if (activeProxy) offNode.sub2 = activeProxy;
-    else offNode.sub2 = t('page.trafficFlow.noUpstream');
-    layers.push(offNode);
-
-    const onNode = { id: 'on', label: t('page.trafficFlow.routingOn'), sub: routedLists.length + ' ' + t('common.routes'), kind: 'branch', x: cx + 220, active: running && enabled };
-
-    const listNodes = [];
-    routedLists.slice(0, 4).forEach((l, i) => {
-      listNodes.push({ id: 'list-' + l.id, label: l.name, sub: routeLabel(l.route), kind: 'list', x: cx + 220, prio: i + 1, routeType: routeTypeOf(l.route), active: running && enabled });
-    });
-
-    const matchNode = { id: 'match', label: t('page.trafficFlow.matchDecision'), sub: traceResult ? (traceResult.matched_list || t('page.trafficFlow.noMatch')) : '', kind: 'decision', x: cx + 220, active: running && enabled };
-
-    const defaultNode = { id: 'default', label: t('page.trafficFlow.defaultRoute'), sub: routeLabel(defaultRoute), kind: 'branch', x: cx + 220, active: running && enabled && (!traceResult || !traceResult.matched_list) };
-
-    layers.push(onNode);
-    layers.push(matchNode);
-    layers.push(defaultNode);
-
-    const destNodes = [
-      { id: 'dest-direct', label: t('route.direct'), sub: t('page.trafficFlow.directExit'), kind: 'dest', x: 90, routeType: 'direct', active: activeType === 'direct' && running },
-      { id: 'dest-pool', label: t('route.pool'), sub: t('page.trafficFlow.bestProxy'), kind: 'dest', x: 300, routeType: 'pool', active: activeType === 'pool' && running },
-      { id: 'dest-custom', label: t('route.custom', { name: '' }).replace(/[: ]*$/, ''), sub: '', kind: 'dest', x: 510, routeType: 'custom', active: activeType === 'custom' && running },
-      { id: 'dest-proxy', label: t('route.proxy'), sub: activeType === 'proxy' ? activeRoute.slice(6) : '', kind: 'dest', x: 680, routeType: 'proxy', active: activeType === 'proxy' && running },
-    ];
-
-    layers.push({ id: 'destinations', destNodes: destNodes, kind: 'destrow' });
-    layers.push({ id: 'internet', label: t('page.trafficFlow.internet'), sub: traceResult ? traceResult.domain : '', kind: 'io', x: cx, active: running });
-
-    const yStart = 40;
-    const yStep = 90;
-    const positions = {};
-    let y = yStart;
-    const renderedLayers = [];
-    layers.forEach(layer => {
-      if (layer.kind === 'destrow') {
-        y += 30;
-        destNodes.forEach(d => { positions[d.id] = { x: d.x, y: y, w: 130, h: 60 }; });
-        renderedLayers.push({ y: y, kind: 'destrow', nodes: destNodes });
-        y += 60;
-      } else {
-        positions[layer.id] = { x: layer.x, y: y, w: nodeW, h: nodeH };
-        renderedLayers.push({ y: y, kind: 'single', node: layer });
-        y += yStep;
-      }
-    });
-
-    if (listNodes.length) {
-      const matchPos = positions['match'];
-      let ly = matchPos.y - (listNodes.length * 52) - 20;
-      listNodes.forEach(n => { positions[n.id] = { x: n.x, y: ly, w: 170, h: 44 }; ly += 52; });
+    const reachable = new Set();
+    routedLists.forEach(l => reachable.add(routeTypeOf(l.route)));
+    reachable.add(routeTypeOf(defaultRoute));
+    if (!enabled) {
+      if (directMode) reachable.add('direct');
+      if (activeProxy) reachable.add('proxy');
+    }
+    if (customProxies && customProxies.length) {
+      routedLists.forEach(l => { if (routeTypeOf(l.route) === 'custom') reachable.add('custom'); });
+    } else {
+      reachable.delete('custom');
     }
 
-    const totalH = y + 40;
+    const destOrder = ['direct', 'pool', 'custom', 'proxy'];
+    const destMeta = {
+      direct: { label: t('route.direct'), sub: t('page.trafficFlow.directExit') },
+      pool: { label: t('route.pool'), sub: t('page.trafficFlow.bestProxy') },
+      custom: { label: t('route.custom', { name: '' }).replace(/[: ]*$/, ''), sub: '' },
+      proxy: { label: t('route.proxy'), sub: activeProxy || '' },
+    };
+    const destNodes = destOrder.filter(rt => reachable.has(rt)).map(rt => ({
+      id: 'dest-' + rt, routeType: rt, label: destMeta[rt].label, sub: destMeta[rt].sub, kind: 'dest',
+      active: isDestActive(rt, enabled, running, directMode, activeProxy, tracedRoute, hasMatch, defaultRoute),
+    }));
+
+    const W = BASE_W;
+    const cx = W / 2;
+    const nodeW = 180;
+    const nodeH = 48;
+    const dW = 140;
+    const dH = 58;
+
+    const offX = cx - 190;
+    const onX = cx + 190;
+
+    const nodes = {};
+    nodes.client = { id: 'client', label: t('page.trafficFlow.client'), kind: 'io', x: cx, y: 38, w: nodeW, h: nodeH, active: running };
+    nodes.server = { id: 'server', label: t('page.trafficFlow.proxyServer'), sub: running ? ('127.0.0.1:' + port) : t('page.trafficFlow.stopped'), kind: 'engine', x: cx, y: 122, w: nodeW, h: nodeH, active: running };
+    nodes.routing = { id: 'routing', label: t('page.trafficFlow.routingEngine'), sub: enabled ? 'ON' : 'OFF', kind: 'decision', x: cx, y: 206, w: nodeW, h: nodeH, active: running };
+
+    nodes.off = { id: 'off', label: t('page.trafficFlow.routingOff'), sub: t('page.trafficFlow.proxyControl'), kind: 'branch', x: offX, y: 296, w: nodeW, h: nodeH, active: running && !enabled };
+    if (directMode) nodes.off.sub2 = t('page.trafficFlow.directExit');
+    else if (activeProxy) nodes.off.sub2 = activeProxy;
+    else nodes.off.sub2 = t('page.trafficFlow.noUpstream');
+
+    nodes.on = { id: 'on', label: t('page.trafficFlow.routingOn'), kind: 'branch', x: onX, y: 296, w: nodeW, h: nodeH, active: running && enabled };
+    nodes.rules = { id: 'rules', label: t('page.trafficFlow.domainRules'), sub: routedLists.length + ' ' + t('common.routes'), kind: 'list', x: onX, y: 378, w: nodeW, h: nodeH, active: running && enabled };
+    nodes.match = { id: 'match', label: t('page.trafficFlow.matchDecision'), sub: hasMatch ? (traceResult.matched_list || '') : (traceResult ? t('page.trafficFlow.noMatch') : ''), kind: 'decision', x: onX, y: 460, w: nodeW, h: nodeH, active: running && enabled };
+    nodes.default = { id: 'default', label: t('page.trafficFlow.defaultRoute'), sub: routeLabel(defaultRoute), kind: 'branch', x: onX, y: 542, w: nodeW, h: nodeH, active: running && enabled && !hasMatch };
+
+    const destY = 648;
+    const n = destNodes.length;
+    const dMargin = 70;
+    const dArea = W - 2 * dMargin;
+    destNodes.forEach((d, i) => {
+      d.x = n === 1 ? cx : dMargin + i * dArea / (n - 1);
+      d.y = destY;
+      d.w = dW; d.h = dH;
+      nodes[d.id] = d;
+    });
+
+    nodes.internet = { id: 'internet', label: t('page.trafficFlow.internet'), sub: traceResult ? traceResult.domain : '', kind: 'io', x: cx, y: 758, w: nodeW, h: nodeH, active: running };
+
+    const totalH = 758 + nodeH / 2 + 24;
+
     const svgEl = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svgEl.setAttribute('viewBox', `0 0 ${W} ${totalH}`);
     svgEl.setAttribute('preserveAspectRatio', 'xMidYMin meet');
     svgEl.classList.add('flow-svg');
+    svgEl.style.width = (BASE_W * zoom) + 'px';
+    svgEl.style.maxWidth = 'none';
+    svgEl.style.maxHeight = 'none';
 
     const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
     ['active', 'inactive'].forEach(kind => {
@@ -214,66 +241,57 @@ router.register('traffic-flow', (container) => {
     });
     svgEl.appendChild(defs);
 
+    const onActive = running && enabled;
+    const offActive = running && !enabled;
+
     const edges = [
       { from: 'client', to: 'server', active: running },
       { from: 'server', to: 'routing', active: running },
-      { from: 'routing', to: 'off', active: running && !enabled, curve: true },
-      { from: 'routing', to: 'on', active: running && enabled, curve: true },
+      { from: 'routing', to: 'off', active: offActive, curve: true },
+      { from: 'routing', to: 'on', active: onActive, curve: true },
+      { from: 'on', to: 'rules', active: onActive },
+      { from: 'rules', to: 'match', active: onActive },
     ];
 
-    if (listNodes.length) {
-      edges.push({ from: 'on', to: listNodes[0].id, active: running && enabled });
-      for (let i = 0; i < listNodes.length - 1; i++) {
-        edges.push({ from: listNodes[i].id, to: listNodes[i + 1].id, active: running && enabled });
-      }
-      edges.push({ from: listNodes[listNodes.length - 1].id, to: 'match', active: running && enabled });
-    } else {
-      edges.push({ from: 'on', to: 'match', active: running && enabled });
-    }
-    edges.push({ from: 'match', to: 'default', active: running && enabled && (!traceResult || !traceResult.matched_list) });
+    const defaultActive = onActive && !hasMatch;
+    edges.push({ from: 'match', to: 'default', active: defaultActive });
 
-    const tracedRoute = traceResult ? traceResult.route : null;
+    const matchedDest = hasMatch ? destNodes.find(d => d.routeType === routeTypeOf(tracedRoute)) : null;
+    if (matchedDest) {
+      edges.push({ from: 'match', to: matchedDest.id, active: onActive && hasMatch, curve: true, dashed: true });
+    }
+
+    const defaultDest = destNodes.find(d => d.routeType === routeTypeOf(defaultRoute));
+    if (defaultDest) {
+      edges.push({ from: 'default', to: defaultDest.id, active: defaultActive, curve: true, dashed: true });
+    }
+
     destNodes.forEach(d => {
-      const destActive = running && (
-        (enabled && (tracedRoute === d.routeType || (!traceResult && defaultRoute === d.routeType))) ||
-        (!enabled && ((d.routeType === 'direct' && directMode) || (d.routeType === 'proxy' && activeProxy)))
-      );
-      if (d.routeType === 'custom' && !(customProxies && customProxies.length)) return;
-      edges.push({ from: 'off', to: d.id, active: destActive && !enabled, curve: true, dashed: true });
-      edges.push({ from: 'default', to: d.id, active: destActive && enabled, curve: true, dashed: true });
-      if (listNodes.length) {
-        listNodes.forEach(ln => {
-          if (ln.routeType === d.routeType) {
-            edges.push({ from: ln.id, to: d.id, active: running && enabled && traceResult && traceResult.matched_list && tracedRoute === d.routeType, curve: true, dashed: true, thin: true });
-          }
-        });
+      if (offActive) {
+        edges.push({ from: 'off', to: d.id, active: d.active, curve: true, dashed: true });
       }
     });
 
-    const internetPos = positions['internet'];
     destNodes.forEach(d => {
-      if (d.routeType === 'custom' && !(customProxies && customProxies.length)) return;
       edges.push({ from: d.id, to: 'internet', active: d.active, curve: true });
     });
 
-    edges.forEach(e => drawEdge(svgEl, positions[e.from], positions[e.to], e.active, e.curve, e.dashed, e.thin));
+    edges.forEach(e => drawEdge(svgEl, nodes[e.from], nodes[e.to], e.active, e.curve, e.dashed, e.thin));
 
-    renderedLayers.forEach(layer => {
-      if (layer.kind === 'destrow') {
-        layer.nodes.forEach(d => {
-          if (d.routeType === 'custom' && !(customProxies && customProxies.length)) return;
-          drawNode(svgEl, d, positions[d.id], d.active, d.routeType);
-        });
-      } else if (layer.kind === 'single') {
-        const n = layer.node;
-        drawNode(svgEl, n, positions[n.id], n.active, n.routeType);
-      }
-    });
-    listNodes.forEach(n => drawNode(svgEl, n, positions[n.id], n.active, n.routeType, n.prio));
+    Object.values(nodes).forEach(n => drawNode(svgEl, n, n.active));
 
     wrap.appendChild(svgEl);
 
     updateBadges(enabled, running, directMode);
+  }
+
+  function isDestActive(rt, enabled, running, directMode, activeProxy, tracedRoute, hasMatch, defaultRoute) {
+    if (!running) return false;
+    if (!enabled) {
+      return (rt === 'direct' && directMode) || (rt === 'proxy' && !!activeProxy);
+    }
+    if (hasMatch) return routeTypeOf(tracedRoute) === rt;
+    return routeTypeOf(defaultRoute) === rt;
   }
 
   function drawEdge(svg, from, to, active, curve, dashed, thin) {
@@ -317,10 +335,10 @@ router.register('traffic-flow', (container) => {
     return { fill: 'var(--surface-raised)', stroke: active ? 'var(--success)' : 'var(--border)' };
   }
 
-  function drawNode(svg, node, pos, active, routeType, prio) {
+  function drawNode(svg, node, active) {
     const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-    const w = pos.w, h = pos.h;
-    const x = pos.x - w / 2, y = pos.y - h / 2;
+    const w = node.w, h = node.h;
+    const x = node.x - w / 2, y = node.y - h / 2;
     const col = nodeColor(node.kind, active);
 
     const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
@@ -334,26 +352,8 @@ router.register('traffic-flow', (container) => {
     rect.setAttribute('stroke-width', active ? '2.5' : '1.5');
     g.appendChild(rect);
 
-    if (prio) {
-      const badge = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-      badge.setAttribute('cx', x + 12);
-      badge.setAttribute('cy', y + 12);
-      badge.setAttribute('r', 9);
-      badge.setAttribute('fill', 'var(--accent)');
-      g.appendChild(badge);
-      const bt = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      bt.setAttribute('x', x + 12);
-      bt.setAttribute('y', y + 16);
-      bt.setAttribute('text-anchor', 'middle');
-      bt.setAttribute('font-size', '10');
-      bt.setAttribute('fill', '#fff');
-      bt.setAttribute('font-weight', '700');
-      bt.textContent = prio;
-      g.appendChild(bt);
-    }
-
     const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-    label.setAttribute('x', pos.x + (prio ? 8 : 0));
+    label.setAttribute('x', node.x);
     label.setAttribute('y', y + (node.sub || node.sub2 ? 20 : h / 2 + 5));
     label.setAttribute('text-anchor', 'middle');
     label.setAttribute('font-size', '12');
@@ -365,7 +365,7 @@ router.register('traffic-flow', (container) => {
     let subY = y + 36;
     if (node.sub) {
       const sub = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      sub.setAttribute('x', pos.x + (prio ? 8 : 0));
+      sub.setAttribute('x', node.x);
       sub.setAttribute('y', subY);
       sub.setAttribute('text-anchor', 'middle');
       sub.setAttribute('font-size', '10');
@@ -376,7 +376,7 @@ router.register('traffic-flow', (container) => {
     }
     if (node.sub2) {
       const sub2 = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      sub2.setAttribute('x', pos.x + (prio ? 8 : 0));
+      sub2.setAttribute('x', node.x);
       sub2.setAttribute('y', subY);
       sub2.setAttribute('text-anchor', 'middle');
       sub2.setAttribute('font-size', '10');
@@ -398,7 +398,7 @@ router.register('traffic-flow', (container) => {
     const sb = document.getElementById('flow-server-badge');
     if (sb) {
       if (running) {
-        sb.textContent = t('page.trafficFlow.serverRunning') + (directMode ? ' · ' + t('page.trafficFlow.directMode') : '');
+        sb.textContent = t('page.trafficFlow.serverRunning') + (directMode ? ' \u00b7 ' + t('page.trafficFlow.directMode') : '');
         sb.style.background = 'var(--success-bg)';
         sb.style.color = 'var(--success)';
       } else {

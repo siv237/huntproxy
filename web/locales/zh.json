@@ -611,6 +611,7 @@
       "matchDecision": "域名匹配？",
       "noMatch": "无匹配 → 默认",
       "defaultRoute": "默认路由",
+      "domainRules": "域名规则",
       "directMode": "直连模式",
       "serverRunning": "服务器运行中",
       "stopped": "服务器已停止"

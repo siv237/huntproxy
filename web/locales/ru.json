@@ -650,6 +650,7 @@
       "matchDecision": "Совпадение домена?",
       "noMatch": "нет совпадения → по умолч.",
       "defaultRoute": "Маршрут по умолчанию",
+      "domainRules": "Правила доменов",
       "directMode": "Прямой режим",
       "serverRunning": "Сервер запущен",
       "stopped": "Сервер остановлен"
