@@ -592,7 +592,9 @@
       "activeTasks": "Active tasks",
       "runsToday": "Runs today",
       "scheduleCreated": "Schedule created",
-      "runStarted": "Task started"
+      "runStarted": "Task started",
+      "schedulerLog": "Scheduler Log",
+      "noLogEntries": "No scheduler activity yet"
     },
     "routes": {
       "title": "Routes",

@@ -592,7 +592,9 @@
       "activeTasks": "Активных задач",
       "runsToday": "Запусков сегодня",
       "scheduleCreated": "Расписание создано",
-      "runStarted": "Задача запущена"
+      "runStarted": "Задача запущена",
+      "schedulerLog": "Лог планировщика",
+      "noLogEntries": "Нет активности планировщика"
     },
     "routes": {
       "title": "Маршруты",

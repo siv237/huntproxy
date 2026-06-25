@@ -553,7 +553,9 @@
       "activeTasks": "活跃任务",
       "runsToday": "今日运行",
       "scheduleCreated": "计划已创建",
-      "runStarted": "任务已启动"
+      "runStarted": "任务已启动",
+      "schedulerLog": "计划任务日志",
+      "noLogEntries": "暂无计划任务活动"
     },
     "routes": {
       "title": "路由",

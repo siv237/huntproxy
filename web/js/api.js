@@ -167,6 +167,7 @@ const api = {
   scheduleToggle(id) { return this.request(`/api/schedules/${encodeURIComponent(id)}/toggle`, 'POST'); },
   scheduleRun(id) { return this.request(`/api/schedules/${encodeURIComponent(id)}/run`, 'POST'); },
   schedulesStatus() { return this.request('/api/schedules/status'); },
+  schedulesLog(limit = 50) { return this.request(`/api/schedules/log?limit=${limit}`); },
   schedulesPause() { return this.request('/api/schedules/pause', 'POST'); },
   schedulesResume() { return this.request('/api/schedules/resume', 'POST'); },
 };

@@ -295,26 +295,26 @@ class SchedulerEngine:
         if task_def is None:
             return
 
-        # Check if this task_type is already running
-        if entry.task_type in self._running_tasks:
+        def _skip(reason):
             entry.last_status = "skipped"
             entry.next_run = time.time() + entry.interval_sec
             self._persist(entry)
+            self.state._emit(f"Scheduler: skipped '{entry.name}' — {reason}", "warn")
+
+        # Check if this task_type is already running
+        if entry.task_type in self._running_tasks:
+            _skip("already running")
             return
 
         # Check mutex conflicts
         for conflict_type in task_def["mutex_with"]:
             if conflict_type in self._running_tasks:
-                entry.last_status = "skipped"
-                entry.next_run = time.time() + entry.interval_sec
-                self._persist(entry)
+                _skip(f"waiting on {conflict_type}")
                 return
 
         # Environment checks
         if task_def["respect_pause"] and self.state._paused:
-            entry.last_status = "skipped"
-            entry.next_run = time.time() + entry.interval_sec
-            self._persist(entry)
+            _skip("hunt paused")
             return
 
         if task_def["respect_internet"]:
@@ -323,15 +323,14 @@ class SchedulerEngine:
             except Exception:
                 internet_ok = False
             if not internet_ok:
-                entry.last_status = "skipped"
-                entry.next_run = time.time() + entry.interval_sec
-                self._persist(entry)
+                _skip("internet down")
                 return
 
         # Launch the task
         entry.last_status = "running"
         entry.last_run = time.time()
         self._persist(entry)
+        self.state._emit(f"Scheduler: starting '{entry.name}'", "info")
 
         task = asyncio.create_task(self._run_with_tracking(sid))
         self._running_tasks[entry.task_type] = task
@@ -346,14 +345,19 @@ class SchedulerEngine:
             await self._execute_task(entry)
             entry.last_status = "ok"
             entry.last_error = ""
+            self.state._emit(
+                f"Scheduler: '{entry.name}' done in {entry.last_duration_s}s", "ok",
+            )
         except asyncio.CancelledError:
             entry.last_status = "failed"
             entry.last_error = "cancelled"
+            self.state._emit(f"Scheduler: '{entry.name}' cancelled", "warn")
             raise
         except Exception as e:
             entry.last_status = "failed"
             entry.last_error = str(e)[:500]
             logger.error(f"Schedule '{sid}' failed: {e}")
+            self.state._emit(f"Scheduler: '{entry.name}' failed: {e}", "error")
         finally:
             entry.last_duration_s = round(time.time() - t0, 2)
             entry.next_run = time.time() + entry.interval_sec
@@ -584,3 +588,41 @@ class SchedulerEngine:
             "running_tasks": list(self._running_tasks.keys()),
             "schedule_count": len(self._schedules),
         }
+
+    def get_log(self, limit: int = 50) -> list[dict]:
+        """Return recent scheduler-related events and actions, merged and sorted by time desc."""
+        results = []
+        try:
+            conn = self.state._stats_db()
+            # Events whose message contains 'Scheduler' or 'Schedule'
+            rows = conn.execute(
+                "SELECT ts, seq, type, msg FROM events "
+                "WHERE msg LIKE '%Scheduler%' OR msg LIKE '%schedule%' "
+                "ORDER BY id DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+            for r in rows:
+                results.append({
+                    "ts": r["ts"], "seq": r["seq"],
+                    "type": r["type"], "msg": r["msg"],
+                    "source": "event",
+                })
+            # Actions whose action contains 'schedule'
+            rows = conn.execute(
+                "SELECT ts, action, detail FROM actions "
+                "WHERE action LIKE '%schedule%' OR action LIKE '%scheduler%' "
+                "ORDER BY id DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+            for r in rows:
+                results.append({
+                    "ts": r["ts"], "seq": 0,
+                    "type": "action",
+                    "msg": f"{r['action']}: {r['detail']}",
+                    "source": "action",
+                })
+            conn.close()
+        except Exception as e:
+            logger.warning(f"Scheduler log query: {e}")
+        results.sort(key=lambda x: x["ts"], reverse=True)
+        return results[:limit]

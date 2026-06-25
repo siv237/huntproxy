@@ -40,13 +40,16 @@ router.register('schedules', (container) => {
   function build() {
     container.innerHTML = '';
     setContainerStyle();
-    container.appendChild(buildHeaderCard());
+    const topRow = ui.el('div', 'grid grid-2 row-stretch', { style: 'flex-shrink:0' });
+    topRow.appendChild(buildStatusCard());
+    topRow.appendChild(buildLogCard());
+    container.appendChild(topRow);
     container.appendChild(buildSchedulesCard());
   }
 
-  function buildHeaderCard() {
+  function buildStatusCard() {
     const card = ui.card('', '');
-    card.id = 'card-scheduler-header';
+    card.id = 'card-scheduler-status';
     card.style.padding = '14px 16px';
 
     const row = ui.el('div', '', { style: 'display:flex;align-items:center;gap:12px;flex-wrap:wrap' });
@@ -71,6 +74,29 @@ router.register('schedules', (container) => {
     row.appendChild(pauseBtn);
 
     card.appendChild(row);
+
+    // Stats row
+    const statsRow = ui.el('div', '', { id: 'sched-stats-row', style: 'display:flex;gap:20px;margin-top:12px;flex-wrap:wrap' });
+    statsRow.appendChild(ui.el('div', '', { style: 'font-size:12px;color:var(--text-secondary)', html: `<span id="sched-stat-enabled"></span>` }));
+    statsRow.appendChild(ui.el('div', '', { style: 'font-size:12px;color:var(--text-secondary)', html: `<span id="sched-stat-running"></span>` }));
+    statsRow.appendChild(ui.el('div', '', { style: 'font-size:12px;color:var(--text-secondary)', html: `<span id="sched-stat-next"></span>` }));
+    card.appendChild(statsRow);
+
+    return card;
+  }
+
+  function buildLogCard() {
+    const card = ui.card(t('page.schedules.schedulerLog'), '');
+    card.id = 'card-scheduler-log';
+    card.style.display = 'flex';
+    card.style.flexDirection = 'column';
+    card.style.overflow = 'hidden';
+
+    const body = ui.el('div', '', {
+      id: 'sched-log-body',
+      style: 'overflow-y:auto;flex:1;font-family:monospace;font-size:11px;line-height:1.6;padding:4px 0;min-height:120px;max-height:220px',
+    });
+    card.appendChild(body);
     return card;
   }
 
@@ -147,10 +173,11 @@ router.register('schedules', (container) => {
   }
 
   function renderActions(s) {
-    const runBtn = `<button class="btn btn-sm btn-ghost" onclick="window._schedRun('${ui.escHtml(s.id)}')" title="${t('page.schedules.runNow')}">▶</button>`;
-    const editBtn = `<button class="btn btn-sm btn-ghost" onclick="window._schedEdit('${ui.escHtml(s.id)}')" title="${t('page.schedules.edit')}">✎</button>`;
-    const delBtn = `<button class="btn btn-sm btn-ghost" onclick="window._schedDelete('${ui.escHtml(s.id)}')" title="${t('page.schedules.delete')}">🗑</button>`;
-    return `<div style="display:flex;gap:4px">${runBtn}${editBtn}${delBtn}</div>`;
+    const actStyle = 'min-width:32px;height:32px;font-size:15px;padding:4px 8px';
+    const runBtn = `<button class="btn btn-ghost" style="${actStyle}" onclick="window._schedRun('${ui.escHtml(s.id)}')" title="${t('page.schedules.runNow')}">▶</button>`;
+    const editBtn = `<button class="btn btn-ghost" style="${actStyle}" onclick="window._schedEdit('${ui.escHtml(s.id)}')" title="${t('page.schedules.edit')}">✎</button>`;
+    const delBtn = `<button class="btn btn-ghost" style="${actStyle}" onclick="window._schedDelete('${ui.escHtml(s.id)}')" title="${t('page.schedules.delete')}">🗑</button>`;
+    return `<div style="display:flex;gap:6px">${runBtn}${editBtn}${delBtn}</div>`;
   }
 
   function updateHeader() {
@@ -170,6 +197,69 @@ router.register('schedules', (container) => {
       dot.style.background = 'var(--text-secondary, #888)';
       label.textContent = t('page.schedules.schedulerStopped') || t('page.schedules.schedulerPaused');
       btn.textContent = t('page.schedules.resumeAll');
+    }
+    // Stats
+    const enabledEl = document.getElementById('sched-stat-enabled');
+    const runningEl = document.getElementById('sched-stat-running');
+    const nextEl = document.getElementById('sched-stat-next');
+    if (enabledEl) {
+      const enabledCount = schedules.filter(s => s.enabled).length;
+      enabledEl.textContent = t('page.schedules.enabled') + ': ' + enabledCount + '/' + schedules.length;
+    }
+    if (runningEl) {
+      const runningCount = (schedulerStatus.running_tasks || []).length;
+      runningEl.textContent = t('page.schedules.statusRunning') + ': ' + runningCount;
+    }
+    if (nextEl) {
+      const now = Date.now() / 1000;
+      const nextSched = schedules
+        .filter(s => s.enabled && s.next_run > 0)
+        .map(s => s.next_run)
+        .sort((a, b) => a - b)[0];
+      if (nextSched) {
+        const delta = nextSched - now;
+        nextEl.textContent = t('page.schedules.nextRun') + ': ' + (delta > 0 ? ui.ago(nextSched) : t('page.schedules.statusRunning'));
+      } else {
+        nextEl.textContent = t('page.schedules.nextRun') + ': —';
+      }
+    }
+  }
+
+  function renderLog(entries) {
+    const body = document.getElementById('sched-log-body');
+    if (!body) return;
+    const wasScrolled = body.scrollTop + body.clientHeight >= body.scrollHeight - 20;
+    body.innerHTML = '';
+    if (!entries.length) {
+      body.appendChild(ui.el('div', '', { style: 'color:var(--text-secondary);padding:8px', text: t('page.schedules.noLogEntries') }));
+      return;
+    }
+    const typeColors = {
+      ok: 'var(--success)',
+      info: 'var(--text-secondary)',
+      warn: 'var(--warning, #f0ad4e)',
+      error: 'var(--danger, #dc3545)',
+      action: 'var(--accent, #007bff)',
+    };
+    for (const e of entries) {
+      const ts = new Date(e.ts * 1000);
+      const timeStr = ts.toLocaleTimeString();
+      const color = typeColors[e.type] || typeColors.info;
+      const line = ui.el('div', '', {
+        style: `padding:1px 0;color:${color};white-space:pre-wrap;word-break:break-all`,
+        html: `<span style="color:var(--text-secondary)">${timeStr}</span>  ${ui.escHtml(e.msg)}`,
+      });
+      body.appendChild(line);
+    }
+    if (wasScrolled) body.scrollTop = body.scrollHeight;
+  }
+
+  async function loadLog() {
+    try {
+      const data = await api.schedulesLog(50);
+      renderLog(data.entries || []);
+    } catch (e) {
+      // ignore
     }
   }
 
@@ -327,7 +417,9 @@ router.register('schedules', (container) => {
 
   build();
   load();
+  loadLog();
   const pollId = setInterval(load, 3000);
-  if (window._pageIntervals) window._pageIntervals.push(pollId);
-  else window._pageIntervals = [pollId];
+  const logPollId = setInterval(loadLog, 2000);
+  if (window._pageIntervals) window._pageIntervals.push(pollId, logPollId);
+  else window._pageIntervals = [pollId, logPollId];
 });

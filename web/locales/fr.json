@@ -553,7 +553,9 @@
       "activeTasks": "Tâches actives",
       "runsToday": "Exécutions aujourd'hui",
       "scheduleCreated": "Planification créée",
-      "runStarted": "Tâche démarrée"
+      "runStarted": "Tâche démarrée",
+      "schedulerLog": "Journal du planificateur",
+      "noLogEntries": "Aucune activité du planificateur"
     },
     "routes": {
       "title": "Routage",

@@ -1762,6 +1762,14 @@ class HuntServer:
                 return json.dumps({"running": False, "paused": False, "running_tasks": []}), 200, "application/json"
             return json.dumps(sched.get_status()), 200, "application/json"
 
+        if path.startswith("/api/schedules/log") and method == "GET":
+            qs = _qs(raw_path)
+            limit = int(qs.get("limit", "50"))
+            sched = getattr(self.state, "scheduler", None)
+            if sched is None:
+                return json.dumps({"entries": []}), 200, "application/json"
+            return json.dumps({"entries": sched.get_log(limit)}), 200, "application/json"
+
         if path == "/api/schedules/pause" and method == "POST":
             sched = getattr(self.state, "scheduler", None)
             if sched is None:

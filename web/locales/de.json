@@ -553,7 +553,9 @@
       "activeTasks": "Aktive Aufgaben",
       "runsToday": "Ausführungen heute",
       "scheduleCreated": "Zeitplan erstellt",
-      "runStarted": "Aufgabe gestartet"
+      "runStarted": "Aufgabe gestartet",
+      "schedulerLog": "Planer-Protokoll",
+      "noLogEntries": "Noch keine Planer-Aktivität"
     },
     "routes": {
       "title": "Routen",
