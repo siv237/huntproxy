@@ -64,19 +64,12 @@ class RoutingMixin:
                     "WHERE dl.enabled=1 AND dl.route!='' ORDER BY dl.priority ASC"
                 ).fetchall()
                 for row in rows:
-                    match = conn.execute(
-                        "SELECT 1 FROM domain_entries WHERE list_id=? AND pattern=? LIMIT 1",
-                        (row["id"], domain.lower())
-                    ).fetchone()
-                    if match:
-                        return {"domain": domain, "route": row["route"], "matched_list": row["name"], "routing_enabled": True}
-                    suffix_patterns = conn.execute(
-                        "SELECT pattern FROM domain_entries WHERE list_id=? AND (pattern LIKE '.%%' OR pattern LIKE '*.%%')",
+                    patterns = conn.execute(
+                        "SELECT pattern FROM domain_entries WHERE list_id=?",
                         (row["id"],)
                     ).fetchall()
-                    for sp in suffix_patterns:
-                        if self._domain_matches(domain, [sp["pattern"]]):
-                            return {"domain": domain, "route": row["route"], "matched_list": row["name"], "routing_enabled": True}
+                    if self._domain_matches(domain, [p["pattern"] for p in patterns]):
+                        return {"domain": domain, "route": row["route"], "matched_list": row["name"], "routing_enabled": True}
             finally:
                 conn.close()
             return {"domain": domain, "route": default_route, "matched_list": None, "routing_enabled": True}
@@ -228,7 +221,6 @@ class RoutingMixin:
                         return f"proxy:{self.proxy_runner.active_proxy_addr}"
                 return "pool"
 
-            host_lower = host.lower()
             conn = self._db()
             try:
                 rows = conn.execute(
@@ -236,19 +228,12 @@ class RoutingMixin:
                     "WHERE dl.enabled=1 AND dl.route!='' ORDER BY dl.priority ASC"
                 ).fetchall()
                 for row in rows:
-                    exact = conn.execute(
-                        "SELECT 1 FROM domain_entries WHERE list_id=? AND pattern=? LIMIT 1",
-                        (row["id"], host_lower)
-                    ).fetchone()
-                    if exact:
-                        return row["route"]
-                    suffix_patterns = conn.execute(
-                        "SELECT pattern FROM domain_entries WHERE list_id=? AND (pattern LIKE '.%%' OR pattern LIKE '*.%%')",
+                    patterns = conn.execute(
+                        "SELECT pattern FROM domain_entries WHERE list_id=?",
                         (row["id"],)
                     ).fetchall()
-                    for sp in suffix_patterns:
-                        if self._domain_matches(host, [sp["pattern"]]):
-                            return row["route"]
+                    if self._domain_matches(host, [p["pattern"] for p in patterns]):
+                        return row["route"]
             except Exception as e:
                 logger.error("_resolve_route: %s", e)
             finally:

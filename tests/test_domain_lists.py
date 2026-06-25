@@ -125,6 +125,63 @@ class TestRouting:
         assert result["route"] == "pool"
         assert result["matched_list"] is None
 
+    def test_routing_test_subdomain_matches_bare(self, state):
+        state.routing_enable()
+        state.routing_set_default("pool")
+        state.create_domain_list({
+            "id": "test-list",
+            "name": "Test List",
+            "route": "direct",
+            "enabled": True,
+            "domains": ["youtube.com"],
+        })
+        result = state.routing_test("www.youtube.com")
+        assert result["routing_enabled"] is True
+        assert result["route"] == "direct"
+        assert result["matched_list"] == "Test List"
+
+    def test_routing_test_wildcard_subdomain(self, state):
+        state.routing_enable()
+        state.routing_set_default("pool")
+        state.create_domain_list({
+            "id": "test-list",
+            "name": "Test List",
+            "route": "direct",
+            "enabled": True,
+            "domains": ["*.youtube.com"],
+        })
+        assert state.routing_test("www.youtube.com")["route"] == "direct"
+        assert state.routing_test("m.youtube.com")["route"] == "direct"
+        assert state.routing_test("youtube.com")["route"] == "direct"
+        assert state.routing_test("notyoutube.com")["route"] == "pool"
+
+    def test_routing_test_dot_prefix(self, state):
+        state.routing_enable()
+        state.routing_set_default("pool")
+        state.create_domain_list({
+            "id": "test-list",
+            "name": "Test List",
+            "route": "direct",
+            "enabled": True,
+            "domains": [".youtube.com"],
+        })
+        assert state.routing_test("www.youtube.com")["route"] == "direct"
+        assert state.routing_test("youtube.com")["route"] == "direct"
+        assert state.routing_test("notyoutube.com")["route"] == "pool"
+
+    def test_resolve_route_subdomain(self, state):
+        state.routing_enable()
+        state.routing_set_default("pool")
+        state.create_domain_list({
+            "id": "test-list",
+            "name": "Test List",
+            "route": "direct",
+            "enabled": True,
+            "domains": ["youtube.com"],
+        })
+        assert state._resolve_route("www.youtube.com") == "direct"
+        assert state._resolve_route("youtube.com") == "direct"
+
     def test_domain_matches_suffix(self, state):
         assert state._domain_matches("www.example.com", ["example.com"]) is True
         assert state._domain_matches("www.example.com", [".example.com"]) is True
