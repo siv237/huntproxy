@@ -15,6 +15,7 @@
     "settings": "设置",
     "schedules": "计划任务",
     "routes": "路由",
+    "trafficFlow": "流量流向",
     "domainLists": "域名列表",
     "customProxies": "自定义代理",
     "connectivity": "链路控制",
@@ -90,7 +91,9 @@
     "yes": "Yes",
     "domains": "域名",
     "moveUp": "上移",
-    "moveDown": "下移"
+    "moveDown": "下移",
+    "clear": "清除",
+    "routes": "路由"
   },
   "route": {
     "direct": "直连",
@@ -585,6 +588,32 @@
       "domainList": "域名列表：",
       "route": "路由：",
       "cancel": "取消"
+    },
+    "trafficFlow": {
+      "title": "流量流向",
+      "subtitle": "可视化当前流量通过代理引擎的路由路径",
+      "diagram": "路由流向图",
+      "trace": "追踪",
+      "tracePlaceholder": "要追踪的域名，例如 youtube.com",
+      "activePath": "活跃路径",
+      "inactivePath": "非活跃",
+      "decision": "决策点",
+      "client": "客户端请求",
+      "proxyServer": "huntproxy 服务器",
+      "internet": "互联网 / 目标",
+      "routingEngine": "路由引擎",
+      "routingOn": "路由 开启",
+      "routingOff": "路由 关闭",
+      "proxyControl": "代理控制设置",
+      "directExit": "直连出口",
+      "noUpstream": "无上游",
+      "bestProxy": "最佳可用代理",
+      "matchDecision": "域名匹配？",
+      "noMatch": "无匹配 → 默认",
+      "defaultRoute": "默认路由",
+      "directMode": "直连模式",
+      "serverRunning": "服务器运行中",
+      "stopped": "服务器已停止"
     },
     "domainLists": {
       "title": "域名列表",

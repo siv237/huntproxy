@@ -2588,3 +2588,46 @@
 .route-delete:active {
   transform: scale(0.92);
 }
+
+/* === Traffic Flow Diagram === */
+.flow-wrap {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  justify-content: center;
+  padding: 8px 4px;
+}
+
+.flow-svg {
+  width: 100%;
+  max-width: 820px;
+  height: auto;
+  min-height: 400px;
+}
+
+.flow-edge-active {
+  filter: drop-shadow(0 0 3px var(--success));
+}
+
+.flow-legend {
+  display: flex;
+  gap: 16px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+.flow-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.flow-legend-dot {
+  width: 14px;
+  height: 4px;
+  border-radius: 2px;
+  display: inline-block;
+}

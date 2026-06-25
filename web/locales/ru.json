@@ -16,6 +16,7 @@
     "settings": "Настройки",
     "schedules": "Расписания",
     "routes": "Маршруты",
+    "trafficFlow": "Поток трафика",
     "domainLists": "Списки доменов",
     "customProxies": "Свои прокси",
     "connectivity": "Контроль канала",
@@ -90,7 +91,9 @@
     "recheckAlreadyRunning": "Проверка уже выполняется, подождите",
     "domains": "доменов",
     "moveUp": "Выше",
-    "moveDown": "Ниже"
+    "moveDown": "Ниже",
+    "clear": "Очистить",
+    "routes": "маршрутов"
   },
   "route": {
     "direct": "Напрямую",
@@ -624,6 +627,32 @@
       "domainList": "Список доменов:",
       "route": "Маршрут:",
       "cancel": "Отмена"
+    },
+    "trafficFlow": {
+      "title": "Поток трафика",
+      "subtitle": "Визуализация текущего маршрута движения трафика через прокси-движок",
+      "diagram": "Схема маршрутизации потока",
+      "trace": "Трассировать",
+      "tracePlaceholder": "домен для трассировки, напр. youtube.com",
+      "activePath": "Активный путь",
+      "inactivePath": "Неактивно",
+      "decision": "Точка решения",
+      "client": "Запрос клиента",
+      "proxyServer": "Сервер huntproxy",
+      "internet": "Интернет / Цель",
+      "routingEngine": "Движок маршрутизации",
+      "routingOn": "Маршрутизация ВКЛ",
+      "routingOff": "Маршрутизация ВЫКЛ",
+      "proxyControl": "Настройки управления прокси",
+      "directExit": "прямой выход",
+      "noUpstream": "нет апстрима",
+      "bestProxy": "лучший доступный прокси",
+      "matchDecision": "Совпадение домена?",
+      "noMatch": "нет совпадения → по умолч.",
+      "defaultRoute": "Маршрут по умолчанию",
+      "directMode": "Прямой режим",
+      "serverRunning": "Сервер запущен",
+      "stopped": "Сервер остановлен"
     },
     "domainLists": {
       "title": "Списки доменов",

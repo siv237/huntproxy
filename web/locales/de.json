@@ -29,7 +29,8 @@
       "lists": "Listen",
       "insights": "Protokolle",
       "system": "System"
-    }
+    },
+    "trafficFlow": "Traffic Flow"
   },
   "topbar": {
     "searchPlaceholder": "Proxys, IPs, Länder durchsuchen...",
@@ -90,7 +91,9 @@
     "yes": "Yes",
     "domains": "Domains",
     "moveUp": "Nach oben",
-    "moveDown": "Nach unten"
+    "moveDown": "Nach unten",
+    "clear": "Clear",
+    "routes": "routes"
   },
   "route": {
     "direct": "Direkt",
@@ -800,6 +803,32 @@
       "colStatus": "Status",
       "colEntries": "Einträge",
       "colProxy": "Via"
+    },
+    "trafficFlow": {
+      "title": "Traffic Flow",
+      "subtitle": "Visualize the current traffic routing path through the proxy engine",
+      "diagram": "Routing Flow Diagram",
+      "trace": "Trace",
+      "tracePlaceholder": "domain to trace, e.g. youtube.com",
+      "activePath": "Active path",
+      "inactivePath": "Inactive",
+      "decision": "Decision point",
+      "client": "Client Request",
+      "proxyServer": "huntproxy Server",
+      "internet": "Internet / Target",
+      "routingEngine": "Routing Engine",
+      "routingOn": "Routing ON",
+      "routingOff": "Routing OFF",
+      "proxyControl": "Proxy Control settings",
+      "directExit": "direct exit",
+      "noUpstream": "no upstream",
+      "bestProxy": "best available proxy",
+      "matchDecision": "Domain match?",
+      "noMatch": "no match → default",
+      "defaultRoute": "Default Route",
+      "directMode": "Direct mode",
+      "serverRunning": "Server running",
+      "stopped": "Server stopped"
     }
   },
   "lang": {

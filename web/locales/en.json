@@ -16,6 +16,7 @@
     "settings": "Settings",
     "schedules": "Schedules",
     "routes": "Routes",
+    "trafficFlow": "Traffic Flow",
     "domainLists": "Domain Lists",
     "customProxies": "Custom Proxies",
     "connectivity": "Link Control",
@@ -90,7 +91,9 @@
     "recheckAlreadyRunning": "Health check already running, please wait",
     "domains": "domains",
     "moveUp": "Move up",
-    "moveDown": "Move down"
+    "moveDown": "Move down",
+    "clear": "Clear",
+    "routes": "routes"
   },
   "route": {
     "direct": "Direct",
@@ -624,6 +627,32 @@
       "domainList": "Domain List:",
       "route": "Route:",
       "cancel": "Cancel"
+    },
+    "trafficFlow": {
+      "title": "Traffic Flow",
+      "subtitle": "Visualize the current traffic routing path through the proxy engine",
+      "diagram": "Routing Flow Diagram",
+      "trace": "Trace",
+      "tracePlaceholder": "domain to trace, e.g. youtube.com",
+      "activePath": "Active path",
+      "inactivePath": "Inactive",
+      "decision": "Decision point",
+      "client": "Client Request",
+      "proxyServer": "huntproxy Server",
+      "internet": "Internet / Target",
+      "routingEngine": "Routing Engine",
+      "routingOn": "Routing ON",
+      "routingOff": "Routing OFF",
+      "proxyControl": "Proxy Control settings",
+      "directExit": "direct exit",
+      "noUpstream": "no upstream",
+      "bestProxy": "best available proxy",
+      "matchDecision": "Domain match?",
+      "noMatch": "no match → default",
+      "defaultRoute": "Default Route",
+      "directMode": "Direct mode",
+      "serverRunning": "Server running",
+      "stopped": "Server stopped"
     },
     "domainLists": {
       "title": "Domain Lists",

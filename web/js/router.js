@@ -19,6 +19,7 @@ const router = {
     settings: ['page.settings.title', 'page.settings.subtitle'],
     schedules: ['page.schedules.title', 'page.schedules.subtitle'],
     routes: ['page.routes.title', 'page.routes.subtitle'],
+    'traffic-flow': ['page.trafficFlow.title', 'page.trafficFlow.subtitle'],
     'domain-lists': ['page.domainLists.title', 'page.domainLists.subtitle'],
     'custom-proxies': ['page.customProxies.title', 'page.customProxies.subtitle'],
     'connectivity': ['page.connectivity.title', 'page.connectivity.subtitle'],
