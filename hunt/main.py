@@ -46,17 +46,25 @@ async def amain(config: dict):
     print("  Ctrl+C to stop")
     print("=" * 56)
 
-    # Run the full startup cycle BEFORE the scheduler takes over — this
-    # restores the pre-scheduler ordering: read lists → re-validate
-    # previously-working proxies → new hunt cycle, and only then the
-    # scheduler's periodic tasks may start.
-    await state.run_startup_cycle()
-
     # Start the unified scheduler (replaces individual _history_loop,
     # _ip_blacklist_loop, _blocklist_loop, and _health_loop tasks).
+    #
+    # The scheduler is created, seeded, and its run loop started BEFORE the
+    # startup cycle so that periodic tasks (history, IP blacklist refresh,
+    # blocklist refresh) are active from the very first moment — matching
+    # the pre-scheduler behaviour where the periodic loops started
+    # immediately. The scheduler's mutex/fetch-in-progress guards prevent
+    # conflicts with the startup hunt cycle's own downloads.
     scheduler = SchedulerEngine(state)
     state.scheduler = scheduler
-    await scheduler.start()
+    await scheduler.prepare()
+    await scheduler.start_loop()
+
+    # Run the startup cycle (re-validate stale proxies + fresh hunt) as a
+    # background task so it does NOT block the scheduler or the web UI.
+    # The hunt_cycle schedule is disabled by default, so the scheduler will
+    # not start a second concurrent hunt.
+    asyncio.create_task(state.run_startup_cycle())
 
     async def shutdown():
         await scheduler.stop()

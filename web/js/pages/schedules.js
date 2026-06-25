@@ -106,9 +106,20 @@ router.register('schedules', (container) => {
     card.style.overflow = 'auto';
 
     const header = card.querySelector('.card-header') || card;
-    const addBtn = ui.el('button', 'btn btn-sm btn-primary', { text: t('page.schedules.newSchedule'), style: 'margin-bottom:8px' });
+    const btnRow = ui.el('div', '', { style: 'display:flex;gap:8px;margin-bottom:8px' });
+    const addBtn = ui.el('button', 'btn btn-sm btn-primary', { text: t('page.schedules.newSchedule') });
     addBtn.addEventListener('click', () => showEditor(null));
-    card.insertBefore(addBtn, card.firstChild.nextSibling || card.firstChild);
+    btnRow.appendChild(addBtn);
+    const restoreBtn = ui.el('button', 'btn btn-sm btn-secondary', { text: t('page.schedules.restoreDefaults') });
+    restoreBtn.addEventListener('click', () => {
+      api.schedulesRestoreDefaults().then((d) => {
+        const n = (d.added || []).length;
+        app.toast(n ? t('page.schedules.defaultsRestored').replace('{n}', n) : t('page.schedules.defaultsUpToDate'));
+        load();
+      }).catch(e => app.toast('Error: ' + e.message, 'error'));
+    });
+    btnRow.appendChild(restoreBtn);
+    card.insertBefore(btnRow, card.firstChild.nextSibling || card.firstChild);
 
     const body = ui.el('div', '', { id: 'schedules-body' });
     card.appendChild(body);

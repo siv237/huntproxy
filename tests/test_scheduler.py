@@ -41,6 +41,56 @@ class TestSchedulerSeed:
 
         asyncio.run(run())
 
+    def test_prepare_seeds_without_loop(self, state):
+        async def run():
+            sched = SchedulerEngine(state)
+            await sched.prepare()
+            # Defaults seeded and visible
+            assert len(sched._schedules) == len(DEFAULT_SCHEDULES)
+            # But the run loop must NOT be started
+            assert sched._task is None
+            await sched.stop()
+
+        asyncio.run(run())
+
+    def test_start_loop_idempotent(self, state):
+        async def run():
+            sched = SchedulerEngine(state)
+            await sched.prepare()
+            await sched.start_loop()
+            t1 = sched._task
+            assert t1 is not None and not t1.done()
+            # Second call must not replace the existing task
+            await sched.start_loop()
+            assert sched._task is t1
+            await sched.stop()
+
+        asyncio.run(run())
+
+    def test_restore_defaults_adds_only_missing(self, state):
+        async def run():
+            sched = SchedulerEngine(state)
+            await sched.prepare()
+            # Delete two default schedules
+            await sched.delete_schedule("history")
+            await sched.delete_schedule("health_check")
+            assert "history" not in sched._schedules
+            assert "health_check" not in sched._schedules
+            # Modify a remaining one — restore must not overwrite it
+            await sched.update_schedule("blocklist_refresh", interval_sec=7200)
+            added = await sched.restore_defaults()
+            assert set(added) == {"history", "health_check"}
+            assert "history" in sched._schedules
+            assert "health_check" in sched._schedules
+            # Existing user edit preserved
+            assert sched._schedules["blocklist_refresh"].interval_sec == 7200
+            # Calling again adds nothing
+            added2 = await sched.restore_defaults()
+            assert added2 == []
+            await sched.stop()
+
+        asyncio.run(run())
+
 
 class TestSchedulerCRUD:
     def test_add_schedule(self, state):

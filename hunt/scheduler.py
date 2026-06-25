@@ -22,18 +22,21 @@ TASK_TYPES: dict[str, dict[str, Any]] = {
         "mutex_with": ["health_check"],
         "respect_pause": True,
         "respect_internet": True,
+        "busy_flag": "_hunt_running",
     },
     "ip_blacklist": {
         "description": "Download IP blacklist sources",
         "mutex_with": [],
         "respect_pause": False,
         "respect_internet": True,
+        "busy_flag": "_fetching_ip_blacklists",
     },
     "blocklist": {
         "description": "Download country blocklists",
         "mutex_with": [],
         "respect_pause": False,
         "respect_internet": True,
+        "busy_flag": "_fetching_blocklists",
     },
     "health_check": {
         "description": "Re-validate alive proxies",
@@ -174,10 +177,25 @@ class SchedulerEngine:
 
     async def start(self):
         """Load schedules from DB, seed defaults if empty, start main loop."""
+        await self.prepare()
+        await self.start_loop()
+        logger.info(f"Scheduler started with {len(self._schedules)} schedules")
+
+    async def prepare(self):
+        """Load schedules from DB and seed defaults if empty.
+
+        Does NOT start the run loop, so it is safe to call early (e.g. before
+        the startup hunt cycle) — schedules become visible in the UI without
+        any task being triggered yet.
+        """
         await self._load_schedules()
         await self._seed_defaults_if_empty()
+
+    async def start_loop(self):
+        """Start the main tick loop. Idempotent."""
+        if self._task is not None and not self._task.done():
+            return
         self._task = asyncio.create_task(self._run_loop())
-        logger.info(f"Scheduler started with {len(self._schedules)} schedules")
 
     async def stop(self):
         """Stop the main loop and all running task instances."""
@@ -260,6 +278,35 @@ class SchedulerEngine:
             self._persist(entry)
         logger.info(f"Seeded {len(DEFAULT_SCHEDULES)} default schedules")
 
+    async def restore_defaults(self) -> list[str]:
+        """Re-add any missing default schedules without overwriting existing ones.
+
+        Returns the list of newly added schedule ids.
+        """
+        if not self._schedules:
+            await self._load_schedules()
+        added = []
+        async with self._lock:
+            for d in DEFAULT_SCHEDULES:
+                if d["id"] in self._schedules:
+                    continue
+                entry = ScheduleEntry(
+                    id=d["id"],
+                    name=d["name"],
+                    task_type=d["task_type"],
+                    enabled=bool(d["enabled"]),
+                    interval_sec=d["interval_sec"],
+                    config=d["config"] if isinstance(d["config"], dict) else json.loads(d["config"]),
+                )
+                if entry.enabled and entry.interval_sec > 0:
+                    entry.next_run = time.time() + entry.interval_sec
+                self._schedules[entry.id] = entry
+                self._persist(entry)
+                added.append(entry.id)
+        if added:
+            logger.info(f"Restored {len(added)} missing default schedules: {added}")
+        return added
+
     # ── Main loop ──────────────────────────────────────────────────────
 
     async def _run_loop(self):
@@ -304,6 +351,14 @@ class SchedulerEngine:
         # Check if this task_type is already running
         if entry.task_type in self._running_tasks:
             _skip("already running")
+            return
+
+        # Check if an external fetch is already in progress (e.g. the
+        # startup hunt cycle is downloading the same lists). Skip gracefully
+        # instead of letting the executor raise RuntimeError.
+        busy_flag = task_def.get("busy_flag")
+        if busy_flag and getattr(self.state, busy_flag, False):
+            _skip("fetch in progress")
             return
 
         # Check mutex conflicts

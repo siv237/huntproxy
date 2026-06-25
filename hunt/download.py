@@ -7,13 +7,43 @@ process is killed, but slow-but-steady downloads complete normally.
 A separate, longer connect timeout is used for the first byte (waiting
 for the connection to establish), after which the shorter stall timeout
 applies to subsequent chunks.
+
+``--connect-timeout`` is passed to curl itself so that unreachable hosts
+are abandoned quickly at the TCP level rather than waiting for the
+operating-system connect timeout (which can exceed 2 minutes).
 """
 
 import asyncio
 
+# TCP connect timeout passed to curl via --connect-timeout.
+CURL_CONNECT_TIMEOUT = 15
+
+# Python-side timeout for the first byte after curl has connected.
+CONNECT_TIMEOUT = 30
+
+# Python-side timeout for subsequent chunks (transfer stall).
 STALL_TIMEOUT = 45
-CONNECT_TIMEOUT = 90
+
 CHUNK_SIZE = 65536
+
+
+def curl_args(url: str, *, proxy: str = "", fail_on_error: bool = True,
+              user_agent: str = "huntproxy/1.0") -> list[str]:
+    """Build a curl argument list with fast-fail connect timeout.
+
+    The caller is responsible for launching the subprocess (without
+    ``--max-time``) and feeding the resulting process to
+    :func:`stream_download`.
+    """
+    args = ["curl", "-sS", "-L", "--connect-timeout", str(CURL_CONNECT_TIMEOUT)]
+    if fail_on_error:
+        args.append("-f")
+    if user_agent:
+        args += ["-A", user_agent]
+    if proxy:
+        args += ["--proxy", proxy]
+    args.append(url)
+    return args
 
 
 async def stream_download(proc, on_chunk=None):

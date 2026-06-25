@@ -170,4 +170,5 @@ const api = {
   schedulesLog(limit = 50) { return this.request(`/api/schedules/log?limit=${limit}`); },
   schedulesPause() { return this.request('/api/schedules/pause', 'POST'); },
   schedulesResume() { return this.request('/api/schedules/resume', 'POST'); },
+  schedulesRestoreDefaults() { return this.request('/api/schedules/restore-defaults', 'POST'); },
 };

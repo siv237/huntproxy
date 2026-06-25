@@ -745,19 +745,18 @@ class HealthMixin:
             self._emit(f"Startup re-validation done: {ok_count} ok, {fail_count} failed", "ok")
 
     async def run_startup_cycle(self):
-            """Run the full startup check cycle before the scheduler takes over.
+            """Run the startup check cycle as a background task.
 
-            Restores the pre-scheduler startup ordering: all checks complete
-            first, only then the unified scheduler may start its periodic
-            tasks. The cycle is:
+            The cycle is:
 
               1. re-validate previously-working (stale) proxies
               2. a fresh full hunt cycle — read lists → blacklists → validate
                  new candidates
 
-            The method blocks until both steps finish (or a 2h safety cap
-            expires), so callers can ``await`` it before starting the
-            scheduler.
+            The scheduler's run loop is already started before this is called
+            (as a background task), so periodic tasks run concurrently. The
+            scheduler's busy-flag guards skip list-refresh tasks while the
+            hunt cycle is downloading the same lists.
             """
             self._emit("Startup cycle: re-validating previously-working proxies", "phase")
             try:
@@ -781,8 +780,8 @@ class HealthMixin:
             deadline = time.time() + 7200  # 2h safety cap
             while self.task is not None and not self.task.done():
                 if time.time() > deadline:
-                    logger.error("Startup hunt cycle exceeded 2 hours, proceeding to scheduler")
+                    logger.error("Startup hunt cycle exceeded 2 hours")
                     self._emit("Startup cycle: hunt exceeded 2h cap", "warn")
                     break
                 await asyncio.sleep(2)
-            self._emit("Startup cycle complete — starting scheduler", "ok")
+            self._emit("Startup cycle complete", "ok")

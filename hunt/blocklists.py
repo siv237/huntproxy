@@ -14,7 +14,7 @@ List types:
 import asyncio
 import time
 from hunt.constants import DEFAULT_BLOCKLIST_SOURCES, logger
-from hunt.download import stream_download
+from hunt.download import stream_download, curl_args
 
 
 class BlocklistsMixin:
@@ -300,12 +300,9 @@ class BlocklistsMixin:
                 }
                 self._emit(f"Fetching blocklist {source_name}...", "info")
                 try:
-                    curl_args = ["curl", "-sS", "-L", "-A", "huntproxy/1.0"]
-                    if proxy:
-                        curl_args += ["--proxy", proxy]
-                    curl_args.append(url)
+                    cargs = curl_args(url, proxy=proxy, fail_on_error=False)
                     proc = await asyncio.create_subprocess_exec(
-                        *curl_args,
+                        *cargs,
                         stdout=asyncio.subprocess.PIPE,
                         stderr=asyncio.subprocess.DEVNULL,
                     )

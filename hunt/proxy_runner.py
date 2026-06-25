@@ -450,10 +450,10 @@ class ProxyRunner:
                 try: writer.close()
                 except: pass
                 continue
-                self._failover_idx = (attempt + 1) % len(pool)
-                chain.append(f"pool:{p.address}")
-                is_raw = (not need_connect and p.protocol not in ("socks4", "socks5"))
-                return reader, writer, is_raw
+            self._failover_idx = (attempt + 1) % len(pool)
+            chain.append(f"pool:{p.address}")
+            is_raw = (not need_connect and p.protocol not in ("socks4", "socks5"))
+            return reader, writer, is_raw
         return None
 
 

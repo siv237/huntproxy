@@ -1786,6 +1786,14 @@ class HuntServer:
             self.state._log_action("schedule.resume_all")
             return json.dumps({"ok": True, "paused": False}), 200, "application/json"
 
+        if path == "/api/schedules/restore-defaults" and method == "POST":
+            sched = getattr(self.state, "scheduler", None)
+            if sched is None:
+                return json.dumps({"ok": False, "error": "scheduler not initialized"}), 500, "application/json"
+            added = await sched.restore_defaults()
+            self.state._log_action("schedule.restore_defaults", ", ".join(added) or "none")
+            return json.dumps({"ok": True, "added": added, "schedules": sched.list_schedules()}), 200, "application/json"
+
         if path.startswith("/api/schedules/") and path.endswith("/toggle") and method == "POST":
             sid = path[len("/api/schedules/"):-len("/toggle")]
             sched = getattr(self.state, "scheduler", None)

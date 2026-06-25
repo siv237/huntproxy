@@ -3,7 +3,7 @@
 import asyncio
 import time
 from hunt.constants import DEFAULT_SOURCES, logger
-from hunt.download import stream_download
+from hunt.download import stream_download, curl_args
 from typing import Optional
 
 class ProxySourcesMixin:
@@ -128,8 +128,9 @@ class ProxySourcesMixin:
                 }
                 async with sem:
                     try:
+                        cargs = curl_args(url)
                         proc = await asyncio.create_subprocess_exec(
-                            "curl", "-sSf", "-L", url,
+                            *cargs,
                             stdout=asyncio.subprocess.PIPE,
                             stderr=asyncio.subprocess.DEVNULL,
                         )
