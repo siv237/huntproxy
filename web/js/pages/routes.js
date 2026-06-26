@@ -341,7 +341,16 @@ router.register('routes', (container) => {
     listEl.addEventListener('drop', (e) => {
       e.preventDefault();
       if (!_draggedRow) return;
-      // dropped on empty area of the list (not on a row)
+      if (e.target === _placeholder) {
+        const nextRow = _placeholder.nextElementSibling;
+        const prevRow = _placeholder.previousElementSibling;
+        if (nextRow && nextRow.classList.contains('route-row')) {
+          performDrop(listEl, _draggedRow, nextRow, true);
+        } else if (prevRow && prevRow.classList.contains('route-row')) {
+          performDrop(listEl, _draggedRow, prevRow, false);
+        }
+        return;
+      }
       if (e.target === listEl) {
         const rows = Array.from(listEl.querySelectorAll('.route-row'));
         const lastRow = rows[rows.length - 1];
@@ -357,6 +366,10 @@ router.register('routes', (container) => {
   function ensurePlaceholder(listEl) {
     if (!_placeholder || !_placeholder.parentNode) {
       _placeholder = ui.el('div', 'route-drop-placeholder');
+      _placeholder.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+      });
     }
     if (_placeholder.parentNode !== listEl) {
       listEl.appendChild(_placeholder);
@@ -460,7 +473,14 @@ router.register('routes', (container) => {
     }
 
     hidePlaceholder();
-    api.routingReorder(order).then(() => { app.toast(t('page.routes.reordered')); load(); }).catch(e => app.toast('Error: ' + e.message, 'error'));
+    if (insertBefore) {
+      listEl.insertBefore(draggedRow, refRow);
+    } else {
+      const refNext = refRow.nextSibling;
+      if (refNext) listEl.insertBefore(draggedRow, refNext);
+      else listEl.appendChild(draggedRow);
+    }
+    api.routingReorder(order).then(() => { app.toast(t('page.routes.reordered')); load(); }).catch(e => { app.toast('Error: ' + e.message, 'error'); load(); });
   }
 
   function toggleRouteList(id) {
@@ -529,6 +549,7 @@ router.register('routes', (container) => {
 
   async function load() {
     if (_loading) return;
+    if (_draggedRow) return;
     _loading = true;
     try {
       let status = {}, lists = [], cpResult = [];
