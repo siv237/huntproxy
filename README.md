@@ -4,7 +4,7 @@
 
 # huntproxy
 
-[Русская документация](README.ru.md)
+🌐 [EN](README.md) · [RU](README.ru.md) · [DE](README.de.md) · [ES](README.es.md) · [FR](README.fr.md) · [ZH](README.zh.md)
 
 A tool for discovering, validating, and managing a pool of proxies with a Web UI.
 

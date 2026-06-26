@@ -4,7 +4,7 @@
 
 # huntproxy
 
-[English documentation](README.md)
+🌐 [EN](README.md) · [RU](README.ru.md) · [DE](README.de.md) · [ES](README.es.md) · [FR](README.fr.md) · [ZH](README.zh.md)
 
 Инструмент поиска, проверки и управления пулом прокси с Web UI.
 
