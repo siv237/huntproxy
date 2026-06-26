@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/biglogo.png" alt="huntproxy" width="760">
+  <img src="web/assets/biglogo.png" alt="huntproxy" width="760">
 </p>
 
 # huntproxy
