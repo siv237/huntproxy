@@ -1,6 +1,7 @@
 import json
 import pytest
 import sqlite3
+import time
 
 import hunt
 
@@ -153,3 +154,83 @@ class TestApiTraffic:
         assert data["out_bytes"] == 600
         assert data["total_bytes"] == 1000
         assert data["requests"] == 2
+
+
+class TestTrafficMemFallback:
+    """When the stats DB has no rows, traffic widgets must fall back to the
+    in-memory proxy log so the Traffic Monitor stays populated."""
+
+    def _server(self, state):
+        return hunt.HuntServer(state, "127.0.0.1", 0)
+
+    def _mem_entry(self, upstream, status="ok", bin_=100, bout=200, dur=0.1):
+        return {
+            "ts": time.time(),
+            "client": "1.2.3.4:12345",
+            "target": "http://example.com",
+            "status": status,
+            "upstream": upstream,
+            "bytes_in": bin_,
+            "bytes_out": bout,
+            "duration": dur,
+        }
+
+    @pytest.mark.asyncio
+    async def test_traffic_routes_fallback_to_mem(self, state):
+        server = self._server(state)
+        server.proxy.log = [
+            self._mem_entry("proxy:5.5.5.5:8080"),
+            self._mem_entry("direct"),
+        ]
+        resp, status, _ = await server._route("GET", "/api/traffic/routes", "/api/traffic/routes", b"")
+        assert status == 200
+        data = json.loads(resp)
+        types = {r["type"] for r in data["routes"]}
+        assert "proxy" in types
+        assert "direct" in types
+        assert sum(r["requests"] for r in data["routes"]) == 2
+
+    @pytest.mark.asyncio
+    async def test_bandwidth_fallback_to_mem(self, state):
+        server = self._server(state)
+        server.proxy.log = [
+            self._mem_entry("proxy:5.5.5.5:8080", bin_=100, bout=200),
+            self._mem_entry("direct", bin_=50, bout=150),
+        ]
+        resp, status, _ = await server._route("GET", "/api/bandwidth", "/api/bandwidth", b"")
+        assert status == 200
+        data = json.loads(resp)
+        assert data["upload"] == 150
+        assert data["download"] == 350
+        assert data["total"] == 500
+
+    @pytest.mark.asyncio
+    async def test_traffic_summary_fallback_to_mem(self, state):
+        server = self._server(state)
+        server.proxy.log = [
+            self._mem_entry("proxy:5.5.5.5:8080", status="ok"),
+            self._mem_entry("direct", status="connect failed", bin_=0, bout=0),
+        ]
+        resp, status, _ = await server._route("GET", "/api/traffic/summary", "/api/traffic/summary", b"")
+        assert status == 200
+        data = json.loads(resp)
+        day = data["day"]
+        assert day["requests"] == 2
+        assert day["success"] == 1
+        assert day["failed"] == 1
+        assert day["total"] == 300
+        assert day["top_routes"]  # populated from memory
+        # week/month must NOT reuse the recent in-memory snapshot as a period total
+        assert data["week"]["requests"] == 0
+        assert data["month"]["requests"] == 0
+
+    @pytest.mark.asyncio
+    async def test_route_type_classification(self, state):
+        server = self._server(state)
+        assert server._route_type("direct") == "direct"
+        assert server._route_type("proxy:1.2.3.4:8080") == "proxy"
+        assert server._route_type("pool:9.9.9.9:1080") == "pool"
+        assert server._route_type("custom:myproxy") == "custom"
+        assert server._route_type("") == "other"
+        assert server._route_type("?") == "other"
+        assert server._route_type("unknown") == "other"

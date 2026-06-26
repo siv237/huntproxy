@@ -426,6 +426,72 @@ class HuntServer:
         if hasattr(state, '_proxy_active_addr') and state._proxy_active_addr:
             self.proxy.active_proxy_addr = state._proxy_active_addr
 
+    def _mem_traffic(self, cutoff: float = 0) -> list:
+        """Recent traffic entries from the in-memory proxy log.
+
+        Used as a fallback when the stats DB is unavailable or empty, so the
+        Traffic Monitor widgets stay populated even if DB writes failed."""
+        try:
+            log = list(self.proxy.log)
+        except Exception:
+            return []
+        out = []
+        for e in log:
+            ts = e.get("ts", 0) or 0
+            if ts >= cutoff:
+                out.append(e)
+        return out
+
+    @staticmethod
+    def _route_type(up: str) -> str:
+        if not up or up == "?" or up == "unknown":
+            return "other"
+        if up == "direct" or up.startswith("direct"):
+            return "direct"
+        if up.startswith("proxy:"):
+            return "proxy"
+        if up.startswith("pool:"):
+            return "pool"
+        if up.startswith("custom:"):
+            return "custom"
+        return "other"
+
+    def _aggregate_routes(self, entries: list) -> list:
+        """Aggregate raw traffic entries into route-type buckets."""
+        routes: dict = {}
+        for e in entries:
+            up = e.get("upstream") or ""
+            if not up or up == "?":
+                up = "unknown"
+            rtype = self._route_type(up)
+            rt = routes.setdefault(rtype, {
+                "type": rtype, "requests": 0, "bytes_in": 0, "bytes_out": 0,
+                "ok": 0, "_dur_sum": 0.0, "upstreams": {},
+            })
+            rt["requests"] += 1
+            rt["bytes_in"] += int(e.get("bytes_in", 0) or 0)
+            rt["bytes_out"] += int(e.get("bytes_out", 0) or 0)
+            if (e.get("status") or "") == "ok":
+                rt["ok"] += 1
+            rt["_dur_sum"] += float(e.get("duration", 0) or 0)
+            rt["upstreams"][up] = rt["upstreams"].get(up, 0) + 1
+        result = []
+        for rt in routes.values():
+            cnt = rt["requests"] or 1
+            result.append({
+                "type": rt["type"],
+                "requests": rt["requests"],
+                "bytes_in": rt["bytes_in"],
+                "bytes_out": rt["bytes_out"],
+                "success_rate": round(rt["ok"] / cnt * 100, 1),
+                "avg_duration": round(rt["_dur_sum"] / cnt, 3),
+                "upstreams": [{"upstream": k, "requests": v}
+                              for k, v in sorted(rt["upstreams"].items(),
+                                                 key=lambda x: x[1], reverse=True)[:5]],
+            })
+        result.sort(key=lambda x: x["requests"], reverse=True)
+        return result
+
     async def start(self):
         self._server = await asyncio.start_server(
             self._handle, self.host, self.port)
@@ -1127,7 +1193,7 @@ class HuntServer:
         if path.startswith("/api/traffic/live"):
             return json.dumps(self.state.get_live_traffic()), 200, "application/json"
 
-        if path.startswith("/api/traffic"):
+        if path == "/api/traffic":
             return json.dumps({"points": self.state.get_history("24h")}), 200, "application/json"
 
         if path.startswith("/api/requests"):
@@ -1234,70 +1300,48 @@ class HuntServer:
             return json.dumps({"errors": result, "total": total}), 200, "application/json"
 
         if path.startswith("/api/traffic/routes"):
-            routes = {}
+            cutoff = time.time() - 86400
+            entries = []
             try:
                 conn = self.state._stats_db()
-                cutoff = time.time() - 86400
                 rows = conn.execute(
-                    "SELECT upstream, COUNT(*) as cnt, "
-                    "COALESCE(SUM(bytes_in),0) as bin, COALESCE(SUM(bytes_out),0) as bout, "
-                    "COALESCE(SUM(CASE WHEN status='ok' THEN 1 ELSE 0 END),0) as ok, "
-                    "COALESCE(AVG(duration),0) as avg_dur "
-                    "FROM traffic_log WHERE ts > ? GROUP BY upstream ORDER BY cnt DESC",
+                    "SELECT ts, upstream, bytes_in, bytes_out, status, duration "
+                    "FROM traffic_log WHERE ts > ? ORDER BY id DESC",
                     (cutoff,)
                 ).fetchall()
                 conn.close()
-                for r in rows:
-                    up = r["upstream"] or "unknown"
-                    rtype = "other"
-                    if up == "direct" or up.startswith("direct"):
-                        rtype = "direct"
-                    elif up.startswith("proxy:"):
-                        rtype = "proxy"
-                    elif up.startswith("pool:"):
-                        rtype = "pool"
-                    elif up.startswith("custom:"):
-                        rtype = "custom"
-                    if rtype not in routes:
-                        routes[rtype] = {"type": rtype, "requests": 0, "bytes_in": 0, "bytes_out": 0, "ok": 0, "avg_duration": 0, "_dur_sum": 0, "upstreams": []}
-                    rt = routes[rtype]
-                    rt["requests"] += r["cnt"]
-                    rt["bytes_in"] += r["bin"]
-                    rt["bytes_out"] += r["bout"]
-                    rt["ok"] += r["ok"]
-                    rt["_dur_sum"] += r["avg_dur"] * r["cnt"]
-                    rt["upstreams"].append({"upstream": up, "requests": r["cnt"]})
+                entries = [dict(r) for r in rows]
             except Exception:
-                pass
-            result = []
-            for rt in routes.values():
-                cnt = rt["requests"] or 1
-                result.append({
-                    "type": rt["type"],
-                    "requests": rt["requests"],
-                    "bytes_in": rt["bytes_in"],
-                    "bytes_out": rt["bytes_out"],
-                    "success_rate": round(rt["ok"] / cnt * 100, 1),
-                    "avg_duration": round(rt["_dur_sum"] / cnt, 3),
-                    "upstreams": sorted(rt["upstreams"], key=lambda x: x["requests"], reverse=True)[:5],
-                })
-            result.sort(key=lambda x: x["requests"], reverse=True)
+                entries = []
+            if not entries:
+                entries = self._mem_traffic(cutoff)
+            result = self._aggregate_routes(entries)
             return json.dumps({"routes": result}), 200, "application/json"
 
         if path.startswith("/api/bandwidth"):
+            cutoff = time.time() - 86400
+            upload = 0
+            download = 0
+            have_db = False
             try:
                 conn = self.state._stats_db()
                 row = conn.execute(
                     "SELECT COALESCE(SUM(bytes_in),0) as bin, COALESCE(SUM(bytes_out),0) as bout "
                     "FROM traffic_log WHERE ts > ?",
-                    (time.time() - 86400,)
+                    (cutoff,)
                 ).fetchone()
                 conn.close()
-                upload = row["bin"] if row else 0    # bytes_in  = client→upstream = upload
-                download = row["bout"] if row else 0  # bytes_out = upstream→client = download
+                upload = int(row["bin"] if row else 0)    # bytes_in  = client→upstream = upload
+                download = int(row["bout"] if row else 0)  # bytes_out = upstream→client = download
+                have_db = (upload + download) > 0
             except Exception:
+                have_db = False
+            if not have_db:
                 upload = 0
                 download = 0
+                for e in self._mem_traffic(cutoff):
+                    upload += int(e.get("bytes_in", 0) or 0)
+                    download += int(e.get("bytes_out", 0) or 0)
             return json.dumps({
                 "download": download,
                 "upload": upload,
@@ -1307,60 +1351,84 @@ class HuntServer:
         if path.startswith("/api/traffic/summary"):
             periods = {"day": 86400, "week": 604800, "month": 2592000}
             result = {}
+            now = time.time()
+            conn = None
             try:
                 conn = self.state._stats_db()
-                now = time.time()
-                for name, secs in periods.items():
-                    cutoff = now - secs
-                    row = conn.execute(
-                        "SELECT COALESCE(SUM(bytes_in),0) as bin, COALESCE(SUM(bytes_out),0) as bout, "
-                        "COUNT(*) as reqs, "
-                        "COALESCE(SUM(CASE WHEN status='ok' THEN 1 ELSE 0 END),0) as ok "
-                        "FROM traffic_log WHERE ts > ?",
-                        (cutoff,)
-                    ).fetchone()
-                    download = int(row["bout"] or 0)
-                    upload = int(row["bin"] or 0)
-                    total = download + upload
-                    reqs = int(row["reqs"] or 0)
-                    ok = int(row["ok"] or 0)
-                    result[name] = {
-                        "download": download,
-                        "upload": upload,
-                        "total": total,
-                        "requests": reqs,
-                        "success": ok,
-                        "failed": reqs - ok,
-                        "success_rate": round(ok / reqs * 100, 1) if reqs else 0,
-                    }
-                    # Per-route breakdown for this period
-                    route_rows = conn.execute(
-                        "SELECT upstream, COUNT(*) as cnt, "
-                        "COALESCE(SUM(bytes_in),0) as bin, COALESCE(SUM(bytes_out),0) as bout "
-                        "FROM traffic_log WHERE ts > ? GROUP BY upstream ORDER BY cnt DESC LIMIT 5",
-                        (cutoff,)
-                    ).fetchall()
-                    routes = []
-                    for rr in route_rows:
-                        up = rr["upstream"] or "unknown"
-                        rtype = "other"
-                        if up == "direct" or up.startswith("direct"): rtype = "direct"
-                        elif up.startswith("proxy:"): rtype = "proxy"
-                        elif up.startswith("pool:"): rtype = "pool"
-                        elif up.startswith("custom:"): rtype = "custom"
-                        routes.append({
-                            "type": rtype,
-                            "upstream": up,
-                            "requests": int(rr["cnt"]),
-                            "bytes": int(rr["bout"] or 0) + int(rr["bin"] or 0),
-                        })
-                    result[name]["top_routes"] = routes
-                conn.close()
             except Exception as e:
                 logger.error("traffic/summary: %s", e)
-                for name in periods:
-                    if name not in result:
-                        result[name] = {"download": 0, "upload": 0, "total": 0, "requests": 0, "success": 0, "failed": 0, "success_rate": 0, "top_routes": []}
+            for name, secs in periods.items():
+                cutoff = now - secs
+                download = 0
+                upload = 0
+                reqs = 0
+                ok = 0
+                routes = []
+                used_db = False
+                if conn is not None:
+                    try:
+                        row = conn.execute(
+                            "SELECT COALESCE(SUM(bytes_in),0) as bin, COALESCE(SUM(bytes_out),0) as bout, "
+                            "COUNT(*) as reqs, "
+                            "COALESCE(SUM(CASE WHEN status='ok' THEN 1 ELSE 0 END),0) as ok "
+                            "FROM traffic_log WHERE ts > ?",
+                            (cutoff,)
+                        ).fetchone()
+                        download = int(row["bout"] or 0)
+                        upload = int(row["bin"] or 0)
+                        reqs = int(row["reqs"] or 0)
+                        ok = int(row["ok"] or 0)
+                        if reqs > 0:
+                            used_db = True
+                            route_rows = conn.execute(
+                                "SELECT upstream, COUNT(*) as cnt, "
+                                "COALESCE(SUM(bytes_in),0) as bin, COALESCE(SUM(bytes_out),0) as bout "
+                                "FROM traffic_log WHERE ts > ? GROUP BY upstream ORDER BY cnt DESC LIMIT 5",
+                                (cutoff,)
+                            ).fetchall()
+                            for rr in route_rows:
+                                up = rr["upstream"] or "unknown"
+                                rtype = self._route_type(up)
+                                routes.append({
+                                    "type": rtype,
+                                    "upstream": up,
+                                    "requests": int(rr["cnt"]),
+                                    "bytes": int(rr["bout"] or 0) + int(rr["bin"] or 0),
+                                })
+                    except Exception:
+                        used_db = False
+                if not used_db and name == "day":
+                    entries = self._mem_traffic(cutoff)
+                    for e in entries:
+                        upload += int(e.get("bytes_in", 0) or 0)
+                        download += int(e.get("bytes_out", 0) or 0)
+                        reqs += 1
+                        if (e.get("status") or "") == "ok":
+                            ok += 1
+                    for r in self._aggregate_routes(entries)[:5]:
+                        up = r["upstreams"][0]["upstream"] if r["upstreams"] else r["type"]
+                        routes.append({
+                            "type": r["type"],
+                            "upstream": up,
+                            "requests": r["requests"],
+                            "bytes": r["bytes_in"] + r["bytes_out"],
+                        })
+                total = download + upload
+                result[name] = {
+                    "download": download,
+                    "upload": upload,
+                    "total": total,
+                    "requests": reqs,
+                    "success": ok,
+                    "failed": reqs - ok,
+                    "success_rate": round(ok / reqs * 100, 1) if reqs else 0,
+                    "top_routes": routes,
+                }
+            if conn is not None:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
             return json.dumps(result), 200, "application/json"
 
         # === Routing API ===

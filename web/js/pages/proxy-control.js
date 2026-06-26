@@ -15,13 +15,14 @@ router.register('proxy-control', (container) => {
     const row1 = ui.el('div', 'grid grid-4');
     const tiles = [
       { id: 'tile-req', label: t('page.proxyControl.req24h'), icon: '↻', color: 'var(--accent)' },
-      { id: 'tile-sr', label: t('page.proxyControl.successRate'), icon: '✓', color: 'var(--success)' },
+      { id: 'tile-sr', label: t('page.proxyControl.successRate'), icon: '✓', color: 'var(--success)', title: t('page.proxyControl.successRateOverall') },
       { id: 'tile-bw', label: t('page.proxyControl.bandwidth24h'), icon: '↕', color: 'var(--info)' },
-      { id: 'tile-routes', label: t('page.proxyControl.activeRoutes'), icon: '⇄', color: 'var(--warning)' },
+      { id: 'tile-routes', label: t('page.proxyControl.activeRoutes'), icon: '⇄', color: 'var(--warning)', title: t('page.proxyControl.activeRoutesHint') },
     ];
     tiles.forEach(ti => {
       const card = ui.el('div', 'card tm-tile');
       card.id = ti.id;
+      if (ti.title) card.title = ti.title;
       card.innerHTML = `<div class="tm-tile-icon" style="color:${ti.color}">${ti.icon}</div>` +
         `<div class="tm-tile-body"><div class="tm-tile-value">—</div><div class="tm-tile-label">${ti.label}</div></div>`;
       els[ti.id] = card;
@@ -111,8 +112,8 @@ router.register('proxy-control', (container) => {
 
   // --- Helpers ---
   function routeBadge(upstream) {
-    if (!upstream || upstream === '?') {
-      return '<span class="route-badge route-unknown">?</span>';
+    if (!upstream || upstream === '?' || upstream === 'unknown') {
+      return `<span class="route-badge route-unknown" title="${ui.escHtml(t('page.proxyControl.routeUnknown'))}">${ui.escHtml(t('page.proxyControl.routeUnknown'))}</span>`;
     }
     const parts = upstream.split(' → ');
     return parts.map(p => {
@@ -199,10 +200,11 @@ router.register('proxy-control', (container) => {
       { label: t('page.proxyControl.client'), width: '110px' },
       { label: t('page.proxyControl.target'), width: 'auto' },
       { label: t('page.proxyControl.route'), width: 'auto' },
-      { label: t('page.proxyControl.status'), width: '50px', align: 'center' },
-      { label: t('page.proxyControl.duration'), width: '65px', align: 'right' },
-      { label: t('page.proxyControl.size'), width: '80px', align: 'right' },
+      { label: t('page.proxyControl.status'), width: '56px', align: 'center' },
+      { label: t('page.proxyControl.duration'), width: '70px', align: 'right' },
+      { label: t('page.proxyControl.size'), width: '92px', align: 'right' },
     ];
+    const totalRows = list.length;
     const rows = list.slice(0, 40).map(r => {
       const st = (r.status || '').toString();
       const isOk = st === 'ok' || st === '200';
@@ -214,19 +216,25 @@ router.register('proxy-control', (container) => {
       const cls = isNew ? 'tm-row-new' : '';
       const target = r.target || '—';
       const targetShort = target.length > 40 ? target.slice(0, 38) + '…' : target;
+      const statusTitle = isOk ? t('page.proxyControl.statusOk') : is502 ? t('page.proxyControl.statusBadGateway') : t('page.proxyControl.statusFailed');
+      const statusSym = isOk ? '✓' : is502 ? '502' : '✗';
       return [
         `<span class="${cls}">${ui.fmtTime(r.ts || 0).split(' ')[0]}</span>`,
         `<span class="${cls}" style="font-family:monospace;font-size:11px">${ui.escHtml(r.client || '—')}</span>`,
         `<span class="${cls}" style="font-family:monospace;font-size:12px;color:var(--text-primary)" title="${ui.escHtml(target)}">${ui.escHtml(targetShort)}</span>`,
         `<span class="${cls}">${routeBadge(r.upstream)}</span>`,
-        `<span class="${cls}" style="color:${isOk ? 'var(--success)' : is502 ? 'var(--warning)' : 'var(--danger)'};font-weight:600">${isOk ? '✓' : is502 ? '502' : '✗'}</span>`,
+        `<span class="${cls}" style="color:${isOk ? 'var(--success)' : is502 ? 'var(--warning)' : 'var(--danger)'};font-weight:600" title="${ui.escHtml(statusTitle)}">${statusSym}</span>`,
         `<span class="${cls}" style="font-size:11px;color:var(--text-secondary)">${dur}</span>`,
-        `<span class="${cls}" style="font-size:11px;color:var(--text-secondary)">${sz}</span>`,
+        `<span class="${cls}" style="font-size:11px;color:var(--text-secondary);white-space:nowrap">${sz}</span>`,
       ];
     });
     const tblWrap = ui.el('div', 'table-wrap', { style: 'flex:1;min-height:0;overflow-y:auto' });
     tblWrap.appendChild(ui.table(headers, rows));
     body.appendChild(tblWrap);
+
+    if (totalRows > rows.length) {
+      body.appendChild(ui.el('div', 'tm-stream-count', { text: t('page.proxyControl.showingNofM', { shown: rows.length, total: totalRows }) }));
+    }
 
     lastReqIds = newIds;
   }
@@ -245,7 +253,7 @@ router.register('proxy-control', (container) => {
 
     const totalReq = list.reduce((s, r) => s + (r.requests || 0), 0) || 1;
 
-    const wrap = ui.el('div', '', { style: 'flex:1;min-height:0;overflow-y:auto;padding:4px 0' });
+    const wrap = ui.el('div', '', { style: 'flex:1;min-height:0;overflow-y:auto;padding:2px 0' });
     list.forEach(r => {
       const pct = (r.requests / totalReq * 100);
       const row = ui.el('div', 'tm-route-row');
@@ -253,30 +261,28 @@ router.register('proxy-control', (container) => {
       const badge = ui.el('span', `route-badge ${routeTypeClass(r.type)}`, { text: routeTypeLabel(r.type).toUpperCase() });
       top.appendChild(badge);
       top.appendChild(ui.el('span', 'tm-route-count', { text: r.requests.toLocaleString() }));
+      const bar = ui.el('div', 'tm-route-bar');
+      bar.appendChild(ui.el('div', '', { style: `width:${pct}%;height:100%;background:var(--${routeTypeClass(r.type).replace('route-', '')});border-radius:2px;transition:width .3s` }));
+      top.appendChild(bar);
       top.appendChild(ui.el('span', 'tm-route-pct', { text: pct.toFixed(1) + '%' }));
       top.appendChild(ui.el('span', 'tm-route-sr', { text: r.success_rate + '% OK', style: `color:${r.success_rate >= 80 ? 'var(--success)' : r.success_rate >= 50 ? 'var(--warning)' : 'var(--danger)'};font-size:11px;font-weight:600` }));
       row.appendChild(top);
-
-      const bar = ui.el('div', 'tm-route-bar');
-      bar.appendChild(ui.el('div', '', { style: `width:${pct}%;height:100%;background:var(--${routeTypeClass(r.type).replace('route-', '')});border-radius:2px;transition:width .3s` }));
-      row.appendChild(bar);
 
       const meta = ui.el('div', 'tm-route-meta');
       meta.appendChild(ui.el('span', '', { text: '↓ ' + fmtBytes(r.bytes_out), style: 'color:var(--text-secondary)' }));
       meta.appendChild(ui.el('span', '', { text: '↑ ' + fmtBytes(r.bytes_in), style: 'color:var(--text-secondary)' }));
       meta.appendChild(ui.el('span', '', { text: r.avg_duration + 's avg', style: 'color:var(--text-secondary)' }));
-      row.appendChild(meta);
-
       if (r.upstreams && r.upstreams.length > 1) {
-        const ups = ui.el('div', 'tm-route-ups');
+        const ups = ui.el('span', 'tm-route-ups');
         r.upstreams.slice(0, 3).forEach(u => {
           ups.appendChild(ui.el('span', 'tm-route-up', { text: u.upstream, title: u.upstream }));
         });
         if (r.upstreams.length > 3) {
           ups.appendChild(ui.el('span', 'tm-route-up', { text: '+' + (r.upstreams.length - 3) }));
         }
-        row.appendChild(ups);
+        meta.appendChild(ups);
       }
+      row.appendChild(meta);
 
       wrap.appendChild(row);
     });
@@ -324,11 +330,9 @@ router.register('proxy-control', (container) => {
       row.appendChild(left);
 
       const right = ui.el('div', 'tm-domain-right');
-      right.appendChild(ui.el('span', '', { text: d.requests + ' req', style: 'font-weight:600;font-size:12px' }));
-      right.appendChild(ui.el('span', '', { text: fmtBytes(d.bytes), style: 'font-size:11px;color:var(--text-secondary)' }));
-
       const routeTypes = Object.entries(d.routes).sort((a, b) => b[1] - a[1]);
-      const badges = ui.el('div', 'tm-domain-routes');
+      right.appendChild(ui.el('span', 'tm-domain-stat', { html: `<b>${d.requests}</b> req · <span style="color:var(--text-secondary)">${fmtBytes(d.bytes)}</span>` }));
+      const badges = ui.el('span', 'tm-domain-routes');
       routeTypes.forEach(([type, count]) => {
         badges.appendChild(ui.el('span', `route-badge-sm ${routeTypeClass(type)}`, { text: routeTypeLabel(type), title: count + ' requests' }));
       });
@@ -414,7 +418,7 @@ router.register('proxy-control', (container) => {
         const d = new Date(p.ts * 1000);
         return `${d.getHours()}:${d.getMinutes().toString().padStart(2, '0')}`;
       });
-      const chartWrap = ui.el('div', '', { style: 'flex:1;min-height:0;display:flex', html: charts.lineChart(data, { width: 400, height: 120, labels, color: 'var(--accent)', fillArea: true, responsive: true }) });
+      const chartWrap = ui.el('div', '', { style: 'flex:1;min-height:0;display:flex', html: charts.lineChart(data, { width: 400, height: 170, labels, color: 'var(--accent)', fillArea: true, responsive: true }) });
       card.appendChild(chartWrap);
     } else {
       card.appendChild(ui.el('div', 'empty', { text: t('page.proxyControl.noTrafficData'), style: 'flex:1;display:flex;align-items:center;justify-content:center' }));
@@ -439,11 +443,13 @@ router.register('proxy-control', (container) => {
     const download = data.download || 0;
     const upload = data.upload || 0;
     const dlPct = total ? (download / total * 100) : 0;
+    const sr = data.success_rate || 0;
 
-    // Big total
-    const totalEl = ui.el('div', 'tm-consumer-total');
-    totalEl.innerHTML = `<div class="tm-consumer-total-value">${fmtBytes(total)}</div><div class="tm-consumer-total-label">${t('page.proxyControl.totalTraffic')}</div>`;
-    card.appendChild(totalEl);
+    // Compact header: total on the left, request stats on the right
+    const head = ui.el('div', 'tm-consumer-head');
+    head.innerHTML = `<div class="tm-consumer-total"><span class="tm-consumer-total-value">${fmtBytes(total)}</span><span class="tm-consumer-total-label">${t('page.proxyControl.totalTraffic')}</span></div>` +
+      `<div class="tm-consumer-reqs"><span>${data.requests.toLocaleString()} ${t('page.proxyControl.requests')}</span><span style="color:var(--text-secondary)">${data.success.toLocaleString()} ✓ / ${data.failed.toLocaleString()} ✗</span><span style="color:${sr >= 80 ? 'var(--success)' : sr >= 50 ? 'var(--warning)' : 'var(--danger)'};font-weight:600">${sr}%</span></div>`;
+    card.appendChild(head);
 
     // Download / Upload split bar
     const split = ui.el('div', 'tm-consumer-split');
@@ -452,12 +458,6 @@ router.register('proxy-control', (container) => {
     splitLabels.innerHTML = `<span class="tm-split-dl-label">↓ ${t('page.proxyControl.download')} ${fmtBytes(download)} (${dlPct.toFixed(0)}%)</span><span class="tm-split-ul-label">↑ ${t('page.proxyControl.upload')} ${fmtBytes(upload)} (${(100 - dlPct).toFixed(0)}%)</span>`;
     card.appendChild(split);
     card.appendChild(splitLabels);
-
-    // Request stats
-    const reqRow = ui.el('div', 'tm-consumer-reqs');
-    const sr = data.success_rate || 0;
-    reqRow.innerHTML = `<span>${data.requests.toLocaleString()} ${t('page.proxyControl.requests')}</span><span style="color:var(--text-secondary)">${data.success.toLocaleString()} ✓ / ${data.failed.toLocaleString()} ✗</span><span style="color:${sr >= 80 ? 'var(--success)' : sr >= 50 ? 'var(--warning)' : 'var(--danger)'};font-weight:600">${sr}% ${t('page.proxyControl.successRate')}</span>`;
-    card.appendChild(reqRow);
 
     // Top routes
     if (data.top_routes && data.top_routes.length) {

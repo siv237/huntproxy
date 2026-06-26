@@ -1990,20 +1990,25 @@
 /* ===== Traffic Monitor ===== */
 .tm-tile {
   display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 14px;
+  align-items: baseline;
+  gap: 6px;
+  padding: 10px 12px;
 }
 .tm-tile-icon {
-  font-size: 24px;
+  font-size: 18px;
   font-weight: 700;
   flex-shrink: 0;
-  width: 36px;
-  text-align: center;
+  line-height: 1;
 }
-.tm-tile-body { flex: 1; min-width: 0; }
-.tm-tile-value { font-size: 22px; font-weight: 700; line-height: 1.1; }
-.tm-tile-label { font-size: 11px; color: var(--text-secondary); margin-top: 2px; }
+.tm-tile-body {
+  min-width: 0;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.tm-tile-value { font-size: 20px; font-weight: 700; line-height: 1.1; }
+.tm-tile-label { font-size: 11px; color: var(--text-secondary); white-space: nowrap; }
 
 .tm-live-pulse {
   display: flex;
@@ -2025,6 +2030,14 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+.tm-stream-count {
+  flex-shrink: 0;
+  padding: 6px 10px;
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: right;
+  border-top: 1px solid var(--border-subtle);
 }
 
 /* Route badges */
@@ -2069,7 +2082,7 @@
 
 /* Route distribution */
 .tm-route-row {
-  padding: 10px 0;
+  padding: 6px 0;
   border-bottom: 1px solid var(--border-subtle);
 }
 .tm-route-row:last-child { border-bottom: none; }
@@ -2077,28 +2090,31 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 6px;
+  margin-bottom: 4px;
 }
 .tm-route-count { font-weight: 700; font-size: 14px; }
-.tm-route-pct { color: var(--text-secondary); font-size: 12px; margin-left: auto; }
+.tm-route-pct { color: var(--text-secondary); font-size: 12px; }
 .tm-route-sr { font-size: 11px; }
 .tm-route-bar {
+  flex: 1;
   height: 4px;
+  min-width: 40px;
   background: var(--surface-raised);
   border-radius: 2px;
   overflow: hidden;
-  margin-bottom: 6px;
 }
 .tm-route-meta {
   display: flex;
-  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
   font-size: 11px;
 }
 .tm-route-ups {
-  display: flex;
+  display: inline-flex;
   flex-wrap: wrap;
   gap: 4px;
-  margin-top: 4px;
+  margin-left: auto;
 }
 .tm-route-up {
   font-family: monospace;
@@ -2117,12 +2133,12 @@
 .tm-domain-row {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 8px 0;
+  gap: 10px;
+  padding: 6px 0;
   border-bottom: 1px solid var(--border-subtle);
 }
 .tm-domain-row:last-child { border-bottom: none; }
-.tm-domain-left { flex: 1; min-width: 0; }
+.tm-domain-left { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .tm-domain-name {
   font-family: monospace;
   font-size: 12px;
@@ -2130,7 +2146,6 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  margin-bottom: 4px;
 }
 .tm-domain-bar {
   height: 3px;
@@ -2140,19 +2155,22 @@
 }
 .tm-domain-right {
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 3px;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px 6px;
   flex-shrink: 0;
 }
+.tm-domain-stat { font-size: 12px; white-space: nowrap; }
+.tm-domain-stat b { font-weight: 700; }
 .tm-domain-routes {
-  display: flex;
+  display: inline-flex;
   gap: 2px;
 }
 
 /* Upstream card */
 .tm-upstream-mode {
-  padding: 20px 0;
+  padding: 12px 0;
   text-align: center;
 }
 .tm-upstream-top {
@@ -2160,26 +2178,26 @@
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
-  margin-bottom: 14px;
+  margin-bottom: 10px;
 }
 .tm-upstream-addr { flex-shrink: 0; }
 .tm-stat-cell {
   text-align: center;
-  padding: 8px;
+  padding: 6px;
   background: var(--surface-raised);
   border-radius: var(--radius-xs);
 }
-.tm-stat-label { font-size: 10px; color: var(--text-secondary); margin-bottom: 3px; }
+.tm-stat-label { font-size: 10px; color: var(--text-secondary); margin-bottom: 2px; }
 .tm-stat-value { font-size: 14px; font-weight: 600; }
 
 /* Bandwidth */
 .tm-bw-cell {
   text-align: center;
-  padding: 10px;
+  padding: 8px;
   background: var(--surface-raised);
   border-radius: var(--radius-xs);
 }
-.tm-bw-label { font-size: 11px; color: var(--text-secondary); margin-bottom: 4px; }
+.tm-bw-label { font-size: 11px; color: var(--text-secondary); margin-bottom: 2px; }
 .tm-bw-value { font-size: 18px; font-weight: 700; }
 
 /* New row flash */
@@ -2192,12 +2210,24 @@
 }
 
 /* Traffic consumer card */
+.tm-consumer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: 8px;
+}
 .tm-consumer-total {
-  text-align: center;
-  padding: 8px 0 12px;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-shrink: 0;
 }
 .tm-consumer-total-value {
-  font-size: 28px;
+  font-size: 20px;
   font-weight: 800;
   color: var(--accent);
 }
@@ -2227,21 +2257,19 @@
   display: flex;
   justify-content: space-between;
   font-size: 11px;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
 }
 .tm-split-dl-label { color: var(--success); }
 .tm-split-ul-label { color: var(--accent); }
 
 .tm-consumer-reqs {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  padding: 8px 0;
-  border-top: 1px solid var(--border-subtle);
-  border-bottom: 1px solid var(--border-subtle);
+  gap: 8px;
   font-size: 12px;
   font-weight: 600;
-  margin-bottom: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .tm-consumer-routes {
