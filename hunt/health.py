@@ -296,10 +296,11 @@ class HealthMixin:
             hosts = self.canary_hosts or ["ya.ru", "google.com", "2ip.ru"]
             results = {}
             latencies = {}
+            canary_to = 25 if self._channel_is_set() else 8
             for host in hosts:
                 t0 = time.monotonic()
                 try:
-                    reader, writer = await self._outbound_connect(host, 443, timeout=8)
+                    reader, writer = await self._outbound_connect(host, 443, timeout=canary_to)
                     try:
                         writer.close()
                         await writer.wait_closed()
@@ -329,7 +330,7 @@ class HealthMixin:
             direct_city = ""
             if alive:
                 try:
-                    reader, writer = await self._outbound_connect("ip-api.com", 80, timeout=8)
+                    reader, writer = await self._outbound_connect("ip-api.com", 80, timeout=canary_to)
                     req = "GET /json/?fields=query,country,isp,city HTTP/1.1\r\nHost: ip-api.com\r\nConnection: close\r\n\r\n"
                     writer.write(req.encode()); await writer.drain()
                     resp = b""
