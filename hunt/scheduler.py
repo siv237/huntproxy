@@ -542,7 +542,10 @@ class SchedulerEngine:
             state._emit("Scheduler: proxy_check — no proxies to validate", "info")
             return
 
-        addrs = {r.address for r in candidates}
+        # Sort by first_seen descending — check newest proxies first so
+        # fresh candidates are validated before stale dead entries.
+        candidates.sort(key=lambda r: r.first_seen, reverse=True)
+        addrs = [r.address for r in candidates]
         state._emit(f"Scheduler: proxy_check — re-validating {len(addrs)} proxies", "info")
         state.checking_total = len(addrs)
         state.checked = 0
