@@ -146,36 +146,6 @@ class HealthMixin:
                 self.downloaded = len(raw)
                 self._emit(f"Downloaded {len(raw)} unique candidates", "info")
 
-                # Prune dead proxies that were never confirmed working AND no
-                # longer appear in any source list.  Only run when the source
-                # download produced a non-empty result — an empty set means
-                # all sources failed (e.g. Tor went down) and pruning would
-                # wipe the entire pool.
-                if raw:
-                    before = len(self.ratings)
-                    stale = [
-                        addr for addr, r in self.ratings.items()
-                        if r.checks_ok == 0
-                        and not r.in_blacklist
-                        and not r.is_favorite
-                        and addr not in raw
-                    ]
-                    for addr in stale:
-                        del self.ratings[addr]
-                        # Clean up manual blacklist entries for removed proxies.
-                        if addr in self.blacklist:
-                            self.blacklist.pop(addr, None)
-                    if stale:
-                        self._save_state()
-                        if any(addr in self.blacklist for addr in stale):
-                            pass  # already popped above
-                        self._save_blacklist()
-                        self._emit(
-                            f"Pruned {len(stale)} never-worked proxies "
-                            f"absent from fresh lists ({before}→{len(self.ratings)})",
-                            "info",
-                        )
-
                 self.phase = self.PHASE_BLACKLIST
                 self.phase_started = time.time()
 

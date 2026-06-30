@@ -124,46 +124,6 @@ class TestProxyServer:
                 await server.wait_closed()
         asyncio.run(run())
 
-    def test_prune_never_worked_absent_from_list(self, state):
-        async def run():
-            import time as _time
-            # proxy that was ok once — should be kept
-            r1 = hunt.ProxyRating(address="1.1.1.1:80", checks_ok=1,
-                                  last_status="ok", first_seen=_time.time())
-            # proxy never worked, not in new list — should be pruned
-            r2 = hunt.ProxyRating(address="2.2.2.2:80", checks_ok=0,
-                                  last_status="failed", first_seen=_time.time())
-            # proxy never worked but IS in new list — should be kept
-            r3 = hunt.ProxyRating(address="3.3.3.3:80", checks_ok=0,
-                                  last_status="untested", first_seen=_time.time())
-            # proxy never worked, favorite — should be kept
-            r4 = hunt.ProxyRating(address="4.4.4.4:80", checks_ok=0,
-                                  last_status="failed", first_seen=_time.time())
-            r4.is_favorite = True
-            state.ratings["1.1.1.1:80"] = r1
-            state.ratings["2.2.2.2:80"] = r2
-            state.ratings["3.3.3.3:80"] = r3
-            state.ratings["4.4.4.4:80"] = r4
-
-            # Simulate prune logic from _hunt_cycle
-            raw = {"3.3.3.3:80", "5.5.5.5:80"}
-            stale = [
-                addr for addr, r in state.ratings.items()
-                if r.checks_ok == 0
-                and not r.in_blacklist
-                and not r.is_favorite
-                and addr not in raw
-            ]
-            for addr in stale:
-                del state.ratings[addr]
-
-            assert "1.1.1.1:80" in state.ratings  # was ok
-            assert "2.2.2.2:80" not in state.ratings  # never worked, not in list
-            assert "3.3.3.3:80" in state.ratings  # in new list
-            assert "4.4.4.4:80" in state.ratings  # favorite
-
-        asyncio.run(run())
-
     def test_connect_by_route_http_non_connect_returns_raw(self, state):
         async def run():
             async def proxy_handler(reader, writer):
