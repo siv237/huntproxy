@@ -11,9 +11,10 @@ class SnapshotMixin:
             # Manual operator blacklist is the only hard exclusion; IP blacklist
             # only lowers the score and keeps the proxy alive/working.
             alive = [r for r in self.ratings.values()
-                     if r.last_status == "ok" and not r.in_blacklist]
+                     if (r.last_status == "ok" or r.in_grace) and not r.in_blacklist]
             sorted_alive = sorted(alive, key=lambda r: r.score, reverse=True)
-            dead = [r for r in self.ratings.values() if r.last_status == "failed"]
+            dead = [r for r in self.ratings.values()
+                    if r.last_status == "failed" and not r.in_grace]
             sorted_dead = sorted(dead, key=lambda r: r.last_check, reverse=True)
             banned = [r for r in self.ratings.values() if r.in_blacklist]
             ip_blacklisted = sum(1 for r in self.ratings.values() if r.ip_blacklist_reason and not r.in_blacklist)
@@ -99,7 +100,8 @@ class SnapshotMixin:
             return []
 
     def get_countries(self) -> list:
-            alive = [r for r in self.ratings.values() if r.last_status == "ok" and not r.in_blacklist]
+            alive = [r for r in self.ratings.values()
+                     if (r.last_status == "ok" or r.in_grace) and not r.in_blacklist]
             counts = Counter((r.country_code or r.country or "?") for r in alive)
             total = sum(counts.values()) or 1
             result = []
@@ -395,8 +397,10 @@ class SnapshotMixin:
             return {"cpu": cpu, "memory": mem, "disk": disk}
 
     def _push_history(self):
-            alive = sum(1 for r in self.ratings.values() if r.last_status == "ok" and not r.in_blacklist)
-            dead = sum(1 for r in self.ratings.values() if r.last_status == "failed")
+            alive = sum(1 for r in self.ratings.values()
+                        if (r.last_status == "ok" or r.in_grace) and not r.in_blacklist)
+            dead = sum(1 for r in self.ratings.values()
+                       if r.last_status == "failed" and not r.in_grace)
             pool_sr = (alive / max(1, alive + dead)) * 100
 
             since = getattr(self, '_last_history_ts', time.time() - 60)
