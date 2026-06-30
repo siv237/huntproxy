@@ -542,7 +542,7 @@ class HealthMixin:
                                 try:
                                     results = await asyncio.wait_for(
                                         asyncio.gather(http_task, ssl_task, return_exceptions=True),
-                                        timeout=self.timeout + 5,
+                                        timeout=self.effective_timeout + 5,
                                     )
                                 except asyncio.TimeoutError:
                                     http_task.cancel()
@@ -584,7 +584,7 @@ class HealthMixin:
                                         speed = await asyncio.wait_for(
                                             self._measure_speed(host, int(port_str), is_socks,
                                                                 use_ssl=use_ssl, supports_connect=supports_connect),
-                                            timeout=self.timeout + 5,
+                                            timeout=self.effective_timeout + 5,
                                         )
                                     except (asyncio.TimeoutError, Exception):
                                         speed = 0.0
@@ -612,7 +612,7 @@ class HealthMixin:
                             self._active_checks.pop(wid, None)
 
                     tasks = [asyncio.create_task(check(r)) for r in candidates]
-                    overall_timeout = len(candidates) * (self.timeout + 10) // max(1, self.health_parallel) + 30
+                    overall_timeout = len(candidates) * (self.effective_timeout + 10) // max(1, self.health_parallel) + 30
                     try:
                         await asyncio.wait_for(
                             asyncio.gather(*tasks, return_exceptions=True),

@@ -121,6 +121,7 @@ class HuntState(DbMixin, EventsMixin, SnapshotMixin, HealthMixin, CheckingMixin,
             cfg = config.get("hunt", {})
             self.parallel = cfg.get("parallel", 30)
             self.timeout = cfg.get("timeout", 8)
+            self._base_timeout = self.timeout
             self.us_only = cfg.get("us_only", False)
             self.country_filter = cfg.get("country_filter", "")
             self.health_interval = cfg.get("health_interval", 180)

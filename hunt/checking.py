@@ -160,7 +160,7 @@ class CheckingMixin:
             tasks = [asyncio.create_task(check_one(p)) for p in proxies]
             gather_task = asyncio.ensure_future(asyncio.gather(*tasks, return_exceptions=True))
             skip_task = asyncio.ensure_future(self._skip_event.wait())
-            overall_timeout = len(proxies) * (self.timeout + 10) // max(1, self.parallel) + 60
+            overall_timeout = len(proxies) * (self.effective_timeout + 10) // max(1, self.parallel) + 60
             done, pending = await asyncio.wait(
                 {gather_task, skip_task}, timeout=overall_timeout,
                 return_when=asyncio.FIRST_COMPLETED,
@@ -197,7 +197,7 @@ class CheckingMixin:
 
             t0 = time.monotonic()
             try:
-                reader, writer = await self._outbound_connect(host, port, timeout=self.timeout)
+                reader, writer = await self._outbound_connect(host, port, timeout=self.effective_timeout)
             except (asyncio.TimeoutError, OSError):
                 elapsed = time.monotonic() - t0
                 if elapsed < 0.3:
@@ -242,11 +242,11 @@ class CheckingMixin:
                         "\r\n"
                     )
                     writer.write(req.encode())
-                    await asyncio.wait_for(writer.drain(), timeout=self.timeout)
+                    await asyncio.wait_for(writer.drain(), timeout=self.effective_timeout)
                     buf = b""
                     while True:
                         try:
-                            chunk = await asyncio.wait_for(reader.read(4096), timeout=self.timeout)
+                            chunk = await asyncio.wait_for(reader.read(4096), timeout=self.effective_timeout)
                         except asyncio.TimeoutError:
                             break
                         if not chunk:
@@ -304,7 +304,7 @@ class CheckingMixin:
 
     async def _check_proxy_connect(self, host: str, port: int, is_socks: bool = False) -> tuple:
             try:
-                r, w = await self._outbound_connect(host, port, timeout=self.timeout)
+                r, w = await self._outbound_connect(host, port, timeout=self.effective_timeout)
             except Exception:
                 return False, False
             try:
@@ -326,7 +326,7 @@ class CheckingMixin:
                 else:
                     req = f"CONNECT 2ip.ru:443 HTTP/1.1\r\nHost: 2ip.ru:443\r\n\r\n"
                     w.write(req.encode())
-                    await asyncio.wait_for(w.drain(), timeout=self.timeout)
+                    await asyncio.wait_for(w.drain(), timeout=self.effective_timeout)
                     try:
                         resp = await asyncio.wait_for(r.readuntil(b"\r\n\r\n"), timeout=15)
                         if b"200" not in resp.split(b"\r\n")[0]:
@@ -382,7 +382,7 @@ class CheckingMixin:
             t0 = time.monotonic()
             try:
                 reader, writer = await self._outbound_connect(
-                    host, port, use_ssl=True, server_hostname=host, timeout=self.timeout)
+                    host, port, use_ssl=True, server_hostname=host, timeout=self.effective_timeout)
             except Exception:
                 return False, "", "", {}, 0.0, False
 
@@ -391,9 +391,9 @@ class CheckingMixin:
             try:
                 req = f"CONNECT ip-api.com:80 HTTP/1.1\r\nHost: ip-api.com:80\r\n\r\n"
                 writer.write(req.encode())
-                await asyncio.wait_for(writer.drain(), timeout=self.timeout)
+                await asyncio.wait_for(writer.drain(), timeout=self.effective_timeout)
                 try:
-                    resp = await asyncio.wait_for(reader.readuntil(b"\r\n\r\n"), timeout=self.timeout)
+                    resp = await asyncio.wait_for(reader.readuntil(b"\r\n\r\n"), timeout=self.effective_timeout)
                     status_line = resp.split(b"\r\n")[0]
                     connect_ok = b"200" in status_line
                     if connect_ok:
@@ -406,10 +406,10 @@ class CheckingMixin:
                             "\r\n"
                         )
                         writer.write(req.encode())
-                        await asyncio.wait_for(writer.drain(), timeout=self.timeout)
+                        await asyncio.wait_for(writer.drain(), timeout=self.effective_timeout)
                         while True:
                             try:
-                                chunk = await asyncio.wait_for(reader.read(4096), timeout=self.timeout)
+                                chunk = await asyncio.wait_for(reader.read(4096), timeout=self.effective_timeout)
                             except asyncio.TimeoutError:
                                 break
                             if not chunk:
@@ -426,10 +426,10 @@ class CheckingMixin:
                             "\r\n"
                         )
                         writer.write(req.encode())
-                        await asyncio.wait_for(writer.drain(), timeout=self.timeout)
+                        await asyncio.wait_for(writer.drain(), timeout=self.effective_timeout)
                         while True:
                             try:
-                                chunk = await asyncio.wait_for(reader.read(4096), timeout=self.timeout)
+                                chunk = await asyncio.wait_for(reader.read(4096), timeout=self.effective_timeout)
                             except asyncio.TimeoutError:
                                 break
                             if not chunk:
@@ -446,11 +446,11 @@ class CheckingMixin:
                         "\r\n"
                     )
                     writer.write(req.encode())
-                    await asyncio.wait_for(writer.drain(), timeout=self.timeout)
+                    await asyncio.wait_for(writer.drain(), timeout=self.effective_timeout)
                     buf = b""
                     while True:
                         try:
-                            chunk = await asyncio.wait_for(reader.read(4096), timeout=self.timeout)
+                            chunk = await asyncio.wait_for(reader.read(4096), timeout=self.effective_timeout)
                         except asyncio.TimeoutError:
                             break
                         if not chunk:
@@ -498,7 +498,7 @@ class CheckingMixin:
     async def _speed_open(self, host: str, port: int, is_socks: bool, use_ssl: bool) -> tuple:
             """Open a fresh connection for a speed measurement attempt."""
             r, w = await self._outbound_connect(
-                host, port, use_ssl=use_ssl, server_hostname=host, timeout=self.timeout)
+                host, port, use_ssl=use_ssl, server_hostname=host, timeout=self.effective_timeout)
             if is_socks:
                 if port == 4145:
                     ok = await self._socks4_test(r, w)
@@ -634,7 +634,7 @@ class CheckingMixin:
             try:
                 req = f"CONNECT {srv_host}:80 HTTP/1.1\r\nHost: {srv_host}:80\r\n\r\n"
                 w.write(req.encode())
-                await asyncio.wait_for(w.drain(), timeout=self.timeout)
+                await asyncio.wait_for(w.drain(), timeout=self.effective_timeout)
                 try:
                     resp = await asyncio.wait_for(r.readuntil(b"\r\n\r\n"), timeout=15)
                     if b"200" not in resp.split(b"\r\n")[0]:
@@ -657,7 +657,7 @@ class CheckingMixin:
             try:
                 req = f"CONNECT {srv_host}:443 HTTP/1.1\r\nHost: {srv_host}:443\r\n\r\n"
                 w.write(req.encode())
-                await asyncio.wait_for(w.drain(), timeout=self.timeout)
+                await asyncio.wait_for(w.drain(), timeout=self.effective_timeout)
                 try:
                     resp = await asyncio.wait_for(r.readuntil(b"\r\n\r\n"), timeout=15)
                     if b"200" not in resp.split(b"\r\n")[0]:
@@ -807,7 +807,7 @@ class CheckingMixin:
                 # Tunnel directly to 2ip.ru:443 via the channel (no tested proxy).
                 r, w = await self._outbound_connect("2ip.ru", 443, use_ssl=True,
                                                     server_hostname="2ip.ru",
-                                                    timeout=self.timeout)
+                                                    timeout=self.effective_timeout)
                 # If start_tls inside _outbound_connect succeeded with a verified
                 # context, the channel does not intercept. _outbound_connect uses
                 # the non-verifying _make_ssl_ctx, so verify explicitly here.
@@ -842,7 +842,7 @@ class CheckingMixin:
             """
             w = None
             try:
-                r, w = await self._outbound_connect(host, port, timeout=self.timeout)
+                r, w = await self._outbound_connect(host, port, timeout=self.effective_timeout)
                 if port == 4145:
                     ok = await socks4_connect(r, w, "2ip.ru", 443)
                 elif is_socks:
@@ -975,7 +975,7 @@ class CheckingMixin:
 
     async def _socks_egress(self, host: str, port: int) -> dict:
             try:
-                r, w = await self._outbound_connect(host, port, timeout=self.timeout)
+                r, w = await self._outbound_connect(host, port, timeout=self.effective_timeout)
             except Exception:
                 return {}
             try:

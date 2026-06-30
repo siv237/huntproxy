@@ -53,7 +53,7 @@ class SnapshotMixin:
                 },
                 "settings": {
                     "parallel": self.parallel,
-                    "timeout": self.timeout,
+                    "timeout": self.effective_timeout,
                     "country_filter": self.country_filter,
                 },
                 "top_proxies": [r.to_dict() for r in sorted_alive[:30]],

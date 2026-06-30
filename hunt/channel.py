@@ -88,6 +88,18 @@ class ChannelMixin:
         route = self._resolve_channel()
         return bool(route) and route != "direct"
 
+    @property
+    def effective_timeout(self) -> float:
+        """Timeout adjusted for the active channel.
+
+        Tor and other slow channel proxies add 8-20s per connection (circuit
+        build).  Using the base 8s timeout through such a channel causes every
+        check to fail on timeout rather than on the actual proxy result.
+        """
+        if self._channel_is_set():
+            return max(self._base_timeout, 25)
+        return self._base_timeout
+
     async def _outbound_connect(self, host: str, port: int, *,
                                 use_ssl: bool = False,
                                 server_hostname: str | None = None,
