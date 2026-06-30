@@ -1,2 +1,138 @@
-1. На главной при проверке прокси пишет: Рабочие 3 а надо делить на Новые рабочие 2 и подтвержденно рабочих 1 ну или более лакончиные описания.
-2. Добавить кнопку Пропустить при проверке листов прокси рядом с кнопками паузы.
+# План: Канальный upstream-прокси для движка проверки (цепочка прокси)
+
+## Постановка
+Сейчас движок (hunt/health/speed/canary) всегда выходит в интернет напрямую
+(asyncio.open_connection). Нужно: при выборе прокси в карточке «канал» все
+процессы движка идут через этот вышестоящий прокси, а не напрямую. Карточка
+«Контроль канала» (connectivity) должна получить управление этим прокси.
+
+## Что уже готово (≈90%) — НЕ трогать
+- [x] ProxyRunner._connect_by_route: direct / proxy:<addr> / custom:<id> / pool
+      (hunt/proxy_runner.py:231) + цепочка chain в логах
+- [x] _resolve_route по доменным спискам (hunt/routing.py:214)
+- [x] Кастомные прокси CRUD + тест (hunt/custom_proxies.py, табл. custom_proxies)
+- [x] API /api/proxy/select, /api/proxy/direct, /api/routing/*, /api/custom-proxies/*
+      (hunt/server.py)
+- [x] Карточка «канал» для клиентского трафика: server.js buildModeCard()
+      Direct / Routing / Cascade (Pool/Custom/Working picker)
+- [x] Страница «Контроль канала» = connectivity.js (canary-монитор, health.py
+      _check_canary: direct IP/страна/ISP, история, график 24ч)
+- [x] API canary: /api/canary/status|history|hosts (api.js:145)
+
+## ПРОВЕРЕНО: три пути выхода движка в интернет (все сейчас напрямую)
+A. Скачка списков — curl-субпроцесс:
+   - proxy_sources.py:131  curl_args(url)           БЕЗ прокси
+   - ip_blacklist_sources.py:94  curl_args(url)     БЕЗ прокси
+   - blocklists.py:303  curl_args(url, proxy=...)   УЖЕ умеет через download_proxy
+     (per-source поле в БД — готовый прецедент!)
+   curl_args (download.py:30) уже имеет параметр proxy → --proxy. Для A нужно
+   просто передать строку канального прокси.
+B. Проверка прокси — asyncio.open_connection: checking.py + health.py (см. ниже)
+C. MITM-чек — curl -x: checking.py _check_mitm_http/_check_mitm_socks
+
+## Что осталось (минимум)
+
+### 1. Скачка списков через канал (путь A — почти готово)
+- [ ] proxy_sources.py:131  → curl_args(url, proxy=channel_curl_proxy)
+- [ ] ip_blacklist_sources.py:94 → curl_args(url, proxy=channel_curl_proxy)
+- [ ] helper state._channel_curl_proxy() → "host:port" | "" для --proxy
+      (из _channel_route: proxy:<addr> / custom:<id> → "host:port";
+       для custom с auth → "http://user:pass@host:port" или socks5h://...)
+- [ ] blocklists: при пустом download_proxy источника подставлять канал
+
+### 2. Ядро: единый «outbound-коннектор» для проверки (путь B)
+Сейчас checking.py/health.py/canary зовут asyncio.open_connection напрямую.
+- [ ] Добавить в CheckingMixin (или общий хелпер в state) метод
+      `_outbound_connect(host, port, *, use_ssl=False, server_hostname=None)`:
+      * если выбран канальный прокси — соединяться через него (SOCKS5/SOCKS4/
+        HTTP-CONNECT/HTTPS), переиспользуя логику из ProxyRunner
+        (_socks5_cmd / _socks4_cmd / _http_connect_cmd / SSL-обёртка) и
+        custom_proxies (auth);
+      * иначе — прямой asyncio.open_connection (текущее поведение).
+- [ ] Решить источник канального прокси: новое поле state
+      `_channel_route` ("" = direct | "proxy:<addr>" | "custom:<id>" | "pool")
+      ИЛИ переиспользовать active_proxy_addr. Поле persistить в state.db
+      (routing_config или отдельная строка).
+- [ ] Заменить прямые open_connection в движке на _outbound_connect:
+      checking.py: _check_proxy(198), _check_proxy_connect(308),
+      _check_ssl(372), _speed_open(495), _resolve_geo(812), _socks_egress(857)
+      health.py:  методы проверки (540-750) + _check_canary(302,333)
+- [ ] Скорость/CONNECT-туннель: при канальном прокси туннель строится к
+      целевому speed-серверу через upstream (цепочка client→upstream→target),
+      `_https_speed_single` уже делает start_tls поверх туннеля — адаптировать.
+- [ ] MITM-проверка через curl (путь C): добавить `-x` с канальным прокси
+      к _check_mitm_http/_check_mitm_socks (checking.py) — но осторожно:
+      MITM проверяет сертификат целевого узла через сам проверяемый прокси,
+      а канал — это прокси-вход в интернет; тут возможна двойная цепочка
+      curl -x канал ... -x проверяемый? Уточнить семантику (см. Риски).
+
+### 2. Canary через канал
+- [ ] _check_canary (health.py:295): проверка canary-хостов и запрос ip-api
+      делать через _outbound_connect, когда выбран канал. Тогда «direct IP» в
+      карточке = egress IP канального прокси (а не локальный), что и есть
+      «контроль этого прокси» в Контроле канала.
+
+### 3. API канала
+- [ ] /api/channel/status  GET  — текущий channel_route + статус/health
+      выбранного прокси (переиспользовать get_status/to_dict)
+- [ ] /api/channel/select  POST — задать channel_route
+      (direct | proxy:<addr> | custom:<id> | pool); persist + _emit
+- [ ] (опц.) переиспользовать /api/proxy/select, но явно разделить «клиентский
+      upstream» и «канал движка», чтобы не ломать существующий ProxyRunner.
+- [ ] Добавить методы в web/js/api.js: channelStatus(), channelSelect(route)
+
+### 4. UI: управление каналом в «Контроль канала» (connectivity.js)
+- [ ] В карточку buildStatusCard (или отдельная карточка сверху) добавить
+      селектор канала: Direct + список alive-прокси + custom-прокси (как в
+      server.js populateModeSelect). Выбор → api.channelSelect.
+- [ ] Показывать текущий канальный прокси: адрес, протокол, статус (ok/fail),
+      latency, egress IP/страна (берётся из canary direct_ip при включённом
+      канале). Бейдж DIRECT/PROXY/CUSTOM/POOL.
+- [ ] При смене канала — индикация что canary теперь идёт через upstream.
+- [ ] Локали: добавить ключи в web/locales/en.json и ru.json (минимум).
+
+### 5. Состояние и восстановление
+- [ ] state.py: поле _channel_route, загрузка/сохранение (_load_state/_save_state)
+- [ ] Восстановление после рестарта: применять канал при старте движка
+      (main.py порядок старта)
+
+### 6. Тесты
+- [ ] tests/: _outbound_connect через mock-upstream (socks5/http/connect),
+      прямой fallback, выбор channel_route, canary через канал
+- [ ] ./test.sh — прогнать весь набор
+
+## Порядок выполнения
+1. state.py: поле _channel_route + persist
+2. _outbound_connect (переиспользовать ProxyRunner-хелперы) + покрыть тестами
+3. Заменить open_connection в checking.py/health.py/canary
+4. API /api/channel/* + api.js
+5. connectivity.js: селектор канала + показ прокси
+6. Локали en/ru
+7. ./test.sh
+
+## Риски/нюансы
+- SOCKS5/HTTP-хелперы сейчас живут в ProxyRunner (proxy_runner.py). Вынести в
+  общий модуль (hunt/conn.py) или сделать статическими, чтобы CheckingMixin и
+  ProxyRunner делили одну реализацию.
+- SSL: для HTTPS-прокси нужна SSL-обёртка над соединением к upstream
+  (_make_ssl_ctx уже есть в checking.py:343).
+- Каскад через «pool» для движка проверки — осторожно: проверка прокси через
+  сам пул создаёт рекурсию; для канала лучше ограничить direct/proxy/custom.
+- Таймауты: канал добавляет задержку — поднять timeout для canary/geo при
+  включённом канале.
+
+## ТЕСТОВЫЙ ОБЪЕКТ (проверено в data/state.db)
+Канальный прокси для тестов — уже есть в custom_proxies:
+  id          = antydpi
+  name        = AntyDPI
+  protocol    = socks5
+  host:port   = 192.168.237.2:1080
+  auth        = без логина/пароля
+  test_url    = youtube.com
+  last_check  = ok, 238ms, enabled
+  route       = custom:antydpi
+Для curl-скачки: --proxy socks5h://192.168.237.2:1080 (socks5h = DNS через
+прокси, важно для безшлюзовой сети).
+Для _outbound_connect: SOCKS5-рукопожатие (есть в ProxyRunner._socks5_cmd и
+custom_proxies._socks5_handshake).
+В ratings есть ~5 чужих 1080-прокси (все failed) — не они, тестовый = custom.

@@ -294,6 +294,8 @@ class BlocklistsMixin:
                 list_type = s["list_type"]
                 url = s["url"]
                 proxy = s["download_proxy"] if "download_proxy" in s.keys() else ""
+                if not proxy:
+                    proxy = self._channel_curl_proxy()
                 self._blocklist_fetch_progress[source_id] = {
                     "name": source_name, "status": "connecting",
                     "downloaded": 0, "started_at": time.time(),

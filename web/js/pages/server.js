@@ -107,8 +107,11 @@ router.register('server', (container) => {
     filterRow.appendChild(makeFilter('srv-hide-bl', t('page.proxyPool.hideBlacklisted'), 'hideBlacklisted', true));
     card.appendChild(filterRow);
 
-    const statusRow = ui.el('div', '', { id: 'mode-status-row', style: 'margin-top:8px;font-size:12px;display:flex;align-items:center;gap:6px' });
+    const statusRow = ui.el('div', '', { id: 'mode-status-row', style: 'margin-top:8px;font-size:12px;display:flex;align-items:center;gap:6px;flex-wrap:wrap' });
     card.appendChild(statusRow);
+
+    const channelRow = ui.el('div', '', { id: 'channel-status-row', style: 'margin-top:6px;font-size:12px;display:flex;align-items:center;gap:6px;flex-wrap:wrap' });
+    card.appendChild(channelRow);
     return card;
   }
 
@@ -279,14 +282,38 @@ router.register('server', (container) => {
     log.innerHTML = all.map(e => `<span style="color:var(--text-muted)">${ui.fmtTime(e.ts)}</span> <span style="color:var(--accent);font-size:10px">${e.type}</span> ${e.client || '?'} → ${fmtTarget(e.target)} [${e.status || ''}] <span style="color:var(--info)">via ${fmtChain(e.upstream)}</span>`).join('<br>');
   }
 
+  function updateChannelStatus(ch) {
+    const row = document.getElementById('channel-status-row');
+    if (!row) return;
+    row.innerHTML = '';
+    const route = (ch && ch.channel_route) || '';
+    const label = ui.el('span', '', { style: 'color:var(--text-secondary);font-weight:600', text: t('page.server.channel') + ':' });
+    row.appendChild(label);
+    if (!route || route === 'direct') {
+      row.appendChild(ui.el('span', '', { style: 'color:var(--text-muted)', text: t('page.server.channelDirect') }));
+      return;
+    }
+    const p = ch && ch.proxy;
+    if (p && ch.available) {
+      row.appendChild(ui.el('span', '', { style: 'color:var(--info);font-weight:600', text: t('page.server.channelVia', { addr: p.host + ':' + p.port }) }));
+    } else {
+      row.appendChild(ui.el('span', '', { style: 'color:var(--danger);font-weight:600', text: t('page.server.channelUnavailable') }));
+    }
+    const link = ui.el('a', '', { style: 'color:var(--info);text-decoration:underline;cursor:pointer;font-size:11px', text: '→ ' + t('page.server.channelManage') });
+    link.addEventListener('click', () => router.navigate('connectivity'));
+    row.appendChild(link);
+  }
+
   async function load() {
     try {
-      let ps = {}, ss = {}, rs = {};
+      let ps = {}, ss = {}, rs = {}, ch = {};
       try { ps = await api.proxyStatus(); } catch (e) { console.error('proxyStatus', e); }
       try { ss = await api.socks5Status(); } catch (e) { console.error('socks5Status', e); }
       try { rs = await api.routingStatus(); } catch (e) { console.error('routingStatus', e); }
+      try { ch = await api.channelStatus(); } catch (e) { console.error('channelStatus', e); }
       updateProxyControl(ps, ss);
       updateModeStatus(ps, !!(rs && rs.enabled));
+      updateChannelStatus(ch);
       updateProxyLog(ps, ss);
     } catch (e) {
       console.error('server poll', e);

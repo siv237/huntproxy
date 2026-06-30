@@ -829,6 +829,17 @@ class HuntServer:
             self.state._save_state()
             return json.dumps({"ok": True, "direct_mode": en}), 200, "application/json"
 
+        # === Channel (engine outbound proxy) ===
+        if path == "/api/channel/status" and method == "GET":
+            return json.dumps(self.state.get_channel_status()), 200, "application/json"
+
+        if path == "/api/channel/select" and method == "POST":
+            qs = _qs(raw_path)
+            route = qs.get("route", "").strip()
+            self.state.set_channel(route)
+            self.state._log_action("channel.select", route or "direct")
+            return json.dumps(self.state.get_channel_status()), 200, "application/json"
+
         if path.startswith("/api/settings/country_filter") and method == "POST":
             qs = _qs(raw_path)
             code = qs.get("code", "").upper()

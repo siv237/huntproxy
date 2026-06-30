@@ -146,6 +146,10 @@ const api = {
   canaryHistory(hours = 24) { return this.request(`/api/canary/history?hours=${hours}`); },
   canarySetHosts(hosts) { return this.request('/api/canary/hosts', 'POST', { canary_hosts: hosts }); },
 
+  // Channel — engine outbound proxy
+  channelStatus() { return this.request('/api/channel/status'); },
+  channelSelect(route) { return this.request(`/api/channel/select?route=${encodeURIComponent(route || '')}`, 'POST'); },
+
   // Downloads & Backup
   downloadCounts() { return this.request('/api/downloads/count'); },
   backupGroups() { return this.request('/api/backup/groups'); },

@@ -139,6 +139,7 @@ _GROUPS = {
     "api": "API",
     "blacklist": "Blacklist",
     "blocklists": "Country Blocklists",
+    "channel": "Channel",
     "custom_proxies": "Custom Proxies",
     "domain_lists": "Domain Lists / Routing",
     "favorites": "Favorites",

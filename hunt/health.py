@@ -299,8 +299,7 @@ class HealthMixin:
             for host in hosts:
                 t0 = time.monotonic()
                 try:
-                    reader, writer = await asyncio.wait_for(
-                        asyncio.open_connection(host, 443), timeout=5)
+                    reader, writer = await self._outbound_connect(host, 443, timeout=8)
                     try:
                         writer.close()
                         await writer.wait_closed()
@@ -330,8 +329,7 @@ class HealthMixin:
             direct_city = ""
             if alive:
                 try:
-                    reader, writer = await asyncio.wait_for(
-                        asyncio.open_connection("ip-api.com", 80), timeout=5)
+                    reader, writer = await self._outbound_connect("ip-api.com", 80, timeout=8)
                     req = "GET /json/?fields=query,country,isp,city HTTP/1.1\r\nHost: ip-api.com\r\nConnection: close\r\n\r\n"
                     writer.write(req.encode()); await writer.drain()
                     resp = b""
@@ -400,7 +398,9 @@ class HealthMixin:
 
     def get_canary_status(self) -> dict:
             if self._canary_cache:
-                return self._canary_cache
+                result = dict(self._canary_cache)
+                result["channel"] = self.get_channel_status()
+                return result
             return {
                 "alive": self._internet_alive,
                 "hosts": {},
@@ -413,6 +413,7 @@ class HealthMixin:
                 "direct_country": getattr(self, '_canary_last_country', ''),
                 "direct_isp": getattr(self, '_canary_last_isp', ''),
                 "direct_city": getattr(self, '_canary_last_city', ''),
+                "channel": self.get_channel_status(),
             }
 
     def set_canary_hosts(self, hosts: list):

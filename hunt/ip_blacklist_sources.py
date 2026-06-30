@@ -91,7 +91,7 @@ class IPBlacklistSourcesMixin:
                 }
                 async with sem:
                     try:
-                        cargs = curl_args(url)
+                        cargs = curl_args(url, proxy=self._channel_curl_proxy())
                         proc = await asyncio.create_subprocess_exec(
                             *cargs,
                             stdout=asyncio.subprocess.PIPE,

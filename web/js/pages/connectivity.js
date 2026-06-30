@@ -6,6 +6,9 @@ router.register('connectivity', (container) => {
   let lastIp = null;
   let eventLog = [];
   let eventInterval = null;
+  let aliveProxies = [];
+  let customProxies = [];
+  let channelRoute = '';
 
   function setContainerStyle() {
     container.style.display = 'flex';
@@ -21,13 +24,20 @@ router.register('connectivity', (container) => {
 
     const topRow = ui.el('div', '');
     topRow.style.display = 'grid';
-    topRow.style.gridTemplateColumns = '1fr 2fr';
+    topRow.style.gridTemplateColumns = '1fr 1fr';
     topRow.style.gap = '10px';
     topRow.appendChild(buildStatusCard());
-    topRow.appendChild(buildDirectInfoCard());
+    topRow.appendChild(buildChannelCard());
     container.appendChild(topRow);
 
-    container.appendChild(buildHostsCard());
+    const directRow = ui.el('div', '');
+    directRow.style.display = 'grid';
+    directRow.style.gridTemplateColumns = '1fr 2fr';
+    directRow.style.gap = '10px';
+    directRow.appendChild(buildDirectInfoCard());
+    directRow.appendChild(buildHostsCard());
+    container.appendChild(directRow);
+
     container.appendChild(buildGraphCard());
     container.appendChild(buildEventLogCard());
   }
@@ -55,9 +65,89 @@ router.register('connectivity', (container) => {
     return card;
   }
 
+  function buildChannelCard() {
+    const card = ui.card(t('page.connectivity.channel'));
+    card.id = 'card-channel';
+
+    const desc = ui.el('div', '', { style: 'font-size:11px;color:var(--text-secondary);margin-bottom:8px;line-height:1.5', text: t('page.connectivity.channelDesc') });
+    card.appendChild(desc);
+
+    const sel = ui.el('select', '', { id: 'channel-select', style: 'width:100%;padding:6px 8px;font-size:12px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--bg);color:var(--text-primary);margin-bottom:8px' });
+    sel.addEventListener('change', () => {
+      const route = sel.value;
+      api.channelSelect(route).then(() => {
+        app.toast(route ? t('page.connectivity.channelSet', { route }) : t('page.connectivity.channelCleared'));
+      }).catch(e => app.toast(t('common.error', { message: e.message }), 'error'));
+    });
+    card.appendChild(sel);
+
+    const info = ui.el('div', '', { id: 'channel-info', style: 'font-size:12px;line-height:1.6' });
+    card.appendChild(info);
+    return card;
+  }
+
+  function populateChannelSelect(currentRoute) {
+    const sel = document.getElementById('channel-select');
+    if (!sel) return;
+    const prev = currentRoute !== undefined ? currentRoute : sel.value;
+    sel.innerHTML = '';
+
+    sel.appendChild(ui.el('option', '', { value: '', text: t('page.connectivity.channelDirect') }));
+
+    if (customProxies.length) {
+      const grp = ui.el('optgroup', '', { label: t('page.connectivity.channelCustom') + ' (' + customProxies.length + ')' });
+      customProxies.forEach(cp => {
+        const addr = cp.host + ':' + cp.port;
+        const st = cp.last_check_status === 'ok' ? '✓' : cp.last_check_status === 'fail' ? '✗' : '?';
+        const lat = cp.last_check_latency >= 0 ? cp.last_check_latency + 'ms' : '';
+        grp.appendChild(ui.el('option', '', { value: 'custom:' + cp.id, text: st + ' ' + (cp.name || addr) + '  ' + addr + (lat ? ' ' + lat : '') }));
+      });
+      sel.appendChild(grp);
+    }
+
+    const filtered = (aliveProxies || []).slice()
+      .filter(p => p.last_status === 'ok' && !p.in_blacklist && (p.supports_connect || (p.protocol || '').startsWith('socks')))
+      .sort((a, b) => (b.score || 0) - (a.score || 0))
+      .slice(0, 100);
+
+    if (filtered.length) {
+      const grp = ui.el('optgroup', '', { label: t('page.connectivity.channelPool') + ' (' + filtered.length + ')' });
+      filtered.forEach(p => {
+        const flag = ui.flag(p.egress_country_code || p.country_code) || '';
+        const lat = p.last_latency ? p.last_latency.toFixed(2) + 's' : '—';
+        grp.appendChild(ui.el('option', '', { value: 'proxy:' + p.address, text: flag + ' ' + p.address + '  ' + lat }));
+      });
+      sel.appendChild(grp);
+    }
+
+    sel.value = prev || '';
+  }
+
+  function updateChannelCard(channel) {
+    const info = document.getElementById('channel-info');
+    if (!info) return;
+    const route = channel && channel.channel_route ? channel.channel_route : '';
+    channelRoute = route;
+    const proxy = channel && channel.proxy ? channel.proxy : null;
+    if (!proxy) {
+      info.innerHTML = '<span class="route-badge route-direct">DIRECT</span>'
+        + '<div style="font-size:11px;color:var(--text-secondary);margin-top:6px">' + t('page.connectivity.channelDirect') + '</div>';
+      return;
+    }
+    const proto = (proxy.protocol || 'http').toUpperCase();
+    const badgeCls = route.startsWith('custom:') ? 'route-custom' : 'route-proxy';
+    const label = route.startsWith('custom:') ? 'CUSTOM' : 'PROXY';
+    info.innerHTML = '<span class="route-badge ' + badgeCls + '">' + label + '</span>'
+      + '<div style="font-family:monospace;font-size:13px;font-weight:600;color:var(--accent);margin-top:6px">' + ui.escHtml(proxy.host + ':' + proxy.port) + '</div>'
+      + '<div style="font-size:11px;color:var(--text-secondary);margin-top:4px">' + proto + (proxy.has_auth ? ' · auth' : '') + '</div>';
+  }
+
   function buildDirectInfoCard() {
     const card = ui.card(t('page.connectivity.directConnection'));
     card.id = 'card-direct-info';
+
+    const viaBadge = ui.el('div', '', { id: 'direct-via-badge', style: 'font-size:10px;margin-bottom:6px;display:none' });
+    card.appendChild(viaBadge);
 
     const grid = ui.el('div', '', { id: 'direct-info-grid', style: 'display:grid;grid-template-columns:repeat(4,1fr);gap:8px' });
     const fields = [
@@ -245,6 +335,16 @@ router.register('connectivity', (container) => {
     setEl('di-country', data.direct_country);
     setEl('di-city', data.direct_city);
     setEl('di-isp', data.direct_isp);
+    const via = document.getElementById('direct-via-badge');
+    if (via) {
+      const route = (data.channel && data.channel.channel_route) || '';
+      if (route && route !== 'direct') {
+        via.style.display = 'block';
+        via.innerHTML = '<span class="route-badge route-custom" style="font-size:9px">' + ui.escHtml(t('page.connectivity.viaChannel')) + '</span>';
+      } else {
+        via.style.display = 'none';
+      }
+    }
   }
 
   function updateHostsCard(data) {
@@ -393,6 +493,10 @@ router.register('connectivity', (container) => {
         updateStatusCard(data);
         updateDirectInfo(data);
         updateHostsCard(data);
+        if (data.channel) {
+          populateChannelSelect(data.channel.channel_route);
+          updateChannelCard(data.channel);
+        }
       }
       updateGraph(hist);
       const dot = document.getElementById('canary-dot');
@@ -429,11 +533,26 @@ router.register('connectivity', (container) => {
 
   load();
   loadEvents();
+
+  async function loadProxies() {
+    try {
+      const [alive, custom] = await Promise.all([
+        api.proxyAlive().catch(() => []),
+        api.customProxies().catch(() => ({ proxies: [] })),
+      ]);
+      aliveProxies = alive || [];
+      customProxies = (custom && custom.proxies) || [];
+      populateChannelSelect(channelRoute);
+    } catch (e) { /* ignore */ }
+  }
+  loadProxies();
+
   const id = setInterval(load, 10000);
   const eventId = setInterval(loadEvents, 10000);
+  const idProxy = setInterval(loadProxies, 15000);
   if (window._pageIntervals) {
-    window._pageIntervals.push(id, eventId);
+    window._pageIntervals.push(id, eventId, idProxy);
   } else {
-    window._pageIntervals = [id, eventId];
+    window._pageIntervals = [id, eventId, idProxy];
   }
 });

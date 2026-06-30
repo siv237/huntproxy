@@ -9,6 +9,7 @@ from hunt.favorites import FavoritesMixin
 from hunt.actions import ActionsMixin
 from hunt.backup import BackupMixin
 from hunt.blocklists import BlocklistsMixin
+from hunt.channel import ChannelMixin
 from hunt.checking import CheckingMixin
 from hunt.constants import DATA_DIR, logger
 from hunt.custom_proxies import CustomProxiesMixin
@@ -25,7 +26,7 @@ from hunt.snapshot import SnapshotMixin
 from pathlib import Path
 from typing import Optional
 
-class HuntState(DbMixin, EventsMixin, SnapshotMixin, HealthMixin, CheckingMixin, BlacklistMixin, IPBlacklistMixin, ProxySourcesMixin, IPBlacklistSourcesMixin, BlocklistsMixin, RoutingMixin, CustomProxiesMixin, ActionsMixin, BackupMixin, FavoritesMixin):
+class HuntState(DbMixin, EventsMixin, SnapshotMixin, HealthMixin, CheckingMixin, BlacklistMixin, IPBlacklistMixin, ProxySourcesMixin, IPBlacklistSourcesMixin, BlocklistsMixin, RoutingMixin, CustomProxiesMixin, ChannelMixin, ActionsMixin, BackupMixin, FavoritesMixin):
     PHASE_IDLE = "idle"
 
     PHASE_DOWNLOAD = "downloading"
@@ -78,6 +79,9 @@ class HuntState(DbMixin, EventsMixin, SnapshotMixin, HealthMixin, CheckingMixin,
             self._socks5_port: int = 17278
             self._proxy_direct_mode: bool = False
             self._proxy_active_addr: Optional[str] = None
+            # Channel proxy: routes the engine's own internet access through an
+            # upstream proxy ("" / "direct" / "proxy:<addr>" / "custom:<id>").
+            self._channel_route: str = ""
 
             # Persistence batching counter
             self._rating_updates_since_save: int = 0
@@ -157,6 +161,10 @@ class HuntState(DbMixin, EventsMixin, SnapshotMixin, HealthMixin, CheckingMixin,
             self._load_state()
             self._load_working_file()
             self._load_all_proxy_source_entries()
+            try:
+                self._channel_route = self._routing_get("channel_route", "")
+            except Exception:
+                pass
 
     @property
     def working_file(self) -> Path:

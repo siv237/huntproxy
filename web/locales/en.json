@@ -43,7 +43,9 @@
     "directMode": "Direct Mode — diagnostic, no upstream",
     "directModeText": "Direct Mode",
     "cascadeModeText": "Cascade",
-    "routingModeText": "Routing"
+    "routingModeText": "Routing",
+    "channelText": "Channel",
+    "channelUnavailable": "unavailable"
   },
   "sidebar": {
     "allSystemsOperational": "All Systems Operational",
@@ -416,6 +418,12 @@
       "directModeOff": "Direct mode OFF",
       "clientLog": "Client Log",
       "proxyNotStarted": "proxy not started",
+      "channel": "Channel",
+      "channelDesc": "Engine outbound proxy",
+      "channelDirect": "direct",
+      "channelUnavailable": "unavailable",
+      "channelVia": "via {addr}",
+      "channelManage": "manage channel",
       "proxyStarted": "Proxy started",
       "proxyStopped": "Proxy stopped",
       "socks5Started": "SOCKS5 started",
@@ -656,6 +664,7 @@
       "client": "Client Request",
       "proxyServer": "huntproxy Server",
       "internet": "Internet / Target",
+      "channel": "Channel",
       "routingEngine": "Routing Engine",
       "routingOn": "Routing ON",
       "routingOff": "Routing OFF",
@@ -769,7 +778,15 @@
       "waitingForEvents": "Waiting for events...",
       "internetWentOffline": "Internet went offline",
       "internetRestored": "Internet restored",
-      "ipChanged": "IP changed: {old} → {new} ({isp})"
+      "ipChanged": "IP changed: {old} → {new} ({isp})",
+      "channel": "Channel",
+      "channelDesc": "Engine outbound proxy — all checks and downloads go through it",
+      "channelDirect": "Direct (no channel)",
+      "channelCustom": "Custom Proxies",
+      "channelPool": "Working Proxies",
+      "channelSet": "Channel set to: {route}",
+      "channelCleared": "Channel cleared (direct)",
+      "viaChannel": "via channel"
     },
     "downloads": {
       "title": "Downloads",

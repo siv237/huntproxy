@@ -1,6 +1,7 @@
 router.register('traffic-flow', (container) => {
   let routingStatus = null;
   let proxyStatus = null;
+  let channelStatus = null;
   let domainLists = [];
   let customProxies = [];
   let traceResult = null;
@@ -38,6 +39,9 @@ router.register('traffic-flow', (container) => {
 
     const serverBadge = ui.el('span', '', { id: 'flow-server-badge', style: 'font-size:11px;padding:3px 10px;border-radius:10px;font-weight:600' });
     controls.appendChild(serverBadge);
+
+    const channelBadge = ui.el('span', '', { id: 'flow-channel-badge', style: 'font-size:11px;padding:3px 10px;border-radius:10px;font-weight:600;display:none' });
+    controls.appendChild(channelBadge);
 
     const legend = ui.el('div', 'flow-legend');
     legend.appendChild(legendItem('var(--success)', t('page.trafficFlow.activePath')));
@@ -211,9 +215,24 @@ router.register('traffic-flow', (container) => {
       nodes[d.id] = d;
     });
 
-    nodes.internet = { id: 'internet', label: t('page.trafficFlow.internet'), sub: traceResult ? traceResult.domain : '', kind: 'io', x: cx, y: 758, w: nodeW, h: nodeH, active: running };
+    const channelRoute = channelStatus ? (channelStatus.channel_route || '') : '';
+    const channelActive = !!(channelRoute && channelRoute !== 'direct' && channelStatus.proxy);
+    const channelY = 758;
+    let internetY = 758;
+    if (channelActive) {
+      const cp = channelStatus.proxy;
+      nodes.channel = {
+        id: 'channel', label: t('page.trafficFlow.channel'),
+        sub: cp ? (cp.host + ':' + cp.port) : '',
+        kind: 'engine', x: cx, y: channelY, w: nodeW, h: nodeH,
+        active: running && channelStatus.available,
+      };
+      internetY = 850;
+    }
 
-    const totalH = 758 + nodeH / 2 + 24;
+    nodes.internet = { id: 'internet', label: t('page.trafficFlow.internet'), sub: traceResult ? traceResult.domain : '', kind: 'io', x: cx, y: internetY, w: nodeW, h: nodeH, active: running };
+
+    const totalH = internetY + nodeH / 2 + 24;
 
     const svgEl = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svgEl.setAttribute('viewBox', `0 0 ${W} ${totalH}`);
@@ -272,9 +291,16 @@ router.register('traffic-flow', (container) => {
       }
     });
 
-    destNodes.forEach(d => {
-      edges.push({ from: d.id, to: 'internet', active: d.active, curve: true });
-    });
+    if (channelActive) {
+      destNodes.forEach(d => {
+        edges.push({ from: d.id, to: 'channel', active: d.active, curve: true });
+      });
+      edges.push({ from: 'channel', to: 'internet', active: running && channelStatus.available });
+    } else {
+      destNodes.forEach(d => {
+        edges.push({ from: d.id, to: 'internet', active: d.active, curve: true });
+      });
+    }
 
     edges.forEach(e => drawEdge(svgEl, nodes[e.from], nodes[e.to], e.active, e.curve, e.dashed, e.thin));
 
@@ -407,6 +433,19 @@ router.register('traffic-flow', (container) => {
         sb.style.color = 'var(--text-muted)';
       }
     }
+    const cb = document.getElementById('flow-channel-badge');
+    if (cb) {
+      const route = channelStatus ? (channelStatus.channel_route || '') : '';
+      if (route && route !== 'direct' && channelStatus.proxy) {
+        cb.style.display = '';
+        const ok = channelStatus.available;
+        cb.textContent = t('page.trafficFlow.channel') + ': ' + channelStatus.proxy.host + ':' + channelStatus.proxy.port;
+        cb.style.background = ok ? 'var(--info-bg)' : 'var(--danger-bg)';
+        cb.style.color = ok ? 'var(--info)' : 'var(--danger)';
+      } else {
+        cb.style.display = 'none';
+      }
+    }
   }
 
   build();
@@ -416,16 +455,18 @@ router.register('traffic-flow', (container) => {
     if (_loading) return;
     _loading = true;
     try {
-      const [status, ps, dl, cp] = await Promise.all([
+      const [status, ps, dl, cp, ch] = await Promise.all([
         api.routingStatus().catch(e => { console.error('routingStatus', e); return {}; }),
         api.proxyStatus().catch(e => { console.error('proxyStatus', e); return {}; }),
         api.domainLists().catch(e => { console.error('domainLists', e); return { lists: [] }; }),
         api.customProxies().catch(e => { console.error('customProxies', e); return { proxies: [] }; }),
+        api.channelStatus().catch(e => { console.error('channelStatus', e); return {}; }),
       ]);
       routingStatus = status;
       proxyStatus = ps;
       domainLists = dl.lists || dl || [];
       customProxies = cp.proxies || cp || [];
+      channelStatus = ch;
       renderFlow();
     } catch (e) {
       console.error('traffic-flow load', e);

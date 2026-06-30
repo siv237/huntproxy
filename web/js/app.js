@@ -151,9 +151,11 @@ const app = {
     this._pollers.push(setInterval(() => this.pollCanary(), 30000));
     this._pollers.push(setInterval(() => this.pollTraffic(), 2000));
     this._pollers.push(setInterval(() => this.pollDirectMode(), 3000));
+    this._pollers.push(setInterval(() => this.pollChannel(), 3000));
     this.pollCanary();
     this.pollTraffic();
     this.pollDirectMode();
+    this.pollChannel();
   },
 
   stopPollers() {
@@ -228,6 +230,34 @@ const app = {
     } catch (e) {
       // Silently ignore network errors during polling
     }
+  },
+
+  async pollChannel() {
+    try {
+      const ch = await api.channelStatus().catch(() => null);
+      const badge = document.getElementById('channel-badge');
+      if (!badge || !ch) return;
+      const span = document.getElementById('channel-badge-text');
+      const route = ch.channel_route || '';
+      if (route && route !== 'direct') {
+        badge.style.display = '';
+        const p = ch.proxy;
+        if (p) {
+          const ok = ch.available;
+          badge.style.borderColor = ok ? 'var(--info)' : 'var(--danger)';
+          badge.style.background = ok ? 'var(--info-bg)' : 'var(--danger-bg)';
+          badge.style.color = ok ? 'var(--info)' : 'var(--danger)';
+          if (span) span.textContent = t('topbar.channelText') + ': ' + p.host + ':' + p.port;
+        } else {
+          badge.style.borderColor = 'var(--danger)';
+          badge.style.background = 'var(--danger-bg)';
+          badge.style.color = 'var(--danger)';
+          if (span) span.textContent = t('topbar.channelText') + ': ' + t('topbar.channelUnavailable');
+        }
+      } else {
+        badge.style.display = 'none';
+      }
+    } catch (e) { /* ignore */ }
   },
 
   async pollDirectMode() {

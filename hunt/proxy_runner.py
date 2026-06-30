@@ -5,6 +5,7 @@ import base64
 import socket
 import struct
 import time
+from hunt.conn import socks5_connect, socks4_connect, http_connect
 from hunt.models import ProxyRating
 from typing import Optional
 from urllib.parse import urlparse
@@ -233,9 +234,13 @@ class ProxyRunner:
             chain = []
         if route == "direct":
             try:
-                reader, writer = await asyncio.wait_for(
-                    asyncio.open_connection(host, port), timeout=15)
-                chain.append("direct")
+                if self.state._channel_is_set():
+                    reader, writer = await self.state._outbound_connect(host, port, timeout=15)
+                    chain.append(f"direct via channel")
+                else:
+                    reader, writer = await asyncio.wait_for(
+                        asyncio.open_connection(host, port), timeout=15)
+                    chain.append("direct")
                 return reader, writer, False
             except Exception:
                 return None
@@ -365,9 +370,13 @@ class ProxyRunner:
 
         if self.direct_mode:
             try:
-                reader, writer = await asyncio.wait_for(
-                    asyncio.open_connection(host, port), timeout=15)
-                chain.append("direct")
+                if self.state._channel_is_set():
+                    reader, writer = await self.state._outbound_connect(host, port, timeout=15)
+                    chain.append(f"direct via channel")
+                else:
+                    reader, writer = await asyncio.wait_for(
+                        asyncio.open_connection(host, port), timeout=15)
+                    chain.append("direct")
                 return reader, writer, False
             except Exception:
                 return None
@@ -458,144 +467,19 @@ class ProxyRunner:
 
 
     async def _http_connect_cmd(self, r, w, h, p):
-        req = f"CONNECT {h}:{p} HTTP/1.1\r\nHost: {h}:{p}\r\n\r\n"
-        w.write(req.encode()); await w.drain()
-        try:
-            resp = await asyncio.wait_for(r.readuntil(b"\r\n\r\n"), timeout=15)
-            status_line = resp.split(b"\r\n")[0]
-            return b"200" in status_line
-        except asyncio.TimeoutError:
-            return False
-        except Exception:
-            return False
+        return await http_connect(r, w, h, p)
 
     async def _socks5_cmd_auth(self, r, w, h, p, uname="", passwd="") -> bool:
-        try:
-            if uname:
-                w.write(bytes([5, 2, 0, 2])); await w.drain()
-            else:
-                w.write(bytes([5, 1, 0])); await w.drain()
-            resp = await asyncio.wait_for(r.readexactly(2), timeout=8)
-            if resp[1] == 0xFF:
-                return False
-            if resp[1] == 2 and uname:
-                u_raw = uname.encode()
-                p_raw = passwd.encode()
-                auth = bytes([1, len(u_raw)]) + u_raw + bytes([len(p_raw)]) + p_raw
-                w.write(auth); await w.drain()
-                auth_resp = await asyncio.wait_for(r.readexactly(2), timeout=8)
-                if auth_resp[1] != 0:
-                    return False
-            is_ip = all(c.isdigit() or c == "." for c in h)
-            if is_ip:
-                req = bytes([5, 1, 0, 1]) + socket.inet_aton(h)
-            else:
-                raw = h.encode()
-                req = bytes([5, 1, 0, 3, len(raw)]) + raw
-            req += struct.pack(">H", p)
-            w.write(req); await w.drain()
-            hdr = await asyncio.wait_for(r.readexactly(4), timeout=8)
-            if hdr[1] != 0: return False
-            atyp = hdr[3]
-            if atyp == 1:
-                await asyncio.wait_for(r.readexactly(4 + 2), timeout=8)
-            elif atyp == 3:
-                dl = await asyncio.wait_for(r.readexactly(1), timeout=8)
-                await asyncio.wait_for(r.readexactly(dl[0] + 2), timeout=8)
-            elif atyp == 4:
-                await asyncio.wait_for(r.readexactly(16 + 2), timeout=8)
-            else:
-                return False
-            return True
-        except Exception:
-            return False
+        return await socks5_connect(r, w, h, p, uname, passwd)
 
     async def _http_connect_cmd_auth(self, r, w, h, p, uname="", passwd="") -> bool:
-        req = f"CONNECT {h}:{p} HTTP/1.1\r\nHost: {h}:{p}\r\n"
-        if uname:
-            import base64
-            cred = base64.b64encode(f"{uname}:{passwd}".encode()).decode()
-            req += f"Proxy-Authorization: Basic {cred}\r\n"
-        req += "\r\n"
-        w.write(req.encode()); await w.drain()
-        try:
-            resp = await asyncio.wait_for(r.readuntil(b"\r\n\r\n"), timeout=15)
-            status_line = resp.split(b"\r\n")[0]
-            if b"200" in status_line:
-                return True
-            if b"407" in status_line and uname:
-                await self._drain_chunked_or_content_length(r, resp)
-                cred = base64.b64encode(f"{uname}:{passwd}".encode()).decode()
-                retry = f"CONNECT {h}:{p} HTTP/1.1\r\nHost: {h}:{p}\r\nProxy-Authorization: Basic {cred}\r\n\r\n"
-                w.write(retry.encode()); await w.drain()
-                resp2 = await asyncio.wait_for(r.readuntil(b"\r\n\r\n"), timeout=15)
-                status_line2 = resp2.split(b"\r\n")[0]
-                return b"200" in status_line2
-            return False
-        except asyncio.TimeoutError:
-            return False
-        except Exception:
-            return False
-
-    async def _drain_chunked_or_content_length(self, r, header: bytes):
-        try:
-            hdr_text = header.decode(errors="replace")
-            cl_match = None
-            for line in hdr_text.split("\r\n"):
-                if line.lower().startswith("content-length:"):
-                    cl_match = int(line.split(":", 1)[1].strip())
-                    break
-            if cl_match is not None and cl_match > 0:
-                await asyncio.wait_for(r.readexactly(cl_match), timeout=5)
-            elif "transfer-encoding: chunked" in hdr_text.lower():
-                while True:
-                    size_line = await asyncio.wait_for(r.readline(), timeout=5)
-                    chunk_size = int(size_line.strip(), 16)
-                    if chunk_size == 0:
-                        await asyncio.wait_for(r.readline(), timeout=5)
-                        break
-                    await asyncio.wait_for(r.readexactly(chunk_size + 2), timeout=5)
-        except Exception:
-            pass
+        return await http_connect(r, w, h, p, uname, passwd)
 
     async def _socks5_cmd(self, r, w, h, p):
-        try:
-            w.write(bytes([5, 1, 0])); await w.drain()
-            resp = await asyncio.wait_for(r.readexactly(2), timeout=8)
-            if resp[1] != 0: return False
-            is_ip = all(c.isdigit() or c == "." for c in h)
-            if is_ip:
-                req = bytes([5, 1, 0, 1]) + socket.inet_aton(h)
-            else:
-                raw = h.encode()
-                req = bytes([5, 1, 0, 3, len(raw)]) + raw
-            req += struct.pack(">H", p)
-            w.write(req); await w.drain()
-            hdr = await asyncio.wait_for(r.readexactly(4), timeout=8)
-            if hdr[1] != 0: return False
-            atyp = hdr[3]
-            if atyp == 1:
-                await asyncio.wait_for(r.readexactly(4 + 2), timeout=8)
-            elif atyp == 3:
-                dl = await asyncio.wait_for(r.readexactly(1), timeout=8)
-                await asyncio.wait_for(r.readexactly(dl[0] + 2), timeout=8)
-            elif atyp == 4:
-                await asyncio.wait_for(r.readexactly(16 + 2), timeout=8)
-            else:
-                return False
-            return True
-        except Exception:
-            return False
+        return await socks5_connect(r, w, h, p)
 
     async def _socks4_cmd(self, r, w, h, p):
-        try:
-            req = struct.pack(">BBH", 4, 1, p) + bytes([0, 0, 0, 1]) + b"\x00"
-            req += h.encode() + b"\x00"
-            w.write(req); await w.drain()
-            resp = await asyncio.wait_for(r.readexactly(8), timeout=8)
-            return resp[0] == 0 and resp[1] == 0x5A
-        except Exception:
-            return False
+        return await socks4_connect(r, w, h, p)
 
     async def _relay(self, client_reader, client_writer, upstream_reader, upstream_writer):
         bytes_in = 0   # client → upstream (upload)

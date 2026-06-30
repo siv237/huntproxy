@@ -43,7 +43,9 @@
     "directMode": "Прямой режим — диагностика, без апстрима",
     "directModeText": "Прямой режим",
     "cascadeModeText": "Каскад",
-    "routingModeText": "Маршрутизация"
+    "routingModeText": "Маршрутизация",
+    "channelText": "Канал",
+    "channelUnavailable": "недоступен"
   },
   "sidebar": {
     "allSystemsOperational": "Все системы работают",
@@ -416,6 +418,12 @@
       "directModeOff": "Прямой режим ВЫКЛ",
       "clientLog": "Журнал клиентов",
       "proxyNotStarted": "прокси не запущен",
+      "channel": "Канал",
+      "channelDesc": "Вышестоящий прокси движка",
+      "channelDirect": "прямой",
+      "channelUnavailable": "недоступен",
+      "channelVia": "через {addr}",
+      "channelManage": "управление каналом",
       "proxyStarted": "Прокси запущен",
       "proxyStopped": "Прокси остановлен",
       "socks5Started": "SOCKS5 запущен",
@@ -656,6 +664,7 @@
       "client": "Запрос клиента",
       "proxyServer": "Сервер huntproxy",
       "internet": "Интернет / Цель",
+      "channel": "Канал",
       "routingEngine": "Движок маршрутизации",
       "routingOn": "Маршрутизация ВКЛ",
       "routingOff": "Маршрутизация ВЫКЛ",
@@ -769,7 +778,15 @@
       "waitingForEvents": "Ожидание событий...",
       "internetWentOffline": "Интернет стал недоступен",
       "internetRestored": "Интернет восстановлен",
-      "ipChanged": "IP изменён: {old} → {new} ({isp})"
+      "ipChanged": "IP изменён: {old} → {new} ({isp})",
+      "channel": "Канал",
+      "channelDesc": "Вышестоящий прокси движка — все проверки и загрузки идут через него",
+      "channelDirect": "Прямой (без канала)",
+      "channelCustom": "Кастомные прокси",
+      "channelPool": "Рабочие прокси",
+      "channelSet": "Канал установлен: {route}",
+      "channelCleared": "Канал сброшен (прямой)",
+      "viaChannel": "через канал"
     },
     "downloads": {
       "title": "Загрузки",

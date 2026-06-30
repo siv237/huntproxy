@@ -5,6 +5,7 @@ import base64
 import socket
 import struct
 import time
+from hunt.conn import socks5_connect, http_connect
 from hunt.constants import logger
 from typing import Optional
 
@@ -234,86 +235,34 @@ class CustomProxiesMixin:
             try:
                 uname = proxy.get("username", "")
                 passwd = proxy.get("password", "")
-                if uname:
-                    w_bytes = bytes([5, 2, 0, 2])
-                else:
-                    w_bytes = bytes([5, 1, 0])
-                writer.write(w_bytes)
-                await writer.drain()
-                resp = await asyncio.wait_for(reader.readexactly(2), timeout=8)
-                if resp[1] == 0xFF:
-                    return False
-                if resp[1] == 2 and uname:
-                    u_raw = uname.encode()
-                    p_raw = passwd.encode()
-                    auth = bytes([1, len(u_raw)]) + u_raw + bytes([len(p_raw)]) + p_raw
-                    writer.write(auth)
-                    await writer.drain()
-                    auth_resp = await asyncio.wait_for(reader.readexactly(2), timeout=8)
-                    if auth_resp[1] != 0:
-                        return False
-                raw_url = url.split("//", 1)[-1].split("/", 1)[0]
-                if ":" in raw_url:
-                    host_parts = raw_url.split(":")
-                    target_host = host_parts[0]
-                    try:
-                        target_port = int(host_parts[1])
-                    except ValueError:
-                        target_port = 443 if url.lower().startswith("https://") else 80
-                else:
-                    target_host = raw_url
-                    target_port = 443 if url.lower().startswith("https://") else 80
-                is_ip = all(c.isdigit() or c == "." for c in target_host)
-                if is_ip:
-                    req = bytes([5, 1, 0, 1]) + socket.inet_aton(target_host)
-                else:
-                    raw = target_host.encode()
-                    req = bytes([5, 1, 0, 3, len(raw)]) + raw
-                req += struct.pack(">H", target_port)
-                writer.write(req)
-                await writer.drain()
-                hdr = await asyncio.wait_for(reader.readexactly(4), timeout=8)
-                if hdr[1] != 0:
-                    return False
-                atyp = hdr[3]
-                if atyp == 1:
-                    await asyncio.wait_for(reader.readexactly(4 + 2), timeout=8)
-                elif atyp == 3:
-                    dl = await asyncio.wait_for(reader.readexactly(1), timeout=8)
-                    await asyncio.wait_for(reader.readexactly(dl[0] + 2), timeout=8)
-                elif atyp == 4:
-                    await asyncio.wait_for(reader.readexactly(16 + 2), timeout=8)
-                else:
-                    return False
-                return True
+                target_host, target_port = self._url_target(url)
+                return await socks5_connect(reader, writer, target_host, target_port, uname, passwd)
             except Exception:
                 return False
 
     async def _http_proxy_handshake(self, reader, writer, url, proxy) -> bool:
             try:
-                target_host = url.split("//", 1)[-1].split("/", 1)[0]
-                if ":" in target_host:
-                    parts = target_host.split(":")
-                    host = parts[0]
-                    port = int(parts[1]) if len(parts) > 1 else 80
-                else:
-                    host = target_host
-                    port = 80
-                req = f"CONNECT {host}:{port} HTTP/1.1\r\nHost: {host}:{port}\r\n"
                 uname = proxy.get("username", "")
                 passwd = proxy.get("password", "")
-                if uname:
-                    import base64
-                    cred = base64.b64encode(f"{uname}:{passwd}".encode()).decode()
-                    req += f"Proxy-Authorization: Basic {cred}\r\n"
-                req += "\r\n"
-                writer.write(req.encode())
-                await writer.drain()
-                resp = await asyncio.wait_for(reader.readuntil(b"\r\n\r\n"), timeout=15)
-                status_line = resp.split(b"\r\n")[0]
-                return b"200" in status_line
+                host, port = self._url_target(url)
+                return await http_connect(reader, writer, host, port, uname, passwd)
             except Exception:
                 return False
+
+    @staticmethod
+    def _url_target(url: str) -> tuple:
+            """Parse a test URL into (host, port), defaulting by scheme."""
+            raw_url = url.split("//", 1)[-1].split("/", 1)[0]
+            if ":" in raw_url:
+                host, port_str = raw_url.split(":", 1)
+                try:
+                    port = int(port_str)
+                except ValueError:
+                    port = 443 if url.lower().startswith("https://") else 80
+            else:
+                host = raw_url
+                port = 443 if url.lower().startswith("https://") else 80
+            return host, port
 
     async def test_proxy_direct(self, data: dict) -> dict:
             host = data.get("host", "").strip()
