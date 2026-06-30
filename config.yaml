@@ -74,8 +74,8 @@ hunt:
   web_listen_port: 17177
 
   # Hunt settings
-  parallel: 30                # concurrent proxy checks during hunt
+  parallel: 300               # concurrent proxy checks during hunt
   timeout: 8                  # per-proxy connect/response timeout
   us_only: true               # filter to US only (false = all countries)
   health_interval: 180        # seconds between health-checks of alive pool
-  health_parallel: 20
+  health_parallel: 100

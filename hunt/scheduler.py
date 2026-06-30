@@ -529,24 +529,14 @@ class SchedulerEngine:
     async def _execute_proxy_check(self, entry: ScheduleEntry):
         """Re-validate ALL existing proxies in the pool without collecting new ones.
 
-        This is the scheduled equivalent of a manual "check" — it refreshes
-        IP blacklists + blocklists (so scoring is up to date) and then
-        re-validates every proxy currently in ratings.  Unlike a full hunt,
-        it never downloads proxy source lists.
+        This is the scheduled equivalent of a manual "check" — it re-validates
+        every proxy currently in ratings.  Unlike a full hunt, it never
+        downloads proxy source lists or blocklists (those are refreshed by
+        their own separate schedules).
         """
         state = self.state
 
-        # 1) Refresh blacklists so scoring reflects the latest lists.
-        state._emit("Scheduler: proxy_check — refreshing blacklists", "info")
-        ip_results = await state._download_ip_blacklists()
-        bl_results = await state._download_blocklists()
-        state._emit(
-            f"Scheduler: proxy_check — blacklists refreshed "
-            f"(IP: {sum(ip_results.values())}, country: {sum(bl_results.values())})",
-            "info",
-        )
-
-        # 2) Re-validate every non-blacklisted proxy in the pool.
+        # Re-validate every non-blacklisted proxy in the pool.
         candidates = [r for r in state.ratings.values() if not r.in_blacklist]
         if not candidates:
             state._emit("Scheduler: proxy_check — no proxies to validate", "info")
