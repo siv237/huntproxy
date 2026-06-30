@@ -1,138 +1,245 @@
-# План: Канальный upstream-прокси для движка проверки (цепочка прокси)
+# План: Interception — прозрачный перехват трафика (слоёный пирог)
 
-## Постановка
-Сейчас движок (hunt/health/speed/canary) всегда выходит в интернет напрямую
-(asyncio.open_connection). Нужно: при выборе прокси в карточке «канал» все
-процессы движка идут через этот вышестоящий прокси, а не напрямую. Карточка
-«Контроль канала» (connectivity) должна получить управление этим прокси.
+## Суть
+Управление iptables-перехватом трафика для прозрачного прокси. Не маршрутизация
+(«куда отправить»), а перехват («какой трафик поймать и завернуть в прокси»).
+TransparentRunner (SO_ORIGINAL_DST) уже работает — этот план про управление
+iptables-правилами и UI для конфигурации.
 
-## Что уже готово (≈90%) — НЕ трогать
-- [x] ProxyRunner._connect_by_route: direct / proxy:<addr> / custom:<id> / pool
-      (hunt/proxy_runner.py:231) + цепочка chain в логах
-- [x] _resolve_route по доменным спискам (hunt/routing.py:214)
-- [x] Кастомные прокси CRUD + тест (hunt/custom_proxies.py, табл. custom_proxies)
-- [x] API /api/proxy/select, /api/proxy/direct, /api/routing/*, /api/custom-proxies/*
-      (hunt/server.py)
-- [x] Карточка «канал» для клиентского трафика: server.js buildModeCard()
-      Direct / Routing / Cascade (Pool/Custom/Working picker)
-- [x] Страница «Контроль канала» = connectivity.js (canary-монитор, health.py
-      _check_canary: direct IP/страна/ISP, история, график 24ч)
-- [x] API canary: /api/canary/status|history|hosts (api.js:145)
+## Что уже готово — НЕ трогать
+- [x] TransparentRunner (hunt/transparent_runner.py) — SO_ORIGINAL_DST, туннель
+      через ProxyRunner._connect_upstream, лог в traffic_log
+- [x] API /api/transparent/{status,start,stop} — запуск/стоп слушателя
+- [x] Страница Server — строка управления transparent (порт + start/stop)
+- [x] State persist: _transparent_running/_transparent_port
+- [x] setup_iptables.sh — готовый скрипт REDIRECT (базовый, без фильтров)
+- [x] config.yaml: transparent_listen (17477), transparent_enabled
+- [x] Тест: curl через transparent → SO_ORIGINAL_DST → cascade → exit IP изменён
+- [x] Локали: page.server.transparent* (6 языков)
 
-## ПРОВЕРЕНО: три пути выхода движка в интернет (все сейчас напрямую)
-A. Скачка списков — curl-субпроцесс:
-   - proxy_sources.py:131  curl_args(url)           БЕЗ прокси
-   - ip_blacklist_sources.py:94  curl_args(url)     БЕЗ прокси
-   - blocklists.py:303  curl_args(url, proxy=...)   УЖЕ умеет через download_proxy
-     (per-source поле в БД — готовый прецедент!)
-   curl_args (download.py:30) уже имеет параметр proxy → --proxy. Для A нужно
-   просто передать строку канального прокси.
-B. Проверка прокси — asyncio.open_connection: checking.py + health.py (см. ниже)
-C. MITM-чек — curl -x: checking.py _check_mitm_http/_check_mitm_socks
+## Две оси (ортогональные, комбинируемые)
 
-## Что осталось (минимум)
+### Ось 1: Источник трафика
+| Режим | Цепочка | Кто клиент | Loop prevention |
+|---|---|---|---|
+| Локальный | OUTPUT | эта машина | cgroup / UID / SO_MARK |
+| Шлюзовый | PREROUTING | LAN-клиенты | не нужен (OUTPUT прокси отделён) |
+| Оба | OUTPUT + PREROUTING | и то, и то | cgroup для OUTPUT |
 
-### 1. Скачка списков через канал (путь A — почти готово)
-- [ ] proxy_sources.py:131  → curl_args(url, proxy=channel_curl_proxy)
-- [ ] ip_blacklist_sources.py:94 → curl_args(url, proxy=channel_curl_proxy)
-- [ ] helper state._channel_curl_proxy() → "host:port" | "" для --proxy
-      (из _channel_route: proxy:<addr> / custom:<id> → "host:port";
-       для custom с auth → "http://user:pass@host:port" или socks5h://...)
-- [ ] blocklists: при пустом download_proxy источника подставлять канал
+### Ось 2: Фильтрация локального трафика
+| Метод | Точность | Сложность |
+|---|---|---|
+| Вся машина (кроме прокси) | грубо | низкая |
+| По приложениям (cgroup v2) | точно | средняя |
+| По UID | средне | низкая |
 
-### 2. Ядро: единый «outbound-коннектор» для проверки (путь B)
-Сейчас checking.py/health.py/canary зовут asyncio.open_connection напрямую.
-- [ ] Добавить в CheckingMixin (или общий хелпер в state) метод
-      `_outbound_connect(host, port, *, use_ssl=False, server_hostname=None)`:
-      * если выбран канальный прокси — соединяться через него (SOCKS5/SOCKS4/
-        HTTP-CONNECT/HTTPS), переиспользуя логику из ProxyRunner
-        (_socks5_cmd / _socks4_cmd / _http_connect_cmd / SSL-обёртка) и
-        custom_proxies (auth);
-      * иначе — прямой asyncio.open_connection (текущее поведение).
-- [ ] Решить источник канального прокси: новое поле state
-      `_channel_route` ("" = direct | "proxy:<addr>" | "custom:<id>" | "pool")
-      ИЛИ переиспользовать active_proxy_addr. Поле persistить в state.db
-      (routing_config или отдельная строка).
-- [ ] Заменить прямые open_connection в движке на _outbound_connect:
-      checking.py: _check_proxy(198), _check_proxy_connect(308),
-      _check_ssl(372), _speed_open(495), _resolve_geo(812), _socks_egress(857)
-      health.py:  методы проверки (540-750) + _check_canary(302,333)
-- [ ] Скорость/CONNECT-туннель: при канальном прокси туннель строится к
-      целевому speed-серверу через upstream (цепочка client→upstream→target),
-      `_https_speed_single` уже делает start_tls поверх туннеля — адаптировать.
-- [ ] MITM-проверка через curl (путь C): добавить `-x` с канальным прокси
-      к _check_mitm_http/_check_mitm_socks (checking.py) — но осторожно:
-      MITM проверяет сертификат целевого узла через сам проверяемый прокси,
-      а канал — это прокси-вход в интернет; тут возможна двойная цепочка
-      curl -x канал ... -x проверяемый? Уточнить семантику (см. Риски).
+## Архитектура
 
-### 2. Canary через канал
-- [ ] _check_canary (health.py:295): проверка canary-хостов и запрос ip-api
-      делать через _outbound_connect, когда выбран канал. Тогда «direct IP» в
-      карточке = egress IP канального прокси (а не локальный), что и есть
-      «контроль этого прокси» в Контроле канала.
+### Модель конфигурации
+```yaml
+interception:
+  local:
+    enabled: false
+    filter: "apps"            # "all" | "apps" | "uid"
+    apps: []                  # exe-пути: ["/usr/bin/firefox", ...]
+    uid_exclude_proxy: true   # исключить процесс прокси (loop prevention)
+  gateway:
+    enabled: false
+    interface: ""             # eth0 / wlan0
+    clients: "all"            # "all" | "list"
+    client_list: []           # ["192.168.1.50", ...]
+    exclude_ssh: true
+    ssh_port: 22
+  ports: [443, 80]
+  destinations:
+    mode: "all"               # "all" | "whitelist" | "blacklist"
+    list: []                  # IP/домены
+  auto_timeout: 30            # минуты, 0 = без авто-снятия
+```
 
-### 3. API канала
-- [ ] /api/channel/status  GET  — текущий channel_route + статус/health
-      выбранного прокси (переиспользовать get_status/to_dict)
-- [ ] /api/channel/select  POST — задать channel_route
-      (direct | proxy:<addr> | custom:<id> | pool); persist + _emit
-- [ ] (опц.) переиспользовать /api/proxy/select, но явно разделить «клиентский
-      upstream» и «канал движка», чтобы не ломать существующий ProxyRunner.
-- [ ] Добавить методы в web/js/api.js: channelStatus(), channelSelect(route)
+### Loop prevention: cgroup v2 (рекомендация)
+- Прокси-процесс НЕ в cgroup `huntproxy.interception`
+- iptables/nftables: OUTPUT match cgroup → REDIRECT; не в cgroup → RETURN
+- Дочерние процессы в cgroup наследуют при fork
+- Watcher: фоновый таск, сканирует /proc/*/exe, добавляет новые PID в cgroup
+- Альтернатива: SO_MARK (прокси помечает свои сокеты) — запасной вариант
 
-### 4. UI: управление каналом в «Контроль канала» (connectivity.js)
-- [ ] В карточку buildStatusCard (или отдельная карточка сверху) добавить
-      селектор канала: Direct + список alive-прокси + custom-прокси (как в
-      server.js populateModeSelect). Выбор → api.channelSelect.
-- [ ] Показывать текущий канальный прокси: адрес, протокол, статус (ok/fail),
-      latency, egress IP/страна (берётся из canary direct_ip при включённом
-      канале). Бейдж DIRECT/PROXY/CUSTOM/POOL.
-- [ ] При смене канала — индикация что canary теперь идёт через upstream.
-- [ ] Локали: добавить ключи в web/locales/en.json и ru.json (минимум).
+### Применение iptables
+- sudo helper: /etc/sudoers.d/huntproxy → NOPASSWD на huntproxy-iptables.sh
+- UI вызывает: sudo huntproxy-iptables.sh apply <config.json>
+- Скрипт генерирует правила из конфига, применяет, проверяет
+- Panic: sudo huntproxy-iptables.sh clear — снять всё немедленно
+- Auto-timeout: systemd timer или cron, снимает правила через N минут
 
-### 5. Состояние и восстановление
-- [ ] state.py: поле _channel_route, загрузка/сохранение (_load_state/_save_state)
-- [ ] Восстановление после рестарта: применять канал при старте движка
-      (main.py порядок старта)
+## Backend
 
-### 6. Тесты
-- [ ] tests/: _outbound_connect через mock-upstream (socks5/http/connect),
-      прямой fallback, выбор channel_route, canary через канал
-- [ ] ./test.sh — прогнать весь набор
+### 1. Config (hunt/state.py + config.yaml)
+- [ ] Поля interception.* в config.yaml (структура выше)
+- [ ] Загрузка/сохранение конфига interception в state
+- [ ] Persist в runtime_state (как routing_config)
+
+### 2. Process scanner (hunt/interception.py — новый модуль)
+- [ ] list_processes() — сканирует /proc, возвращает [{pid, exe, name, uid}]
+- [ ] cgroup helper: create_cgroup(), add_pid(), remove_pid(), list_pids()
+- [ ] app_watcher() — фоновый таск, добавляет новые процессы по exe-путям
+- [ ] _mark_socket() — опц., для SO_MARK fallback
+
+### 3. iptables helper (scripts/huntproxy-iptables.sh — новый)
+- [ ] apply — генерирует правила из JSON-конфига:
+      * local: OUTPUT chain + cgroup/uid match + REDIRECT
+      * gateway: PREROUTING chain + source IP filter + REDIRECT
+      * exclusions: private nets, SSH port, proxy process
+      * destinations: whitelist/blacklist filter
+- [ ] clear — снять все правила, удалить chain
+- [ ] status — показать активные правила
+- [ ] panic — emergency clear (одна команда)
+
+### 4. API (hunt/server.py)
+- [ ] GET  /api/interception/config — текущая конфигурация
+- [ ] POST /api/interception/config — сохранить конфигурацию
+- [ ] POST /api/interception/apply — применить (вызвать sudo helper)
+- [ ] POST /api/interception/clear — снять правила
+- [ ] POST /api/interception/panic — emergency clear
+- [ ] GET  /api/interception/status — активные правила (из iptables -L)
+- [ ] GET  /api/interception/processes — список процессов (для app picker)
+- [ ] GET  /api/interception/cgroup — PID'ы в cgroup
+
+### 5. Watcher integration (hunt/main.py)
+- [ ] Запуск app_watcher при включённом local.filter="apps"
+- [ ] Остановка watcher при выключении
+
+## Frontend
+
+### 6. Новая вкладка в движке прокси: web/js/pages/interception.js
+- [ ] Регистрация: router.register('interception', ...)
+- [ ] Навигация: новая вкладка в sidebar рядом с Server/Connectivity/Routes
+      (icon: shield, название: «Перехват» / «Interception»)
+- [ ] ВСЯ работа с перехватом — только в этой вкладке:
+      * Локальный перехват (приложения / вся машина)
+      * Шлюзовый перехват (клиенты LAN)
+      * Цели перехвата (порты, whitelist/blacklist)
+      * Управление (применить / снять / panic / auto-timeout)
+      * Активные соединения (transparent log)
+- [ ] Страница Server — оставить только start/stop прозрачного прокси
+      (как сейчас), управление перехватом НЕ дублировать там
+
+Структура страницы:
+```
+┌─ Локальный перехват ──────────────────────┐
+│  [☑] Включить                             │
+│  Фильтр: (●) Приложения ( ) Вся машина    │
+│  ┌─ App Picker ────────────────────────┐  │
+│  │ 🔍 [поиск...]                       │  │
+│  │ ☑ firefox    /usr/bin/firefox       │  │
+│  │ ☑ Telegram   /opt/telegram/Telegram │  │
+│  │ ☐ chrome     /usr/bin/chrome        │  │
+│  │ [+ добавить по пути exe]            │  │
+│  └─────────────────────────────────────┘  │
+└───────────────────────────────────────────┘
+
+┌─ Шлюзовый перехват ───────────────────────┐
+│  [☐] Включить                             │
+│  Интерфейс: [eth0 ▼]                      │
+│  Клиенты: (●) Все из LAN ( ) Выбранные    │
+│  [192.168.1.50 ✕] [+ добавить IP]         │
+│  ☑ Исключить SSH порт: [22]               │
+└───────────────────────────────────────────┘
+
+┌─ Цели перехвата ──────────────────────────┐
+│  Порты: [443] [80] [+ добавить]           │
+│  Назначения:                              │
+│    (●) Весь трафик                        │
+│    ( ) Только указанные (whitelist)       │
+│    ( ) Всё кроме указанных (blacklist)    │
+│  [188.40.167.82 ✕] [+ добавить IP/домен]  │
+└───────────────────────────────────────────┘
+
+┌─ Управление ──────────────────────────────┐
+│  [Применить]  [Снять всё]  [⚠ PANIC]      │
+│  Auto-timeout: [30] мин ☑                 │
+│  Статус: ● Активно / ○ Выключено          │
+└───────────────────────────────────────────┘
+
+┌─ Активные соединения (transparent log) ───┐
+│  клиент → цель  [статус]  через upstream  │
+└───────────────────────────────────────────┘
+```
+
+### 7. web/js/api.js
+- [ ] interceptionConfig(), interceptionSave(config)
+- [ ] interceptionApply(), interceptionClear(), interceptionPanic()
+- [ ] interceptionStatus(), interceptionProcesses(), interceptionCgroup()
+
+### 8. Локали (web/locales/*.json — 6 файлов)
+- [ ] page.interception.* — все ключи страницы
+- [ ] sidebar.interception — пункт навигации
+- [ ] topbar.interception* — опц. бейдж статуса перехвата
+
+## Безопасность
+
+### Шлюзовой режим — защита от самоизоляции
+- [ ] Всегда исключать: порт SSH, IP управления, сам шлюз
+- [ ] Auto-timeout: правило живёт N минут, потом auto-remove
+- [ ] Dry-run: показать правила перед применением
+- [ ] Panic button: одна кнопка, снимает всё без подтверждения
+
+### sudo helper
+- [ ] /etc/sudoers.d/huntproxy — NOPASSWD только на huntproxy-iptables.sh
+- [ ] Скрипт валидирует входной JSON, не выполняет произвольные команды
+- [ ] Логирование всех apply/clear операций
+
+## Тесты
+
+### 9. tests/test_interception.py (новый)
+- [ ] Config save/load (interception.* поля)
+- [ ] Process scanner (/proc парсинг, mock)
+- [ ] cgroup helper (mock файловой системы)
+- [ ] iptables helper (проверка генерируемых правил, mock sudo)
+- [ ] API endpoints (config, apply, clear, status, processes)
+- [ ] App watcher (добавление/удаление PID)
+
+### 10. tests/test_api_consistency.py
+- [ ] Автопроверка: каждый api.interception* имеет эндпоинт
 
 ## Порядок выполнения
-1. state.py: поле _channel_route + persist
-2. _outbound_connect (переиспользовать ProxyRunner-хелперы) + покрыть тестами
-3. Заменить open_connection в checking.py/health.py/canary
-4. API /api/channel/* + api.js
-5. connectivity.js: селектор канала + показ прокси
-6. Локали en/ru
-7. ./test.sh
+
+### Фаза 1: Backend config + process scanner
+1. config.yaml: структура interception.*
+2. state.py: загрузка/сохранение
+3. hunt/interception.py: list_processes, cgroup helpers
+4. Тесты
+
+### Фаза 2: iptables helper + API
+5. scripts/huntproxy-iptables.sh: apply/clear/status/panic
+6. server.py: /api/interception/* endpoints
+7. api.js: interception* методы
+8. Тесты
+
+### Фаза 3: Frontend
+9. web/js/pages/interception.js: страница
+10. sidebar + навигация
+11. Локали (6 файлов)
+12. Тесты локалей
+
+### Фаза 4: Watcher + интеграция
+13. app_watcher в main.py
+14. Auto-timeout (systemd timer / cron)
+15. sudoers helper инструкция (README)
+16. ./test.sh — полный прогон
 
 ## Риски/нюансы
-- SOCKS5/HTTP-хелперы сейчас живут в ProxyRunner (proxy_runner.py). Вынести в
-  общий модуль (hunt/conn.py) или сделать статическими, чтобы CheckingMixin и
-  ProxyRunner делили одну реализацию.
-- SSL: для HTTPS-прокси нужна SSL-обёртка над соединением к upstream
-  (_make_ssl_ctx уже есть в checking.py:343).
-- Каскад через «pool» для движка проверки — осторожно: проверка прокси через
-  сам пул создаёт рекурсию; для канала лучше ограничить direct/proxy/custom.
-- Таймауты: канал добавляет задержку — поднять timeout для canary/geo при
-  включённом канале.
+- cgroup v2: проверить что система на v2 (не v1). На v1 — другая структура путей.
+- nftables vs iptables-legacy: предпочитать nftables, fallback на iptables-legacy.
+- App watcher: процесс может fork'нуть дочерний после сканирования — watcher
+  должен работать достаточно часто (раз в 2с), но не грузить CPU.
+- Шлюзовый режим: ip_forward должен быть включён (net.ipv4.ip_forward=1).
+- Домены в whitelist: iptables работает с IP, не доменами. Нужен DNS-resolver
+  в helper, или ограничить whitelist только IP-адресами.
+- sudo: сервер работает под UID 1000, не root. sudoers даёт права только на
+  конкретный скрипт.
+- Тестовый стенд: проверять на локальном режиме (cgroup), шлюзовый — опц.
 
-## ТЕСТОВЫЙ ОБЪЕКТ (проверено в data/state.db)
-Канальный прокси для тестов — уже есть в custom_proxies:
-  id          = antydpi
-  name        = AntyDPI
-  protocol    = socks5
-  host:port   = 192.168.237.2:1080
-  auth        = без логина/пароля
-  test_url    = youtube.com
-  last_check  = ok, 238ms, enabled
-  route       = custom:antydpi
-Для curl-скачки: --proxy socks5h://192.168.237.2:1080 (socks5h = DNS через
-прокси, важно для безшлюзовой сети).
-Для _outbound_connect: SOCKS5-рукопожатие (есть в ProxyRunner._socks5_cmd и
-custom_proxies._socks5_handshake).
-В ratings есть ~5 чужих 1080-прокси (все failed) — не они, тестовый = custom.
+## Тестовый объект
+- Локальный режим: firefox / curl под nobody (уже проверено — работает)
+- Прозрачный прокси: 17477, cascade через pool (проверено — exit IP меняется)
+- Канал: custom:torsocks (127.0.0.1:9050) — для теста перехвата через Tor
