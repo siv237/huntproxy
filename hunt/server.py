@@ -709,7 +709,7 @@ class HuntServer:
             # selected as upstream but with a reduced score. Only operator-curated
             # manual blacklists are excluded here.
             ratings = [r for r in self.state.ratings.values()
-                       if r.last_status == "ok" and not r.in_blacklist]
+                       if (r.last_status == "ok" or r.in_grace) and not r.in_blacklist]
             ratings.sort(key=lambda r: r.score, reverse=True)
             ip_bl_total = len(self.state.get_ip_blacklist_sources())
             result = []
@@ -778,7 +778,7 @@ class HuntServer:
 
         if path == "/api/proxy/next":
             alive = [r for r in self.state.ratings.values()
-                     if r.last_status == "ok" and not r.in_blacklist]
+                     if (r.last_status == "ok" or r.in_grace) and not r.in_blacklist]
             alive.sort(key=lambda r: r.score, reverse=True)
             current = self.proxy.active_proxy_addr
             next_proxy = None
@@ -917,7 +917,7 @@ class HuntServer:
                         if key not in groups:
                             groups[key] = {"key": key, "label": label, "total": 0, "alive": 0, "dead": 0}
                         groups[key]["total"] += 1
-                        if r.last_status == "ok" and not r.in_blacklist:
+                        if (r.last_status == "ok" or r.in_grace) and not r.in_blacklist:
                             groups[key]["alive"] += 1
                         else:
                             groups[key]["dead"] += 1
@@ -934,7 +934,7 @@ class HuntServer:
                         if key not in groups:
                             groups[key] = {"key": key, "label": labels.get(key, key.upper()), "total": 0, "alive": 0, "dead": 0}
                         groups[key]["total"] += 1
-                        if r.last_status == "ok" and not r.in_blacklist:
+                        if (r.last_status == "ok" or r.in_grace) and not r.in_blacklist:
                             groups[key]["alive"] += 1
                         else:
                             groups[key]["dead"] += 1
@@ -944,7 +944,7 @@ class HuntServer:
                         if cc not in groups:
                             groups[cc] = {"key": cc, "label": f"{country_flag(cc)} {country_name_from_code(cc)}", "total": 0, "alive": 0, "dead": 0}
                         groups[cc]["total"] += 1
-                        if r.last_status == "ok" and not r.in_blacklist:
+                        if (r.last_status == "ok" or r.in_grace) and not r.in_blacklist:
                             groups[cc]["alive"] += 1
                         else:
                             groups[cc]["dead"] += 1
@@ -982,7 +982,7 @@ class HuntServer:
                 else:
                     filtered = [r for r in all_ratings if (r.country_code or country_code_from_name(r.country) or "??") == group_key]
                 if group_status == "alive":
-                    filtered = [r for r in filtered if r.last_status == "ok" and not r.in_blacklist]
+                    filtered = [r for r in filtered if (r.last_status == "ok" or r.in_grace) and not r.in_blacklist]
                 elif group_status == "dead":
                     filtered = [r for r in filtered if r.last_status == "failed"]
                 elif group_status == "blacklisted":
@@ -991,7 +991,7 @@ class HuntServer:
                 return json.dumps({"proxies": [r.to_dict() for r in filtered]}), 200, "application/json"
             filtered_proxies = all_proxies
             if status == "alive":
-                filtered_proxies = [r for r in filtered_proxies if r.last_status == "ok" and not r.in_blacklist]
+                filtered_proxies = [r for r in filtered_proxies if (r.last_status == "ok" or r.in_grace) and not r.in_blacklist]
             elif status == "dead":
                 filtered_proxies = [r for r in filtered_proxies if r.last_status == "failed"]
             elif status == "blacklisted":

@@ -329,7 +329,7 @@ class ProxyRunner:
 
         if route == "pool" or route == "":
             pool = [r for r in self.state.ratings.values()
-                    if r.last_status == "ok" and not r.in_blacklist]
+                    if (r.last_status == "ok" or r.in_grace) and not r.in_blacklist]
             if need_connect:
                 pool = [r for r in pool if r.supports_connect or r.protocol in ("socks4", "socks5")]
             if not pool:
@@ -426,7 +426,7 @@ class ProxyRunner:
                     return reader, writer, True
 
         pool = [r for r in self.state.ratings.values()
-                if r.last_status == "ok" and not r.in_blacklist]
+                if (r.last_status == "ok" or r.in_grace) and not r.in_blacklist]
         if need_connect:
             pool = [r for r in pool if r.supports_connect or r.protocol in ("socks4", "socks5")]
         if not pool:
