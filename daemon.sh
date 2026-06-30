@@ -46,6 +46,7 @@ cmd_start() {
     fi
     ensure_venv
     info "Starting hunt daemon on $HOST:$PORT ..."
+    ulimit -n 65535 2>/dev/null || true
     nohup "$VENV/bin/python" "$DIR/hunt.py" --host "$HOST" --port "$PORT" \
         >> "$LOG_FILE" 2>&1 &
     local pid=$!

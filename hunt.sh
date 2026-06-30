@@ -110,6 +110,9 @@ if [ "$HOST" = "0.0.0.0" ]; then
     echo "[*] Listening on all interfaces (public mode). Use --host 127.0.0.1 to restrict."
 fi
 echo "[*] Press Ctrl+C to stop."
+# Raise file descriptor limit — parallel proxy checks (300+) through a
+# channel open hundreds of sockets simultaneously and hit the default 1024.
+ulimit -n 65535 2>/dev/null || true
 # Write PID before exec: after exec Python inherits the same PID.
 if [ -n "$PID_FILE" ]; then
     echo $$ > "$PID_FILE"

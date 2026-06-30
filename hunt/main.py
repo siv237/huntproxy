@@ -2,6 +2,7 @@
 
 import argparse
 import asyncio
+import resource
 import signal
 import yaml
 from hunt.constants import CONFIG_PATH, DATA_DIR
@@ -112,6 +113,17 @@ async def amain(config: dict):
 
 def main():
     setup_logging()
+
+    # Raise the file-descriptor limit so parallel proxy checks (300+)
+    # through a channel don't hit EMFILE.  Best-effort: ignore if no
+    # permission (already raised by the launch script or OS policy).
+    try:
+        soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+        if soft < 65535:
+            resource.setrlimit(resource.RLIMIT_NOFILE, (min(65535, hard), hard))
+    except Exception:
+        pass
+
     ap = argparse.ArgumentParser()
     ap.add_argument("--host", default=None)
     ap.add_argument("--port", type=int, default=None)
