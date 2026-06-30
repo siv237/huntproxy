@@ -10,6 +10,8 @@ class TestServiceStatePersistence:
         state._proxy_port = 17333
         state._socks5_running = True
         state._socks5_port = 17444
+        state._transparent_running = True
+        state._transparent_port = 17555
         state._proxy_direct_mode = True
         state._proxy_active_addr = "1.2.3.4:8080"
         state._save_state()
@@ -20,6 +22,8 @@ class TestServiceStatePersistence:
         assert state2._proxy_port == 17333
         assert state2._socks5_running is True
         assert state2._socks5_port == 17444
+        assert state2._transparent_running is True
+        assert state2._transparent_port == 17555
         assert state2._proxy_direct_mode is True
         assert state2._proxy_active_addr == "1.2.3.4:8080"
 
@@ -31,6 +35,8 @@ class TestServiceStatePersistence:
         assert state2._proxy_port == 17277
         assert state2._socks5_running is False
         assert state2._socks5_port == 17278
+        assert state2._transparent_running is False
+        assert state2._transparent_port == 17477
         assert state2._proxy_direct_mode is False
         assert state2._proxy_active_addr is None
 
@@ -65,6 +71,18 @@ class TestServiceStatePersistence:
             assert state._socks5_port == 17444
             await runner.stop()
             assert state._socks5_running is False
+
+        asyncio.run(run())
+
+    def test_transparent_runner_start_sets_state(self):
+        async def run():
+            state = hunt.HuntState({"ip_blacklists": {"enabled": False}})
+            runner = hunt.TransparentRunner(state, "127.0.0.1")
+            await runner.start(17555)
+            assert state._transparent_running is True
+            assert state._transparent_port == 17555
+            await runner.stop()
+            assert state._transparent_running is False
 
         asyncio.run(run())
 
@@ -161,6 +179,8 @@ class TestServiceStatePersistence:
             state._proxy_port = 17333
             state._socks5_running = True
             state._socks5_port = 17444
+            state._transparent_running = True
+            state._transparent_port = 17555
             state._proxy_active_addr = "1.2.3.4:8080"
 
             server = hunt.HuntServer(state, "127.0.0.1", 0)
@@ -179,18 +199,25 @@ class TestServiceStatePersistence:
                 socks5_port = getattr(state, '_socks5_port', 17278)
                 await server.socks5.start(socks5_port)
                 restored.append(f"socks5:{socks5_port}")
+            if getattr(state, '_transparent_running', False):
+                transparent_port = getattr(state, '_transparent_port', 17477)
+                await server.transparent.start(transparent_port)
+                restored.append(f"transparent:{transparent_port}")
             if getattr(state, '_proxy_active_addr', None):
                 server.proxy.select(state._proxy_active_addr)
 
             assert "hunt" in restored
             assert "proxy:17333" in restored
             assert "socks5:17444" in restored
+            assert "transparent:17555" in restored
             assert server.proxy.running is True
             assert server.socks5.running is True
+            assert server.transparent.running is True
             assert server.proxy.active_proxy_addr == "1.2.3.4:8080"
 
             await server.proxy.stop()
             await server.socks5.stop()
+            await server.transparent.stop()
             state.stop_hunt()
 
         asyncio.run(run())
@@ -206,11 +233,13 @@ class TestServiceStatePersistence:
             # Start services
             await server.proxy.start(17333)
             await server.socks5.start(17444)
+            await server.transparent.start(17555)
             server.proxy.select("1.2.3.4:8080")
             state._proxy_active_addr = "1.2.3.4:8080"
 
             assert state._proxy_running is True
             assert state._socks5_running is True
+            assert state._transparent_running is True
 
             # Simulate graceful shutdown (same logic as main.py finally block)
             _saved_flags = {
@@ -219,6 +248,8 @@ class TestServiceStatePersistence:
                 '_proxy_port': getattr(state, '_proxy_port', 17277),
                 '_socks5_running': getattr(state, '_socks5_running', False),
                 '_socks5_port': getattr(state, '_socks5_port', 17278),
+                '_transparent_running': getattr(state, '_transparent_running', False),
+                '_transparent_port': getattr(state, '_transparent_port', 17477),
                 '_proxy_active_addr': getattr(state, '_proxy_active_addr', None),
                 '_proxy_direct_mode': getattr(state, '_proxy_direct_mode', False),
             }
@@ -234,6 +265,8 @@ class TestServiceStatePersistence:
             assert state2._proxy_port == 17333
             assert state2._socks5_running is True, f"socks5_running={state2._socks5_running}"
             assert state2._socks5_port == 17444
+            assert state2._transparent_running is True, f"transparent_running={state2._transparent_running}"
+            assert state2._transparent_port == 17555
             assert state2._proxy_active_addr == "1.2.3.4:8080"
 
         asyncio.run(run())

@@ -427,7 +427,10 @@
       "proxyStarted": "代理已启动",
       "proxyStopped": "代理已停止",
       "socks5Started": "SOCKS5 已启动",
-      "socks5Stopped": "SOCKS5 已停止"
+      "socks5Stopped": "SOCKS5 已停止",
+      "transparent": "透明",
+      "transparentStarted": "透明代理已启动",
+      "transparentStopped": "透明代理已停止"
     },
     "blacklist": {
       "title": "黑名单",

@@ -146,6 +146,14 @@ class TestApiProxy:
         assert status == 200
         assert isinstance(data, list)
 
+    @pytest.mark.asyncio
+    async def test_transparent_status(self, http_client):
+        resp = await http_client("GET", "/api/transparent/status")
+        status, data = json_body(resp)
+        assert status == 200
+        assert "running" in data
+        assert "port" in data
+
 
 class TestApiSettings:
     @pytest.mark.asyncio

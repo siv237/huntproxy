@@ -427,7 +427,10 @@
       "proxyStarted": "Прокси запущен",
       "proxyStopped": "Прокси остановлен",
       "socks5Started": "SOCKS5 запущен",
-      "socks5Stopped": "SOCKS5 остановлен"
+      "socks5Stopped": "SOCKS5 остановлен",
+      "transparent": "Прозрачный",
+      "transparentStarted": "Прозрачный прокси запущен",
+      "transparentStopped": "Прозрачный прокси остановлен"
     },
     "blacklist": {
       "title": "Чёрный список",

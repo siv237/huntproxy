@@ -33,6 +33,10 @@ async def amain(config: dict):
         socks5_port = getattr(state, '_socks5_port', 17278)
         await server.socks5.start(socks5_port)
         restored.append(f"socks5:{socks5_port}")
+    if getattr(state, '_transparent_running', False):
+        transparent_port = getattr(state, '_transparent_port', 17477)
+        await server.transparent.start(transparent_port)
+        restored.append(f"transparent:{transparent_port}")
     if getattr(state, '_proxy_direct_mode', False):
         server.proxy.direct_mode = True
     if getattr(state, '_proxy_active_addr', None):
@@ -95,6 +99,8 @@ async def amain(config: dict):
             '_proxy_port': getattr(state, '_proxy_port', 17277),
             '_socks5_running': getattr(state, '_socks5_running', False),
             '_socks5_port': getattr(state, '_socks5_port', 17278),
+            '_transparent_running': getattr(state, '_transparent_running', False),
+            '_transparent_port': getattr(state, '_transparent_port', 17477),
             '_proxy_active_addr': getattr(state, '_proxy_active_addr', None),
             '_proxy_direct_mode': getattr(state, '_proxy_direct_mode', False),
         }

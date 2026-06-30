@@ -58,6 +58,19 @@ router.register('server', (container) => {
     s5Row.appendChild(s5StopBtn);
     card.appendChild(s5Row);
 
+    const tpRow = ui.el('div', '', { style: 'display:flex;gap:4px;align-items:center;margin-bottom:6px;padding-top:6px;border-top:1px solid var(--border-subtle)' });
+    tpRow.appendChild(ui.el('span', '', { style: 'font-size:11px;color:var(--text-secondary);font-weight:600;width:52px;flex-shrink:0', text: t('page.server.transparent') }));
+    tpRow.appendChild(ui.el('span', '', { style: 'font-size:11px;color:var(--text-secondary)', text: t('page.server.port') }));
+    const tpPortInp = ui.el('input', '', { id: 'transparent-port', type: 'number', value: '17477', min: '1024', max: '65535', style: 'width:72px;padding:3px 6px;font-size:11px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--bg);color:var(--text-primary)' });
+    tpRow.appendChild(tpPortInp);
+    const tpStartBtn = ui.el('button', 'btn btn-xs btn-primary', { text: t('page.server.start'), id: 'btn-transparent-start' });
+    tpStartBtn.addEventListener('click', () => api.transparentStart(tpPortInp.value).then(() => app.toast(t('page.server.transparentStarted'))).catch(e => app.toast(t('common.error', {message: e.message}), 'error')));
+    tpRow.appendChild(tpStartBtn);
+    const tpStopBtn = ui.el('button', 'btn btn-xs btn-danger', { text: t('page.server.stop'), id: 'btn-transparent-stop' });
+    tpStopBtn.addEventListener('click', () => api.transparentStop().then(() => app.toast(t('page.server.transparentStopped'))).catch(e => app.toast(t('common.error', {message: e.message}), 'error')));
+    tpRow.appendChild(tpStopBtn);
+    card.appendChild(tpRow);
+
     const connRow = ui.el('div', '', { style: 'display:flex;gap:12px;align-items:baseline' });
     const httpConn = ui.el('div', '', { style: 'display:flex;align-items:baseline;gap:4px' });
     httpConn.appendChild(ui.el('span', '', { style: 'font-size:11px;color:var(--text-secondary)', text: t('page.server.http') }));
@@ -67,6 +80,10 @@ router.register('server', (container) => {
     s5Conn.appendChild(ui.el('span', '', { style: 'font-size:11px;color:var(--text-secondary)', text: t('page.server.socks5') }));
     s5Conn.appendChild(ui.el('span', '', { id: 'socks5-connections', style: 'font-size:16px;font-weight:700;color:var(--accent)', text: '0' }));
     connRow.appendChild(s5Conn);
+    const tpConn = ui.el('div', '', { style: 'display:flex;align-items:baseline;gap:4px' });
+    tpConn.appendChild(ui.el('span', '', { style: 'font-size:11px;color:var(--text-secondary)', text: t('page.server.transparent') }));
+    tpConn.appendChild(ui.el('span', '', { id: 'transparent-connections', style: 'font-size:16px;font-weight:700;color:var(--accent)', text: '0' }));
+    connRow.appendChild(tpConn);
     card.appendChild(connRow);
     return card;
   }
@@ -174,14 +191,15 @@ router.register('server', (container) => {
 
   build();
 
-  function updateProxyControl(ps, ss) {
+  function updateProxyControl(ps, ss, ts) {
     const el = id => document.getElementById(id);
     const bar = el('proxy-status-bar');
     const dot = el('proxy-dot');
     const txt = el('proxy-status-text');
     const httpRunning = ps && ps.running;
     const s5Running = ss && ss.running;
-    const anyRunning = httpRunning || s5Running;
+    const tpRunning = ts && ts.running;
+    const anyRunning = httpRunning || s5Running || tpRunning;
 
     if (anyRunning) {
       if (bar) { bar.style.background = 'var(--success-bg)'; bar.style.borderColor = 'var(--success)'; bar.style.color = 'var(--success)'; }
@@ -189,6 +207,7 @@ router.register('server', (container) => {
       const parts = [];
       if (httpRunning) parts.push('HTTP:' + (ps.port || 17277));
       if (s5Running) parts.push('SOCKS5:' + (ss.port || 17278));
+      if (tpRunning) parts.push('TP:' + (ts.port || 17477));
       if (txt) txt.textContent = t('page.server.running') + ' ' + parts.join(', ');
     } else {
       if (bar) { bar.style.background = 'var(--surface-raised)'; bar.style.borderColor = 'var(--border)'; bar.style.color = 'var(--text-secondary)'; }
@@ -201,10 +220,15 @@ router.register('server', (container) => {
     if (el('btn-socks5-start')) el('btn-socks5-start').disabled = s5Running;
     if (el('btn-socks5-stop')) el('btn-socks5-stop').disabled = !s5Running;
     if (el('socks5-port') && ss && ss.port) el('socks5-port').value = ss.port;
+    if (el('btn-transparent-start')) el('btn-transparent-start').disabled = tpRunning;
+    if (el('btn-transparent-stop')) el('btn-transparent-stop').disabled = !tpRunning;
+    if (el('transparent-port') && ts && ts.port) el('transparent-port').value = ts.port;
     const httpConn = ps ? (ps.connections || 0) : 0;
     const s5Conn = ss ? (ss.connections || 0) : 0;
+    const tpConn = ts ? (ts.connections || 0) : 0;
     if (el('proxy-connections')) el('proxy-connections').textContent = httpConn;
     if (el('socks5-connections')) el('socks5-connections').textContent = s5Conn;
+    if (el('transparent-connections')) el('transparent-connections').textContent = tpConn;
   }
 
   function updateModeStatus(ps, routingEnabled) {
@@ -257,12 +281,13 @@ router.register('server', (container) => {
     }
   }
 
-  function updateProxyLog(ps, ss) {
+  function updateProxyLog(ps, ss, ts) {
     const log = document.getElementById('proxy-log');
     if (!log) return;
     const httpLog = (ps && ps.log) || [];
     const s5Log = (ss && ss.log) || [];
-    const all = [...httpLog.map(e => ({...e, type: 'HTTP'})), ...s5Log.map(e => ({...e, type: 'SOCKS5'}))]
+    const tpLog = (ts && ts.log) || [];
+    const all = [...httpLog.map(e => ({...e, type: 'HTTP'})), ...s5Log.map(e => ({...e, type: 'SOCKS5'})), ...tpLog.map(e => ({...e, type: 'TP'}))]
       .sort((a, b) => (b.ts || 0) - (a.ts || 0))
       .slice(0, 50);
     if (!all.length) {
@@ -306,15 +331,16 @@ router.register('server', (container) => {
 
   async function load() {
     try {
-      let ps = {}, ss = {}, rs = {}, ch = {};
+      let ps = {}, ss = {}, ts = {}, rs = {}, ch = {};
       try { ps = await api.proxyStatus(); } catch (e) { console.error('proxyStatus', e); }
       try { ss = await api.socks5Status(); } catch (e) { console.error('socks5Status', e); }
+      try { ts = await api.transparentStatus(); } catch (e) { console.error('transparentStatus', e); }
       try { rs = await api.routingStatus(); } catch (e) { console.error('routingStatus', e); }
       try { ch = await api.channelStatus(); } catch (e) { console.error('channelStatus', e); }
-      updateProxyControl(ps, ss);
+      updateProxyControl(ps, ss, ts);
       updateModeStatus(ps, !!(rs && rs.enabled));
       updateChannelStatus(ch);
-      updateProxyLog(ps, ss);
+      updateProxyLog(ps, ss, ts);
     } catch (e) {
       console.error('server poll', e);
     }

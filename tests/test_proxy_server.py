@@ -38,6 +38,25 @@ class TestProxyServer:
 
         asyncio.run(run())
 
+    def test_transparent_runner_start_stop(self, state):
+        async def run():
+            runner = hunt.TransparentRunner(state, "127.0.0.1")
+            await runner.start(0)
+            assert runner.running is True
+            assert state._transparent_running is True
+            for _ in range(50):
+                await asyncio.sleep(0.01)
+                if runner._server is not None:
+                    break
+            assert runner._server is not None
+            actual_port = runner._server.sockets[0].getsockname()[1]
+            assert actual_port > 0
+            await runner.stop()
+            assert runner.running is False
+            assert state._transparent_running is False
+
+        asyncio.run(run())
+
     def test_proxy_runner_select_sets_active_address(self, state):
         runner = hunt.ProxyRunner(state, "127.0.0.1")
         runner.select("1.2.3.4:8080")

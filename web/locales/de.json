@@ -427,7 +427,10 @@
       "proxyStarted": "Proxy gestartet",
       "proxyStopped": "Proxy gestoppt",
       "socks5Started": "SOCKS5 gestartet",
-      "socks5Stopped": "SOCKS5 gestoppt"
+      "socks5Stopped": "SOCKS5 gestoppt",
+      "transparent": "Transparent",
+      "transparentStarted": "Transparenter Proxy gestartet",
+      "transparentStopped": "Transparenter Proxy gestoppt"
     },
     "blacklist": {
       "title": "Schwarze Liste",

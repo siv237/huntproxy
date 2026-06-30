@@ -9,6 +9,7 @@ from hunt.geo import country_code_from_name, country_flag, country_name_from_cod
 from hunt.models import ProxyRating
 from hunt.proxy_runner import ProxyRunner
 from hunt.socks5_runner import Socks5Runner
+from hunt.transparent_runner import TransparentRunner
 from hunt.state import HuntState
 from typing import Optional
 from urllib.parse import unquote, urlparse
@@ -418,8 +419,11 @@ class HuntServer:
         self.port = port
         self.proxy = ProxyRunner(state, host)
         self.socks5 = Socks5Runner(state, host)
+        self.transparent = TransparentRunner(state, host)
         if hasattr(state, '_socks5_port'):
             self.socks5.port = state._socks5_port
+        if hasattr(state, '_transparent_port'):
+            self.transparent.port = state._transparent_port
         self._server: Optional[asyncio.AbstractServer] = None
         if hasattr(state, '_proxy_direct_mode'):
             self.proxy.direct_mode = state._proxy_direct_mode
@@ -503,6 +507,7 @@ class HuntServer:
     async def stop(self):
         await self.proxy.stop()
         await self.socks5.stop()
+        await self.transparent.stop()
         if self._server:
             self._server.close()
             await self._server.wait_closed()
@@ -742,6 +747,23 @@ class HuntServer:
         if path == "/api/socks5/stop":
             self.state._log_action("socks5.stop")
             await self.socks5.stop()
+            return json.dumps({"ok": True}), 200, "application/json"
+
+        if path == "/api/transparent/status":
+            return json.dumps(self.transparent.get_status()), 200, "application/json"
+
+        if path.startswith("/api/transparent/start"):
+            qs = _qs(raw_path)
+            port = int(qs.get("port", 17477))
+            self.state._transparent_port = port
+            self.state._save_state()
+            self.state._log_action("transparent.start", str(port))
+            await self.transparent.start(port)
+            return json.dumps(self.transparent.get_status()), 200, "application/json"
+
+        if path == "/api/transparent/stop":
+            self.state._log_action("transparent.stop")
+            await self.transparent.stop()
             return json.dumps({"ok": True}), 200, "application/json"
 
         if path.startswith("/api/proxy/select"):

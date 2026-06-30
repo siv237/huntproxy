@@ -77,6 +77,8 @@ class HuntState(DbMixin, EventsMixin, SnapshotMixin, HealthMixin, CheckingMixin,
             self._proxy_port: int = 17277
             self._socks5_running: bool = False
             self._socks5_port: int = 17278
+            self._transparent_running: bool = False
+            self._transparent_port: int = 17477
             self._proxy_direct_mode: bool = False
             self._proxy_active_addr: Optional[str] = None
             # Channel proxy: routes the engine's own internet access through an
@@ -271,6 +273,8 @@ class HuntState(DbMixin, EventsMixin, SnapshotMixin, HealthMixin, CheckingMixin,
                         self._proxy_port = services.get("proxy_port", 17277)
                         self._socks5_running = services.get("socks5_running", False)
                         self._socks5_port = services.get("socks5_port", 17278)
+                        self._transparent_running = services.get("transparent_running", False)
+                        self._transparent_port = services.get("transparent_port", 17477)
                     elif row["key"] == "country_filter":
                         self.country_filter = row["value"] or ""
                 conn.close()
@@ -316,6 +320,8 @@ class HuntState(DbMixin, EventsMixin, SnapshotMixin, HealthMixin, CheckingMixin,
                         "proxy_port": getattr(self, '_proxy_port', 17277),
                         "socks5_running": getattr(self, '_socks5_running', False),
                         "socks5_port": getattr(self, '_socks5_port', 17278),
+                        "transparent_running": getattr(self, '_transparent_running', False),
+                        "transparent_port": getattr(self, '_transparent_port', 17477),
                     })),
                     ("country_filter", self.country_filter or ""),
                 ]
@@ -507,6 +513,8 @@ class HuntState(DbMixin, EventsMixin, SnapshotMixin, HealthMixin, CheckingMixin,
                     "proxy_port": getattr(self, '_proxy_port', 17277),
                     "socks5_running": getattr(self, '_socks5_running', False),
                     "socks5_port": getattr(self, '_socks5_port', 17278),
+                    "transparent_running": getattr(self, '_transparent_running', False),
+                    "transparent_port": getattr(self, '_transparent_port', 17477),
                 },
             }
             return json.dumps(data, indent=2).encode()
