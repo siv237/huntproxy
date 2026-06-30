@@ -208,6 +208,18 @@ class HealthMixin:
                 self._emit(f"Hunt error: {e}", "error")
                 self.phase = self.PHASE_DONE
                 logger.exception("Hunt failed")
+            finally:
+                # Always release the busy flag so the scheduler can start the
+                # next hunt cycle. Without this, a cancelled/errored hunt would
+                # leave _hunt_running=True forever and every scheduled hunt
+                # would be skipped with "fetch in progress".
+                self._hunt_running = False
+                if self._canary_task is not None and not self._canary_task.done():
+                    self._canary_task.cancel()
+                self._canary_task = None
+                if self.phase not in (self.PHASE_DONE, self.PHASE_IDLE):
+                    self.phase = self.PHASE_DONE
+                self._save_state()
 
     async def _auto_pause_if_internet_down(self):
             self._internet_suspect = True
@@ -753,11 +765,14 @@ class HealthMixin:
               2. a fresh full hunt cycle — read lists → blacklists → validate
                  new candidates
 
-            The scheduler's run loop is already started before this is called
-            (as a background task), so periodic tasks run concurrently. The
-            scheduler's busy-flag guards skip list-refresh tasks while the
-            hunt cycle is downloading the same lists.
+            Re-validation is NOT a hunt: it does not set _hunt_running, so the
+            scheduler's proxy_check task is free to run concurrently.
             """
+            # The restored _hunt_running flag is stale (no live task survived
+            # the restart) — clear it so the scheduler is not blocked.
+            self._hunt_running = False
+            self._save_state()
+
             self._emit("Startup cycle: re-validating previously-working proxies", "phase")
             try:
                 await self._revalidate_stale_proxies()
@@ -765,12 +780,9 @@ class HealthMixin:
                 logger.error(f"Startup re-validation failed: {e}")
 
             self._emit("Startup cycle: starting full hunt (read lists → validate)", "phase")
-            # Always start a fresh hunt cycle on restart. A previously restored
-            # _hunt_running flag does not correspond to a live task after a
-            # restart, so force a new cycle.
+            # Always start a fresh hunt cycle on restart.
             if self.task is not None and not self.task.done():
                 self.stop_hunt()
-            self._hunt_running = False
             self.phase = self.PHASE_IDLE
             if not self.start_hunt():
                 logger.warning("Could not start startup hunt cycle")

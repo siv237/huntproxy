@@ -76,6 +76,75 @@ class TestServiceStatePersistence:
             assert state._hunt_running is False
         asyncio.run(run())
 
+    def test_hunt_cycle_clears_running_flag_on_completion(self, state):
+        async def run():
+            async def fake_download():
+                return []
+            state._download_sources = fake_download
+            state._download_ip_blacklists = fake_download
+            state._download_blocklists = fake_download
+
+            async def fake_validate(raw):
+                pass
+            state._validate_all = fake_validate
+
+            async def hanging_canary():
+                await asyncio.sleep(30)
+            state._canary_loop = hanging_canary
+
+            state._pause_event.set()
+            assert state.start_hunt() is True
+            assert state._hunt_running is True
+            await state.task
+            assert state._hunt_running is False
+            assert state.phase == state.PHASE_DONE
+            assert state._canary_task is None
+        asyncio.run(run())
+
+    def test_hunt_cycle_clears_running_flag_on_cancel(self, state):
+        async def run():
+            started = asyncio.Event()
+
+            async def hang_download():
+                started.set()
+                await asyncio.sleep(30)
+                return []
+            state._download_sources = hang_download
+
+            async def hanging_canary():
+                await asyncio.sleep(30)
+            state._canary_loop = hanging_canary
+
+            assert state.start_hunt() is True
+            assert state._hunt_running is True
+            await asyncio.wait_for(started.wait(), timeout=5)
+            state.task.cancel()
+            try:
+                await state.task
+            except asyncio.CancelledError:
+                pass
+            assert state._hunt_running is False
+            assert state._canary_task is None
+        asyncio.run(run())
+
+    def test_hunt_cycle_clears_running_flag_on_error(self, state):
+        async def run():
+            async def boom():
+                raise RuntimeError("net down")
+            state._download_sources = boom
+
+            async def hanging_canary():
+                await asyncio.sleep(30)
+            state._canary_loop = hanging_canary
+
+            assert state.start_hunt() is True
+            assert state._hunt_running is True
+            await state.task
+            assert state._hunt_running is False
+            assert state.phase == state.PHASE_DONE
+            assert state._canary_task is None
+        asyncio.run(run())
+
     def test_proxy_select_saves_active_addr(self, state):
         runner = hunt.ProxyRunner(state, "127.0.0.1")
         runner.select("1.2.3.4:8080")

@@ -332,12 +332,13 @@ class SnapshotMixin:
     def _get_scheduler_snapshot(self) -> dict:
             sched = getattr(self, "scheduler", None)
             if sched is None:
-                return {"running": False, "paused": False, "running_tasks": [], "schedules": []}
+                return {"running": False, "paused": False, "running_tasks": [], "queued": [], "schedules": []}
             status = sched.get_status()
             return {
                 "running": status["running"],
                 "paused": status["paused"],
                 "running_tasks": status["running_tasks"],
+                "queued": status.get("queued", []),
                 "schedules": sched.list_schedules(),
             }
 

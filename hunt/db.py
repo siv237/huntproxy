@@ -323,6 +323,7 @@ class DbMixin:
                     interval_sec    INTEGER NOT NULL DEFAULT 3600,
                     config          TEXT NOT NULL DEFAULT '{}',
                     last_run        REAL NOT NULL DEFAULT 0,
+                    last_ok         REAL NOT NULL DEFAULT 0,
                     next_run        REAL NOT NULL DEFAULT 0,
                     last_status     TEXT NOT NULL DEFAULT 'never',
                     last_duration_s REAL NOT NULL DEFAULT 0,
@@ -338,6 +339,7 @@ class DbMixin:
             """Add columns that may be missing in older databases."""
             migrations = [
                 ("blocklist_sources", "download_proxy", "TEXT NOT NULL DEFAULT ''"),
+                ("schedules", "last_ok", "REAL NOT NULL DEFAULT 0"),
             ]
             for table, column, coldef in migrations:
                 try:

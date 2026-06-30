@@ -136,3 +136,18 @@ class TestApiConsistency:
             f"Only found {len(server_endpoints)} endpoints, "
             "parsing may be broken"
         )
+
+    def test_no_duplicate_server_endpoints(self, server_endpoints):
+        """No two server endpoints should have the same (method, path).
+
+        Duplicates cause unreachable code — only the first match wins.
+        This catches copy-paste errors like the old double /api/schedules/*/run.
+        """
+        seen = {}
+        dups = []
+        for method, path in sorted(server_endpoints):
+            key = (method, path)
+            if key in seen:
+                dups.append(key)
+            seen[key] = True
+        assert not dups, f"Duplicate server endpoints: {dups}"

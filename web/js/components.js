@@ -202,6 +202,12 @@ const ui = {
     return new Date(ts * 1000).toLocaleDateString();
   },
 
+  fmtDateTime(ts) {
+    if (!ts) return '—';
+    const d = new Date(ts * 1000);
+    return d.toLocaleDateString() + ' ' + d.toLocaleTimeString();
+  },
+
   fmtNum(n) {
     if (n === undefined || n === null) return '—';
     return n.toLocaleString();

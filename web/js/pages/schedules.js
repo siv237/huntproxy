@@ -4,7 +4,7 @@ router.register('schedules', (container) => {
   let _loading = false;
 
   const TASK_TYPE_KEYS = {
-    hunt_cycle: 'page.schedules.taskHuntCycle',
+    proxy_check: 'page.schedules.taskProxyCheck',
     ip_blacklist: 'page.schedules.taskIpBlacklist',
     blocklist: 'page.schedules.taskBlocklist',
     health_check: 'page.schedules.taskHealthCheck',
@@ -17,7 +17,8 @@ router.register('schedules', (container) => {
     ok: 'green',
     failed: 'red',
     running: 'blue',
-    skipped: 'yellow',
+    queued: 'yellow',
+    skipped: 'gray',
     never: 'gray',
   };
 
@@ -25,6 +26,7 @@ router.register('schedules', (container) => {
     ok: 'page.schedules.statusOk',
     failed: 'page.schedules.statusFailed',
     running: 'page.schedules.statusRunning',
+    queued: 'page.schedules.statusQueued',
     skipped: 'page.schedules.statusSkipped',
     never: 'page.schedules.statusNever',
   };
@@ -134,6 +136,29 @@ router.register('schedules', (container) => {
     return (sec / 86400).toFixed(sec % 86400 === 0 ? 0 : 1) + ' ' + t('units.daysShort');
   }
 
+  function formatDuration(sec) {
+    if (!sec || sec <= 0) return '—';
+    if (sec < 60) return sec.toFixed(sec < 10 ? 1 : 0) + 's';
+    const m = Math.floor(sec / 60);
+    const s = Math.round(sec % 60);
+    if (sec < 3600) return m + 'm' + (s ? ' ' + s + 's' : '');
+    const h = Math.floor(sec / 3600);
+    const mm = Math.round((sec % 3600) / 60);
+    return h + 'h' + (mm ? ' ' + mm + 'm' : '');
+  }
+
+  function formatCountdown(s) {
+    if (!s.enabled || s.interval_sec <= 0) return '—';
+    if (s.countdown === -1) return t('page.schedules.runningNow');
+    if (s.countdown === 0 || s.queued) return t('page.schedules.queuedNow');
+    const c = s.countdown;
+    if (c <= 0) return t('page.schedules.overdue');
+    if (c < 60) return c + 's';
+    if (c < 3600) return Math.floor(c / 60) + 'm ' + (c % 60) + 's';
+    if (c < 86400) return Math.floor(c / 3600) + 'h ' + Math.floor((c % 3600) / 60) + 'm';
+    return Math.floor(c / 86400) + 'd ' + Math.floor((c % 86400) / 3600) + 'h';
+  }
+
   function renderSchedules() {
     const body = document.getElementById('schedules-body');
     if (!body) return;
@@ -150,7 +175,9 @@ router.register('schedules', (container) => {
         { label: t('page.schedules.interval'), sortKey: 'interval' },
         { label: t('page.schedules.enabled') },
         { label: t('page.schedules.lastRun') },
-        { label: t('page.schedules.nextRun') },
+        { label: t('page.schedules.lastOk') },
+        { label: t('page.schedules.duration') },
+        { label: t('page.schedules.countdown') },
         { label: t('page.schedules.status') },
         { label: t('page.schedules.actions') },
       ],
@@ -158,13 +185,16 @@ router.register('schedules', (container) => {
         ui.escHtml(s.name) + '<br><span style="font-size:11px;color:var(--text-secondary)">' + ui.escHtml(s.id) + '</span>',
         formatInterval(s.interval_sec),
         renderToggle(s),
-        s.last_run > 0 ? ui.ago(s.last_run) : '—',
-        s.enabled && s.next_run > 0 ? ui.ago(s.next_run) : '—',
+        s.last_run > 0 ? ui.fmtDateTime(s.last_run) : '—',
+        s.last_ok > 0 ? ui.fmtDateTime(s.last_ok) : '—',
+        formatDuration(s.last_duration_s),
+        '<span class="sched-countdown" data-id="' + ui.escHtml(s.id) + '">' + formatCountdown(s) + '</span>',
         renderStatusBadge(s.last_status),
         renderActions(s),
       ])
     );
     body.appendChild(table);
+    tickCountdowns();
   }
 
   function renderToggle(s) {
@@ -172,6 +202,36 @@ router.register('schedules', (container) => {
     return `<label style="display:inline-flex;align-items:center;cursor:pointer">
       <input type="checkbox" ${checked} onchange="window._schedToggle('${ui.escHtml(s.id)}')" style="cursor:pointer">
     </label>`;
+  }
+
+  function tickCountdowns() {
+    const cells = document.querySelectorAll('.sched-countdown');
+    cells.forEach(cell => {
+      const id = cell.getAttribute('data-id');
+      const s = schedules.find(x => x.id === id);
+      if (!s) return;
+      if (s.countdown === -1 || s.countdown === 0 || s.queued) {
+        cell.textContent = formatCountdown(s);
+        return;
+      }
+      // Decrement the countdown locally for a smooth realtime feel.
+      if (typeof s._liveCountdown !== 'number') s._liveCountdown = s.countdown;
+      s._liveCountdown = Math.max(0, s._liveCountdown - 1);
+      const live = Object.assign({}, s, { countdown: s._liveCountdown });
+      cell.textContent = formatCountdown(live);
+    });
+    // Sync run/stop buttons with live status between full reloads.
+    document.querySelectorAll('.sched-action-run').forEach(btn => {
+      const id = btn.getAttribute('data-id');
+      const s = schedules.find(x => x.id === id);
+      if (!s) return;
+      const isRunning = s.last_status === 'running' || s.queued;
+      const wasRunning = btn.getAttribute('data-running') === '1';
+      if (isRunning !== wasRunning) {
+        // Status changed — re-render the actions cell via full reload.
+        load();
+      }
+    });
   }
 
   function renderStatusBadge(status) {
@@ -185,7 +245,10 @@ router.register('schedules', (container) => {
 
   function renderActions(s) {
     const actStyle = 'min-width:32px;height:32px;font-size:15px;padding:4px 8px';
-    const runBtn = `<button class="btn btn-ghost" style="${actStyle}" onclick="window._schedRun('${ui.escHtml(s.id)}')" title="${t('page.schedules.runNow')}">▶</button>`;
+    const isRunning = s.last_status === 'running' || s.queued;
+    const runBtn = isRunning
+      ? `<button class="btn btn-ghost sched-action-run" data-id="${ui.escHtml(s.id)}" data-running="1" style="${actStyle};color:var(--danger,#dc3545)" onclick="window._schedStop('${ui.escHtml(s.id)}')" title="${t('common.stop') || 'Stop'}">■</button>`
+      : `<button class="btn btn-ghost sched-action-run" data-id="${ui.escHtml(s.id)}" data-running="0" style="${actStyle}" onclick="window._schedRun('${ui.escHtml(s.id)}')" title="${t('page.schedules.runNow')}">▶</button>`;
     const editBtn = `<button class="btn btn-ghost" style="${actStyle}" onclick="window._schedEdit('${ui.escHtml(s.id)}')" title="${t('page.schedules.edit')}">✎</button>`;
     const delBtn = `<button class="btn btn-ghost" style="${actStyle}" onclick="window._schedDelete('${ui.escHtml(s.id)}')" title="${t('page.schedules.delete')}">🗑</button>`;
     return `<div style="display:flex;gap:6px">${runBtn}${editBtn}${delBtn}</div>`;
@@ -219,17 +282,15 @@ router.register('schedules', (container) => {
     }
     if (runningEl) {
       const runningCount = (schedulerStatus.running_tasks || []).length;
-      runningEl.textContent = t('page.schedules.statusRunning') + ': ' + runningCount;
+      const queuedCount = (schedulerStatus.queued || []).length;
+      runningEl.textContent = t('page.schedules.statusRunning') + ': ' + runningCount +
+        (queuedCount ? ' / ' + t('page.schedules.statusQueued') + ': ' + queuedCount : '');
     }
     if (nextEl) {
-      const now = Date.now() / 1000;
-      const nextSched = schedules
-        .filter(s => s.enabled && s.next_run > 0)
-        .map(s => s.next_run)
-        .sort((a, b) => a - b)[0];
-      if (nextSched) {
-        const delta = nextSched - now;
-        nextEl.textContent = t('page.schedules.nextRun') + ': ' + (delta > 0 ? ui.ago(nextSched) : t('page.schedules.statusRunning'));
+      const due = schedules.filter(s => s.enabled && s.countdown !== null && s.countdown > 0);
+      if (due.length) {
+        const next = due.reduce((a, b) => a.countdown < b.countdown ? a : b);
+        nextEl.textContent = t('page.schedules.nextRun') + ': ' + formatCountdown(next) + ' (' + next.name + ')';
       } else {
         nextEl.textContent = t('page.schedules.nextRun') + ': —';
       }
@@ -401,6 +462,9 @@ router.register('schedules', (container) => {
   window._schedRun = (id) => {
     api.scheduleRun(id).then(() => { app.toast(t('page.schedules.runStarted') || 'Started'); load(); }).catch(e => app.toast('Error: ' + e.message, 'error'));
   };
+  window._schedStop = (id) => {
+    api.scheduleStop(id).then(() => { app.toast(t('common.stopped') || 'Stopped'); load(); }).catch(e => app.toast('Error: ' + e.message, 'error'));
+  };
   window._schedEdit = (id) => {
     const s = schedules.find(x => x.id === id);
     if (s) showEditor(s);
@@ -416,6 +480,7 @@ router.register('schedules', (container) => {
     try {
       const data = await api.schedules();
       schedules = data.schedules || [];
+      schedules.forEach(s => { s._liveCountdown = undefined; });
       schedulerStatus = data.status || { running: false, paused: false, running_tasks: [] };
       renderSchedules();
       updateHeader();
@@ -431,6 +496,7 @@ router.register('schedules', (container) => {
   loadLog();
   const pollId = setInterval(load, 3000);
   const logPollId = setInterval(loadLog, 2000);
-  if (window._pageIntervals) window._pageIntervals.push(pollId, logPollId);
-  else window._pageIntervals = [pollId, logPollId];
+  const tickId = setInterval(tickCountdowns, 1000);
+  if (window._pageIntervals) window._pageIntervals.push(pollId, logPollId, tickId);
+  else window._pageIntervals = [pollId, logPollId, tickId];
 });

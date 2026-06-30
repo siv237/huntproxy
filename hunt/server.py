@@ -1799,7 +1799,7 @@ class HuntServer:
         if path == "/api/schedules" and method == "GET":
             sched = getattr(self.state, "scheduler", None)
             if sched is None:
-                return json.dumps({"schedules": [], "status": {"running": False, "paused": False, "running_tasks": []}}), 200, "application/json"
+                return json.dumps({"schedules": [], "status": {"running": False, "paused": False, "running_tasks": [], "queued": []}}), 200, "application/json"
             return json.dumps({"schedules": sched.list_schedules(), "status": sched.get_status()}), 200, "application/json"
 
         if path == "/api/schedules" and method == "POST":
@@ -1827,7 +1827,7 @@ class HuntServer:
         if path.startswith("/api/schedules/status") and method == "GET":
             sched = getattr(self.state, "scheduler", None)
             if sched is None:
-                return json.dumps({"running": False, "paused": False, "running_tasks": []}), 200, "application/json"
+                return json.dumps({"running": False, "paused": False, "running_tasks": [], "queued": []}), 200, "application/json"
             return json.dumps(sched.get_status()), 200, "application/json"
 
         if path.startswith("/api/schedules/log") and method == "GET":
@@ -1884,6 +1884,17 @@ class HuntServer:
             self.state._log_action("schedule.run_now", sid)
             return json.dumps({"ok": True}), 200, "application/json"
 
+        if path.startswith("/api/schedules/") and path.endswith("/stop") and method == "POST":
+            sid = path[len("/api/schedules/"):-len("/stop")]
+            sched = getattr(self.state, "scheduler", None)
+            if sched is None:
+                return json.dumps({"ok": False, "error": "scheduler not initialized"}), 500, "application/json"
+            ok = await sched.cancel_running(sid)
+            if not ok:
+                return json.dumps({"ok": False, "error": "not running"}), 404, "application/json"
+            self.state._log_action("schedule.stop", sid)
+            return json.dumps({"ok": True}), 200, "application/json"
+
         if path.startswith("/api/schedules/") and method == "POST":
             sid = path[len("/api/schedules/"):]
             try:
@@ -1911,17 +1922,6 @@ class HuntServer:
             if ok:
                 self.state._log_action("schedule.delete", sid)
             return json.dumps({"ok": ok}), 200, "application/json"
-
-        if path.startswith("/api/schedules/") and path.endswith("/run") and method == "POST":
-            sid = path[len("/api/schedules/"):-len("/run")]
-            sched = getattr(self.state, "scheduler", None)
-            if sched is None:
-                return json.dumps({"ok": False, "error": "scheduler not initialized"}), 500, "application/json"
-            ok = await sched.trigger_now(sid)
-            if not ok:
-                return json.dumps({"ok": False, "error": "not found"}), 404, "application/json"
-            self.state._log_action("schedule.run_now", sid)
-            return json.dumps({"ok": True}), 200, "application/json"
 
         # === Canary / Internet Connectivity ===
         if path == "/api/canary/status" and method == "GET":
