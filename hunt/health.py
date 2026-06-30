@@ -162,8 +162,14 @@ class HealthMixin:
                     ]
                     for addr in stale:
                         del self.ratings[addr]
+                        # Clean up manual blacklist entries for removed proxies.
+                        if addr in self.blacklist:
+                            self.blacklist.pop(addr, None)
                     if stale:
                         self._save_state()
+                        if any(addr in self.blacklist for addr in stale):
+                            pass  # already popped above
+                        self._save_blacklist()
                         self._emit(
                             f"Pruned {len(stale)} never-worked proxies "
                             f"absent from fresh lists ({before}→{len(self.ratings)})",

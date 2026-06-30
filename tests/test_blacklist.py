@@ -92,4 +92,4 @@ class TestBlacklist:
         snapshot = state.get_snapshot()
         assert addr in {x["address"] for x in snapshot["top_proxies"]}
         assert snapshot["counts"]["ip_blacklisted"] == 1
-        assert snapshot["counts"]["blacklist"] == 0
+        assert snapshot["counts"]["blacklist"] == 1  # manual (0) + ip_blacklisted (1)

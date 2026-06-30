@@ -47,7 +47,7 @@ class SnapshotMixin:
                     "ratings": len(self.ratings),
                     "alive": len(alive),
                     "dead": len(dead),
-                    "blacklist": len(self.blacklist),
+                    "blacklist": len(self.blacklist) + ip_blacklisted,
                     "ip_blacklisted": ip_blacklisted,
                     "new_today": sum(1 for r in self.ratings.values() if r.first_seen > time.time() - 86400),
                 },
