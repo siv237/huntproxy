@@ -17,14 +17,15 @@ import asyncio
 
 
 async def socks5_connect(reader, writer, host: str, port: int,
-                         username: str = "", password: str = "") -> bool:
+                         username: str = "", password: str = "",
+                         handshake_timeout: float = 25) -> bool:
     try:
         if username:
             writer.write(bytes([5, 2, 0, 2]))
         else:
             writer.write(bytes([5, 1, 0]))
         await writer.drain()
-        resp = await asyncio.wait_for(reader.readexactly(2), timeout=8)
+        resp = await asyncio.wait_for(reader.readexactly(2), timeout=handshake_timeout)
         if resp[1] == 0xFF:
             return False
         if resp[1] == 2 and username:
@@ -33,7 +34,7 @@ async def socks5_connect(reader, writer, host: str, port: int,
             auth = bytes([1, len(u_raw)]) + u_raw + bytes([len(p_raw)]) + p_raw
             writer.write(auth)
             await writer.drain()
-            auth_resp = await asyncio.wait_for(reader.readexactly(2), timeout=8)
+            auth_resp = await asyncio.wait_for(reader.readexactly(2), timeout=handshake_timeout)
             if auth_resp[1] != 0:
                 return False
         is_ip = all(c.isdigit() or c == "." for c in host)
@@ -45,17 +46,17 @@ async def socks5_connect(reader, writer, host: str, port: int,
         req += struct.pack(">H", port)
         writer.write(req)
         await writer.drain()
-        hdr = await asyncio.wait_for(reader.readexactly(4), timeout=8)
+        hdr = await asyncio.wait_for(reader.readexactly(4), timeout=handshake_timeout)
         if hdr[1] != 0:
             return False
         atyp = hdr[3]
         if atyp == 1:
-            await asyncio.wait_for(reader.readexactly(4 + 2), timeout=8)
+            await asyncio.wait_for(reader.readexactly(4 + 2), timeout=handshake_timeout)
         elif atyp == 3:
-            dl = await asyncio.wait_for(reader.readexactly(1), timeout=8)
-            await asyncio.wait_for(reader.readexactly(dl[0] + 2), timeout=8)
+            dl = await asyncio.wait_for(reader.readexactly(1), timeout=handshake_timeout)
+            await asyncio.wait_for(reader.readexactly(dl[0] + 2), timeout=handshake_timeout)
         elif atyp == 4:
-            await asyncio.wait_for(reader.readexactly(16 + 2), timeout=8)
+            await asyncio.wait_for(reader.readexactly(16 + 2), timeout=handshake_timeout)
         else:
             return False
         return True
@@ -63,13 +64,14 @@ async def socks5_connect(reader, writer, host: str, port: int,
         return False
 
 
-async def socks4_connect(reader, writer, host: str, port: int) -> bool:
+async def socks4_connect(reader, writer, host: str, port: int,
+                         handshake_timeout: float = 25) -> bool:
     try:
         req = struct.pack(">BBH", 4, 1, port) + bytes([0, 0, 0, 1]) + b"\x00"
         req += host.encode() + b"\x00"
         writer.write(req)
         await writer.drain()
-        resp = await asyncio.wait_for(reader.readexactly(8), timeout=8)
+        resp = await asyncio.wait_for(reader.readexactly(8), timeout=handshake_timeout)
         return resp[0] == 0 and resp[1] == 0x5A
     except Exception:
         return False
