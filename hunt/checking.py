@@ -34,6 +34,7 @@ class CheckingMixin:
             async def check_one(addr: str):
                 nonlocal ok_count, fail_count, new_count, confirmed_count
                 wid = _ctr[0]; _ctr[0] += 1
+                counted = False
                 try:
                     _p = int(addr.rsplit(":", 1)[1])
                     _proto = "socks5" if _p in (1080, 10808, 9050) else "socks4" if _p == 4145 else "http"
@@ -48,7 +49,9 @@ class CheckingMixin:
                             async with lock:
                                 if getattr(self, '_health_running', False):
                                     return
-                                self.checked += 1
+                                if not counted:
+                                    self.checked += 1
+                                    counted = True
                             return
                         self._active_checks[wid] = {"addr": addr, "step": "queued", "started": time.time(), "protocol": _proto}
                         async with sem:
@@ -74,7 +77,9 @@ class CheckingMixin:
                                         return
                                     self._fail_streak += 1
                                     self._check_streak += 1
-                                    self.checked += 1
+                                    if not counted:
+                                        self.checked += 1
+                                        counted = True
                                     fail_count += 1
                                     self.failed = fail_count
                                     if self._check_streak >= 3 and self._fail_streak / self._check_streak > 0.7:
@@ -119,7 +124,9 @@ class CheckingMixin:
                                 if self._internet_suspect:
                                     pass  # handle outside lock
                                 else:
-                                    self.checked += 1
+                                    if not counted:
+                                        self.checked += 1
+                                        counted = True
                                     self._check_streak += 1
                                     if ok:
                                         ok_count += 1
