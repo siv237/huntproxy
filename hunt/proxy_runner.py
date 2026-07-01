@@ -10,6 +10,9 @@ from hunt.models import ProxyRating
 from typing import Optional
 from urllib.parse import urlparse
 from hunt.proxy_routing import ProxyRouteMixin
+import logging
+
+logger = logging.getLogger(__name__)
 
 class ProxyRunner(ProxyRouteMixin):
     def __init__(self, state: "HuntState", host: str = "127.0.0.1"):
@@ -157,7 +160,7 @@ class ProxyRunner(ProxyRouteMixin):
             self._log(peer, target_host, f"err: {e}", duration=dur)
         finally:
             try: writer.close()
-            except: pass
+            except OSError: pass
 
     async def _handle_http_forward(self, reader, writer, method, url, peer, t0):
         target = url.decode(errors="replace")
@@ -199,7 +202,7 @@ class ProxyRunner(ProxyRouteMixin):
                 try:
                     return host, int(ps)
                 except Exception:
-                    pass
+                    logger.debug("suppressed", exc_info=True)
             return host_hdr or "", 80
         parsed = urlparse(target)
         return parsed.hostname or "", parsed.port or 80
@@ -263,10 +266,10 @@ class ProxyRunner(ProxyRouteMixin):
                     w.write(data); await w.drain()
             except asyncio.CancelledError:
                 pass
-            except: pass
+            except OSError: pass
             finally:
                 try: w.close()
-                except: pass
+                except OSError: pass
         t1 = asyncio.ensure_future(pipe(client_reader, upstream_writer, "c2u"))
         t2 = asyncio.ensure_future(pipe(upstream_reader, client_writer, "u2c"))
         try:
@@ -292,7 +295,7 @@ class ProxyRunner(ProxyRouteMixin):
             conn.commit()
             conn.close()
         except Exception:
-            pass
+            logger.debug("suppressed", exc_info=True)
 
     def get_status(self) -> dict:
         ok = sum(1 for e in self.log if e["status"] == "ok")

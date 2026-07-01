@@ -17,6 +17,9 @@ import asyncio
 import socket
 import time
 from typing import Optional
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Linux SO_ORIGINAL_DST constant (not exposed by the socket module on all
 # platforms / Python versions).
@@ -147,7 +150,7 @@ class TransparentRunner:
             try:
                 writer.close()
             except Exception:
-                pass
+                logger.debug("suppressed", exc_info=True)
 
     # -- helpers ------------------------------------------------------------
 
@@ -169,7 +172,7 @@ class TransparentRunner:
             conn.commit()
             conn.close()
         except Exception:
-            pass
+            logger.debug("suppressed", exc_info=True)
 
     def get_status(self) -> dict:
         ok = sum(1 for e in self.log if e["status"] == "ok")

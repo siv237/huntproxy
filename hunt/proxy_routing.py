@@ -7,6 +7,9 @@ import time
 from hunt.conn import socks5_connect, socks4_connect, http_connect
 from hunt.models import ProxyRating
 from typing import Optional
+import logging
+
+logger = logging.getLogger(__name__)
 
 class ProxyRouteMixin:
     async def _connect_upstream(self, host: str, port: int, need_connect: bool = True):
@@ -155,4 +158,4 @@ class ProxyRouteMixin:
         try:
             writer.close()
         except Exception:
-            pass
+            logger.debug("suppressed", exc_info=True)

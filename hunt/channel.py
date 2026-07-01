@@ -22,6 +22,9 @@ user traffic.
 import asyncio
 
 from hunt.conn import socks5_connect, socks4_connect, http_connect
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class ChannelMixin:
@@ -158,7 +161,7 @@ class ChannelMixin:
             try:
                 writer.close()
             except Exception:
-                pass
+                logger.debug("suppressed", exc_info=True)
             raise OSError(f"channel proxy handshake failed: {route}")
 
         if use_ssl:

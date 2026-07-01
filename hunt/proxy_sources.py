@@ -71,13 +71,13 @@ class ProxySourcesMixin:
                 )
             conn.commit()
         except Exception:
-            pass
+            logger.debug("suppressed", exc_info=True)
         finally:
             if conn:
                 try:
                     conn.close()
                 except Exception:
-                    pass
+                    logger.debug("suppressed", exc_info=True)
 
     def _migrate_sources(self):
             try:
@@ -249,7 +249,7 @@ class ProxySourcesMixin:
                 try:
                     conn.close()
                 except Exception:
-                    pass
+                    logger.debug("suppressed", exc_info=True)
 
     def _delete_proxy_source_entries(self, source_id: str):
             """Remove persisted proxy addresses for a disabled/deleted source."""
@@ -263,7 +263,7 @@ class ProxySourcesMixin:
                 try:
                     conn.close()
                 except Exception:
-                    pass
+                    logger.debug("suppressed", exc_info=True)
 
     def _load_all_proxy_source_entries(self):
             """Load all persisted proxy addresses from SQLite into memory."""
@@ -294,7 +294,7 @@ class ProxySourcesMixin:
                 try:
                     conn.close()
                 except Exception:
-                    pass
+                    logger.debug("suppressed", exc_info=True)
 
     def get_proxy_sources(self) -> list:
             try:

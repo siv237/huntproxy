@@ -104,14 +104,14 @@ class HuntServer:
             try:
                 body = await asyncio.wait_for(reader.readexactly(cl), timeout=10)
             except Exception:
-                pass
+                logger.debug("suppressed", exc_info=True)
 
         response, status, ct = await self._route(method, path, raw_path, body)
         await self._write(writer, status, response, ct)
         try:
             writer.close()
         except Exception:
-            pass
+            logger.debug("suppressed", exc_info=True)
 
     async def _write(self, writer, status, body, ct="application/json", cache_control=None):
         if isinstance(body, str):

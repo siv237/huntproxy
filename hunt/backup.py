@@ -120,7 +120,7 @@ class BackupMixin:
                             try:
                                 conn.close()
                             except Exception:
-                                pass
+                                logger.debug("suppressed", exc_info=True)
                 backup["groups"][gkey] = group_data
             return json.dumps(backup, ensure_ascii=False).encode()
 
@@ -162,13 +162,13 @@ class BackupMixin:
                             if conn is not None:
                                 conn.rollback()
                         except Exception:
-                            pass
+                            logger.debug("suppressed", exc_info=True)
                     finally:
                         if conn is not None:
                             try:
                                 conn.close()
                             except Exception:
-                                pass
+                                logger.debug("suppressed", exc_info=True)
                 restored[gkey] = gcount
             try:
                 self.ratings.clear()

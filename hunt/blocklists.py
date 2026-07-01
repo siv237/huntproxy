@@ -15,6 +15,9 @@ import asyncio
 import time
 from hunt.constants import DEFAULT_BLOCKLIST_SOURCES, logger
 from hunt.download import stream_download, curl_args
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class BlocklistsMixin:
@@ -270,7 +273,7 @@ class BlocklistsMixin:
             try:
                 conn.close()
             except Exception:
-                pass
+                logger.debug("suppressed", exc_info=True)
         return len(domains)
 
     async def _download_blocklists(self) -> dict:
@@ -344,11 +347,11 @@ class BlocklistsMixin:
                             )
                             c.commit()
                         except Exception:
-                            pass
+                            logger.debug("suppressed", exc_info=True)
                         finally:
                             if c:
                                 try: c.close()
-                                except Exception: pass
+                                except Exception: logger.debug("suppressed", exc_info=True)
                         self._emit(f"Blocklist {source_name}: {count} entries", "info")
                     else:
                         err_msg = f"curl exit {proc.returncode}"
@@ -383,7 +386,7 @@ class BlocklistsMixin:
                 conn.commit()
             conn.close()
         except Exception:
-            pass
+            logger.debug("suppressed", exc_info=True)
 
     def _update_blocklist_fetch_error(self, source_id: str, err_msg: str, source_name: str):
         now = time.time()
@@ -397,11 +400,11 @@ class BlocklistsMixin:
             )
             c.commit()
         except Exception:
-            pass
+            logger.debug("suppressed", exc_info=True)
         finally:
             if c:
                 try: c.close()
-                except Exception: pass
+                except Exception: logger.debug("suppressed", exc_info=True)
         self._emit(f"Blocklist failed: {source_name}: {err_msg}", "warn")
 
     async def _blocklist_loop(self):

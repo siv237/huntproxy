@@ -41,7 +41,7 @@ class CheckSslMixin:
                     writer.close()
                     await writer.wait_closed()
                 except Exception:
-                    pass
+                    logger.debug("suppressed", exc_info=True)
 
             data = self._parse_ssl_response(buf)
             if data is None:

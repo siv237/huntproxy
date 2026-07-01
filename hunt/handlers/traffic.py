@@ -243,7 +243,7 @@ class TrafficHandlers:
             try:
                 conn.close()
             except Exception:
-                pass
+                logger.debug("suppressed", exc_info=True)
         return json.dumps(result), 200, "application/json"
 
     def _compute_traffic_period(self, conn, name, now, secs):

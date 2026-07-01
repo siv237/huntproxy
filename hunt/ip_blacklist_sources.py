@@ -78,13 +78,13 @@ class IPBlacklistSourcesMixin:
                 )
             conn.commit()
         except Exception:
-            pass
+            logger.debug("suppressed", exc_info=True)
         finally:
             if conn:
                 try:
                     conn.close()
                 except Exception:
-                    pass
+                    logger.debug("suppressed", exc_info=True)
 
     async def _download_ip_blacklists(self) -> dict:
             sem = asyncio.Semaphore(8)

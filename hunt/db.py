@@ -1,6 +1,9 @@
 """Functional split of the huntproxy backend."""
 
 import sqlite3
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class _SharedConn:
@@ -27,14 +30,14 @@ class DbMixin:
                 try:
                     raw.close()
                 except Exception:
-                    pass
+                    logger.debug("suppressed", exc_info=True)
                 self._stats_conn = None
             raw = sqlite3.connect(str(self._db_path), check_same_thread=False)
             raw.row_factory = sqlite3.Row
             try:
                 raw.execute("PRAGMA journal_mode=WAL")
             except Exception:
-                pass
+                logger.debug("suppressed", exc_info=True)
             self._ensure_stats_db(raw)
             self._stats_conn = raw
             return _SharedConn(raw)
@@ -48,7 +51,7 @@ class DbMixin:
                 if not row:
                     self._init_stats_db(conn)
             except Exception:
-                pass
+                logger.debug("suppressed", exc_info=True)
 
     def _db(self) -> sqlite3.Connection:
             raw = getattr(self, "_state_conn", None)
@@ -58,14 +61,14 @@ class DbMixin:
                 try:
                     raw.close()
                 except Exception:
-                    pass
+                    logger.debug("suppressed", exc_info=True)
                 self._state_conn = None
             raw = sqlite3.connect(str(self._state_db_path), check_same_thread=False)
             raw.row_factory = sqlite3.Row
             try:
                 raw.execute("PRAGMA journal_mode=WAL")
             except Exception:
-                pass
+                logger.debug("suppressed", exc_info=True)
             self._ensure_state_db(raw)
             self._state_conn = raw
             return _SharedConn(raw)
@@ -79,7 +82,7 @@ class DbMixin:
                 if not row:
                     self._init_state_db(conn)
             except Exception:
-                pass
+                logger.debug("suppressed", exc_info=True)
 
     def _init_db(self):
             self._init_stats_db()
@@ -177,7 +180,7 @@ class DbMixin:
                 try:
                     conn.execute(f"ALTER TABLE history ADD COLUMN {col} {default}")
                 except Exception:
-                    pass
+                    logger.debug("suppressed", exc_info=True)
             conn.commit()
             if close_after:
                 conn.close()
@@ -348,4 +351,4 @@ class DbMixin:
                         conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {coldef}")
                         conn.commit()
                 except Exception:
-                    pass
+                    logger.debug("suppressed", exc_info=True)

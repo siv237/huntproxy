@@ -39,7 +39,7 @@ class CheckGeoMixin:
                 try:
                     w.close()
                 except Exception:
-                    pass
+                    logger.debug("suppressed", exc_info=True)
             sep = buf.find(b"\r\n\r\n")
             if sep == -1:
                 sep = buf.find(b"\n\n")
@@ -77,7 +77,7 @@ class CheckGeoMixin:
                 try:
                     w.close()
                 except Exception:
-                    pass
+                    logger.debug("suppressed", exc_info=True)
             return self._parse_egress_response(buf)
 
     async def _socks4_egress_handshake(self, w, r) -> bool:

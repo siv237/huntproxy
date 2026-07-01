@@ -35,7 +35,7 @@ class CheckValidationMixin:
             if p == 4145:
                 return "socks4"
         except Exception:
-            pass
+            logger.debug("suppressed", exc_info=True)
         return "http"
 
     def _merge_check_results(self, results, addr: str) -> dict:
@@ -93,7 +93,7 @@ class CheckValidationMixin:
             try:
                 await gather_task
             except Exception:
-                pass
+                logger.debug("suppressed", exc_info=True)
             self._reset_skip()
             self._emit("Validation skipped by user", "warn")
         elif not gather_task.done():

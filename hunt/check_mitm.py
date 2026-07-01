@@ -119,7 +119,7 @@ class CheckMitmMixin:
                     if w is not None:
                         w.close()
                 except Exception:
-                    pass
+                    logger.debug("suppressed", exc_info=True)
 
 
     async def _check_mitm_tls(self, host: str, port: int, is_socks: bool = False) -> bool:
@@ -151,7 +151,7 @@ class CheckMitmMixin:
                     if w is not None:
                         w.close()
                 except Exception:
-                    pass
+                    logger.debug("suppressed", exc_info=True)
 
 
     async def _check_mitm_socks(self, r, w, port: int = 0) -> bool:

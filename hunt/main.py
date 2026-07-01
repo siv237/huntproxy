@@ -10,6 +10,9 @@ from hunt.logging_config import setup_logging
 from hunt.scheduler import SchedulerEngine
 from hunt.server import HuntServer
 from hunt.state import HuntState
+import logging
+
+logger = logging.getLogger(__name__)
 
 async def amain(config: dict):
     hunt_cfg = config.get("hunt", {})
@@ -86,7 +89,7 @@ async def amain(config: dict):
         try:
             loop.add_signal_handler(sig, lambda: asyncio.create_task(shutdown()))
         except Exception:
-            pass
+            logger.debug("suppressed", exc_info=True)
 
     try:
         await server_task
@@ -124,7 +127,7 @@ def main():
         if soft < 65535:
             resource.setrlimit(resource.RLIMIT_NOFILE, (min(65535, hard), hard))
     except Exception:
-        pass
+        logger.debug("suppressed", exc_info=True)
 
     ap = argparse.ArgumentParser()
     ap.add_argument("--host", default=None)

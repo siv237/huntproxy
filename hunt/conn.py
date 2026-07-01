@@ -14,6 +14,9 @@ import socket
 import struct
 
 import asyncio
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 async def socks5_connect(reader, writer, host: str, port: int,
@@ -127,4 +130,4 @@ async def _drain_response_body(reader, header: bytes):
                     break
                 await asyncio.wait_for(reader.readexactly(chunk_size + 2), timeout=5)
     except Exception:
-        pass
+        logger.debug("suppressed", exc_info=True)

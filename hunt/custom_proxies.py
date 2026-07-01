@@ -177,7 +177,7 @@ class CustomProxiesMixin:
         try:
             writer.close()
         except Exception:
-            pass
+            logger.debug("suppressed", exc_info=True)
         status_line = resp_data.split(b"\r\n")[0] if resp_data else b""
         http_code = 0
         parts = status_line.split(b" ", 2)
@@ -185,7 +185,7 @@ class CustomProxiesMixin:
             try:
                 http_code = int(parts[1])
             except Exception:
-                pass
+                logger.debug("suppressed", exc_info=True)
         check_status = "ok" if 200 <= http_code < 400 else "fail"
         return {"status": check_status, "http_code": http_code, "latency_ms": latency, "error": ""}
 
@@ -202,7 +202,7 @@ class CustomProxiesMixin:
         try:
             writer.close()
         except Exception:
-            pass
+            logger.debug("suppressed", exc_info=True)
 
     async def test_custom_proxy(self, proxy_id: str) -> dict:
             proxy = self.get_custom_proxy_raw(proxy_id)

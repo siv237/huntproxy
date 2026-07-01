@@ -6,6 +6,9 @@ import struct
 import time
 from hunt.models import ProxyRating
 from typing import Optional
+import logging
+
+logger = logging.getLogger(__name__)
 
 class Socks5Runner:
     def __init__(self, state: "HuntState", host: str = "127.0.0.1"):
@@ -136,7 +139,7 @@ class Socks5Runner:
             self._log(peer, target_host, f"err: {e}", duration=dur)
         finally:
             try: writer.close()
-            except: pass
+            except OSError: pass
 
     async def _connect_upstream(self, host: str, port: int):
         pr = getattr(self.state, 'proxy_runner', None)
@@ -156,7 +159,7 @@ class Socks5Runner:
             conn.commit()
             conn.close()
         except Exception:
-            pass
+            logger.debug("suppressed", exc_info=True)
 
     def get_status(self) -> dict:
         ok = sum(1 for e in self.log if e["status"] == "ok")

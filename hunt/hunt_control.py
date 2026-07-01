@@ -96,7 +96,7 @@ class HuntControlMixin:
             try:
                 self._skip_event.clear()
             except Exception:
-                pass
+                logger.debug("suppressed", exc_info=True)
 
     async def _kill_active_downloads(self):
             procs = getattr(self, '_active_dl_procs', None)
@@ -106,7 +106,7 @@ class HuntControlMixin:
                 try:
                     p.kill()
                 except Exception:
-                    pass
+                    logger.debug("suppressed", exc_info=True)
             self._active_dl_procs = []
 
     async def _gather_skip_aware(self, tasks):
@@ -129,7 +129,7 @@ class HuntControlMixin:
                 try:
                     await gather_task
                 except Exception:
-                    pass
+                    logger.debug("suppressed", exc_info=True)
                 self._reset_skip()
                 return []
             skip_task.cancel()

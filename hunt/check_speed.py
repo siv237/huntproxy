@@ -46,7 +46,7 @@ class CheckSpeedMixin:
                     try:
                         await w.wait_closed()
                     except Exception:
-                        pass
+                        logger.debug("suppressed", exc_info=True)
                     return None
             return r, w
 
@@ -82,7 +82,7 @@ class CheckSpeedMixin:
                     w.close()
                     await w.wait_closed()
             except Exception:
-                pass
+                logger.debug("suppressed", exc_info=True)
 
 
     async def _direct_speed_single(self, r, w, srv_host: str, srv_path: str, expected_size: int) -> float:
@@ -176,7 +176,7 @@ class CheckSpeedMixin:
                         tls_w.close()
                         await tls_w.wait_closed()
                     except Exception:
-                        pass
+                        logger.debug("suppressed", exc_info=True)
 
     async def _https_connect_tunnel(self, r, w, srv_host) -> bool:
         req = f"CONNECT {srv_host}:443 HTTP/1.1\r\nHost: {srv_host}:443\r\n\r\n"

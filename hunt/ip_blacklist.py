@@ -85,7 +85,7 @@ class IPBlacklistMixin:
                     if addr in net:
                         matches.extend(self.ip_blacklist_entries.get(str(net), []))
             except Exception:
-                pass
+                logger.debug("suppressed", exc_info=True)
             # Deduplicate by source_id in case an IP matches both an exact entry and a network.
             seen = set()
             deduped = []
@@ -161,7 +161,7 @@ class IPBlacklistMixin:
                             else:
                                 self.ip_blacklist_networks.append(net)
                         except Exception:
-                            pass
+                            logger.debug("suppressed", exc_info=True)
                     elif not any(m["source_id"] == meta["source_id"] for m in existing):
                         existing.append(meta)
             except Exception as e:
@@ -170,7 +170,7 @@ class IPBlacklistMixin:
                 try:
                     conn.close()
                 except Exception:
-                    pass
+                    logger.debug("suppressed", exc_info=True)
 
     def _replace_ip_blacklist_source(self, source_id: str, source_name: str, entries: list[tuple[str, str]]):
             """Replace persisted entries for a single source. Other sources are untouched."""
@@ -190,7 +190,7 @@ class IPBlacklistMixin:
                 try:
                     conn.close()
                 except Exception:
-                    pass
+                    logger.debug("suppressed", exc_info=True)
 
     def _delete_ip_blacklist_source_entries(self, source_id: str):
             """Remove persisted entries for a source that was disabled/deleted."""
@@ -204,7 +204,7 @@ class IPBlacklistMixin:
                 try:
                     conn.close()
                 except Exception:
-                    pass
+                    logger.debug("suppressed", exc_info=True)
 
     def _save_ip_blacklist(self):
             """No-op: IP blacklist entries are persisted to DB via replace/delete methods."""

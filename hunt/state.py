@@ -15,6 +15,9 @@ from hunt.check_proxy import CheckProxyMixin
 from hunt.check_ssl import CheckSslMixin
 from hunt.check_speed import CheckSpeedMixin
 from hunt.check_mitm import CheckMitmMixin
+import logging
+
+logger = logging.getLogger(__name__)
 from hunt.check_geo import CheckGeoMixin
 from hunt.check_rating import CheckRatingMixin
 from hunt.state_persistence import StatePersistenceMixin
@@ -117,7 +120,7 @@ class HuntState(DbMixin, EventsMixin, SnapshotMixin, HuntControlMixin, HuntCycle
                 import psutil
                 psutil.cpu_percent(interval=None)
             except Exception:
-                pass
+                logger.debug("suppressed", exc_info=True)
 
             # Hunt progress counters
             self.sources_total: int = 0
@@ -190,7 +193,7 @@ class HuntState(DbMixin, EventsMixin, SnapshotMixin, HuntControlMixin, HuntCycle
                 if row and row["last_ts"]:
                     self._last_history_ts = row["last_ts"]
             except Exception:
-                pass
+                logger.debug("suppressed", exc_info=True)
             self._load_ip_blacklist()
             self._load_state()
             self._load_working_file()
@@ -198,7 +201,7 @@ class HuntState(DbMixin, EventsMixin, SnapshotMixin, HuntControlMixin, HuntCycle
             try:
                 self._channel_route = self._routing_get("channel_route", "")
             except Exception:
-                pass
+                logger.debug("suppressed", exc_info=True)
 
     @property
     def working_file(self) -> Path:

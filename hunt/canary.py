@@ -20,7 +20,7 @@ class CanaryMixin:
                 except asyncio.CancelledError:
                     return
                 except Exception:
-                    pass
+                    logger.debug("suppressed", exc_info=True)
 
     async def _check_canary(self) -> dict:
             hosts = self.canary_hosts or ["ya.ru", "google.com", "2ip.ru"]
@@ -50,7 +50,7 @@ class CanaryMixin:
                     writer.close()
                     await writer.wait_closed()
                 except Exception:
-                    pass
+                    logger.debug("suppressed", exc_info=True)
                 results[host] = True
                 latencies[host] = int((time.monotonic() - t0) * 1000)
             except Exception:
@@ -81,7 +81,7 @@ class CanaryMixin:
                 writer.close()
                 await writer.wait_closed()
             except Exception:
-                pass
+                logger.debug("suppressed", exc_info=True)
             body_start = resp.find(b"\r\n\r\n")
             if body_start < 0:
                 return {"direct_ip": "", "direct_country": "", "direct_isp": "", "direct_city": ""}
@@ -114,7 +114,7 @@ class CanaryMixin:
             conn.commit()
             conn.close()
         except Exception:
-            pass
+            logger.debug("suppressed", exc_info=True)
             self._canary_cache = result
             return result
 

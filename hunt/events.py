@@ -2,6 +2,9 @@
 
 import asyncio
 import time
+import logging
+
+logger = logging.getLogger(__name__)
 
 class EventsMixin:
     def _emit(self, msg: str, kind: str = "info", **kwargs):
@@ -19,12 +22,12 @@ class EventsMixin:
                 conn.commit()
                 conn.close()
             except Exception:
-                pass
+                logger.debug("suppressed", exc_info=True)
             try:
                 loop = asyncio.get_running_loop()
                 loop.call_soon_threadsafe(self._notify)
             except Exception:
-                pass
+                logger.debug("suppressed", exc_info=True)
 
     def _notify(self):
             async def go():
@@ -33,4 +36,4 @@ class EventsMixin:
             try:
                 asyncio.ensure_future(go())
             except Exception:
-                pass
+                logger.debug("suppressed", exc_info=True)

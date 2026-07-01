@@ -353,7 +353,7 @@ class SnapshotMixin:
                     "disk": psutil.disk_usage('/').percent,
                 }
             except Exception:
-                pass
+                logger.debug("suppressed", exc_info=True)
             cpu = None
             mem = None
             disk = None

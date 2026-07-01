@@ -57,7 +57,7 @@ class CheckProxyMixin:
             writer.close()
             await writer.wait_closed()
         except Exception:
-            pass
+            logger.debug("suppressed", exc_info=True)
         if not ok:
             listen = await listen_task
             return False, "", False, False, {}, listen, 0.0, ""
@@ -89,7 +89,7 @@ class CheckProxyMixin:
                 writer.close()
                 await writer.wait_closed()
             except Exception:
-                pass
+                logger.debug("suppressed", exc_info=True)
 
         data = self._parse_http_response(buf)
         if data is None:
@@ -178,7 +178,7 @@ class CheckProxyMixin:
                 try:
                     w.close()
                 except Exception:
-                    pass
+                    logger.debug("suppressed", exc_info=True)
 
 
     @staticmethod

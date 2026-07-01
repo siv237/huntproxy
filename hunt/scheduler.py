@@ -70,7 +70,7 @@ class SchedulerEngine(SchedulerPersistenceMixin, SchedulerApiMixin):
             try:
                 await self._task
             except (asyncio.CancelledError, Exception):
-                pass
+                logger.debug("suppressed", exc_info=True)
             self._task = None
         for t in list(self._running_tasks.values()):
             t.cancel()
@@ -389,7 +389,7 @@ class SchedulerEngine(SchedulerPersistenceMixin, SchedulerApiMixin):
             try:
                 await self._drain_queue()
             except Exception:
-                pass
+                logger.debug("suppressed", exc_info=True)
 
     # ── Task executors ─────────────────────────────────────────────────
 

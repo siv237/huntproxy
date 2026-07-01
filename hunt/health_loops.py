@@ -54,7 +54,7 @@ class HealthLoopsMixin:
                 try:
                     self._push_history()
                 except Exception:
-                    pass
+                    logger.debug("suppressed", exc_info=True)
                 try:
                     conn = self._stats_db()
                     cutoff_traffic = time.time() - 7 * 86400
@@ -65,4 +65,4 @@ class HealthLoopsMixin:
                     conn.commit()
                     conn.close()
                 except Exception:
-                    pass
+                    logger.debug("suppressed", exc_info=True)
