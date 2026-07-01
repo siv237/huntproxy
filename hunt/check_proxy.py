@@ -24,92 +24,18 @@ class CheckProxyMixin:
                 reader, writer = await self._outbound_connect(host, port, timeout=self.effective_timeout)
             except (asyncio.TimeoutError, OSError):
                 elapsed = time.monotonic() - t0
-                if elapsed < 0.3:
-                    return False, "", False, False, {}, {}, 0.0, "", True
-                return False, "", False, False, {}, {}, 0.0, "", False
+                fast_fail = elapsed < 0.3
+                return False, "", False, False, {}, {}, 0.0, "", fast_fail
 
             listen_task = asyncio.create_task(self._resolve_geo(host))
-            country = ""
-            country_code = ""
-            supports_connect = False
-            mitm_suspect = False
-            egress: dict = {}
 
             if is_socks:
-                if port == 4145:
-                    ok = await self._socks4_test(reader, writer)
-                else:
-                    ok = await self._socks5_test(reader, writer)
-                try:
-                    writer.close()
-                    await writer.wait_closed()
-                except Exception:
-                    pass
-                if not ok:
-                    listen = await listen_task
-                    return False, "", False, False, {}, listen, 0.0, "", False
-                egress = await self._socks_egress(host, port)
-                if egress:
-                    country = egress.get("egress_country", "")
-                    country_code = country_code_from_name(country)
-                if not country:
-                    country = "Unknown"
-                supports_connect = True
-                http_latency = time.monotonic() - t0
+                result = await self._check_socks_proxy(reader, writer, host, port, t0, listen_task)
             else:
-                try:
-                    req = (
-                        "GET http://ip-api.com/json/ HTTP/1.0\r\n"
-                        "Host: ip-api.com\r\n"
-                        "User-Agent: huntproxy\r\n"
-                        "Connection: close\r\n"
-                        "\r\n"
-                    )
-                    writer.write(req.encode())
-                    await asyncio.wait_for(writer.drain(), timeout=self.effective_timeout)
-                    buf = b""
-                    while True:
-                        try:
-                            chunk = await asyncio.wait_for(reader.read(4096), timeout=self.effective_timeout)
-                        except asyncio.TimeoutError:
-                            break
-                        if not chunk:
-                            break
-                        buf += chunk
-                        if buf.count(b"}") >= 1 and len(buf) > 200:
-                            break
-                except Exception:
-                    listen = await listen_task
-                    return False, "", False, False, {}, listen, 0.0, "", False
-                finally:
-                    try:
-                        writer.close()
-                        await writer.wait_closed()
-                    except Exception:
-                        pass
+                result = await self._check_http_proxy(reader, writer, t0, listen_task)
 
-                sep = buf.find(b"\r\n\r\n")
-                if sep == -1:
-                    sep = buf.find(b"\n\n")
-                if sep == -1:
-                    listen = await listen_task
-                    return False, "", False, False, {}, listen, 0.0, "", False
-                try:
-                    data = json.loads(buf[sep:].strip())
-                except Exception:
-                    listen = await listen_task
-                    return False, "", False, False, {}, listen, 0.0, "", False
-                country = data.get("country", "")
-                country_code = data.get("countryCode", "")
-                http_latency = time.monotonic() - t0
-                egress = {
-                    "egress_ip": data.get("query", ""),
-                    "egress_city": data.get("city", ""),
-                    "egress_isp": data.get("isp", ""),
-                    "egress_country": data.get("country", ""),
-                }
+            ok, country, supports_connect, mitm_suspect, egress, listen, http_latency, country_code = result
 
-            listen = await listen_task
             if self.country_filter and country_code != self.country_filter:
                 return False, country, False, False, egress, listen, 0.0, country_code, False
             if self.us_only and country != "United States":
@@ -118,13 +44,93 @@ class CheckProxyMixin:
             connect_ok, mitm_suspect = await self._check_proxy_connect(host, port, is_socks)
             supports_connect = connect_ok
 
-            if not connect_ok and not is_socks:
-                # HTTP-only proxies cannot tunnel HTTPS, so they are useless for us.
-                return False, country, False, mitm_suspect, egress, listen, http_latency, country_code, False
-
             if not connect_ok:
                 return False, country, False, mitm_suspect, egress, listen, http_latency, country_code, False
             return True, country, True, mitm_suspect, egress, listen, http_latency, country_code, False
+
+    async def _check_socks_proxy(self, reader, writer, host, port, t0, listen_task) -> tuple:
+        if port == 4145:
+            ok = await self._socks4_test(reader, writer)
+        else:
+            ok = await self._socks5_test(reader, writer)
+        try:
+            writer.close()
+            await writer.wait_closed()
+        except Exception:
+            pass
+        if not ok:
+            listen = await listen_task
+            return False, "", False, False, {}, listen, 0.0, ""
+        egress = await self._socks_egress(host, port)
+        country = egress.get("egress_country", "") if egress else ""
+        country_code = country_code_from_name(country) if country else ""
+        if not country:
+            country = "Unknown"
+        http_latency = time.monotonic() - t0
+        return True, country, True, False, egress or {}, None, http_latency, country_code
+
+    async def _check_http_proxy(self, reader, writer, t0, listen_task) -> tuple:
+        try:
+            req = (
+                "GET http://ip-api.com/json/ HTTP/1.0\r\n"
+                "Host: ip-api.com\r\n"
+                "User-Agent: huntproxy\r\n"
+                "Connection: close\r\n"
+                "\r\n"
+            )
+            writer.write(req.encode())
+            await asyncio.wait_for(writer.drain(), timeout=self.effective_timeout)
+            buf = await self._read_http_response(reader)
+        except Exception:
+            listen = await listen_task
+            return False, "", False, False, {}, listen, 0.0, ""
+        finally:
+            try:
+                writer.close()
+                await writer.wait_closed()
+            except Exception:
+                pass
+
+        data = self._parse_http_response(buf)
+        if data is None:
+            listen = await listen_task
+            return False, "", False, False, {}, listen, 0.0, ""
+
+        country = data.get("country", "")
+        country_code = data.get("countryCode", "")
+        http_latency = time.monotonic() - t0
+        egress = {
+            "egress_ip": data.get("query", ""),
+            "egress_city": data.get("city", ""),
+            "egress_isp": data.get("isp", ""),
+            "egress_country": data.get("country", ""),
+        }
+        return True, country, False, False, egress, None, http_latency, country_code
+
+    async def _read_http_response(self, reader) -> bytes:
+        buf = b""
+        while True:
+            try:
+                chunk = await asyncio.wait_for(reader.read(4096), timeout=self.effective_timeout)
+            except asyncio.TimeoutError:
+                break
+            if not chunk:
+                break
+            buf += chunk
+            if buf.count(b"}") >= 1 and len(buf) > 200:
+                break
+        return buf
+
+    def _parse_http_response(self, buf: bytes):
+        sep = buf.find(b"\r\n\r\n")
+        if sep == -1:
+            sep = buf.find(b"\n\n")
+        if sep == -1:
+            return None
+        try:
+            return json.loads(buf[sep:].strip())
+        except Exception:
+            return None
 
 
     async def _check_proxy_connect(self, host: str, port: int, is_socks: bool = False) -> tuple:
