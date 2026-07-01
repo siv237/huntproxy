@@ -61,132 +61,86 @@ class IPBlacklistSourcesMixin:
             except Exception as e:
                 logger.error("migrate_ip_blacklist_sources: %s", e)
 
-    async def _download_ip_blacklists(self) -> dict:
-            """Download enabled IP blacklist sources, parse and store in SQLite.
+    def _record_ipbl_fetch(self, source_id: str, status: str, count: int, error: str = ""):
+        conn = None
+        try:
+            conn = self._db()
+            now = time.time()
+            if status == "ok":
+                conn.execute(
+                    "UPDATE ip_blacklist_sources SET last_fetched_at=?, last_fetch_status=?, last_fetch_count=?, last_fetch_error='', total_fetched=total_fetched+?, updated_at=? WHERE id=?",
+                    (now, "ok", count, count, now, source_id)
+                )
+            else:
+                conn.execute(
+                    "UPDATE ip_blacklist_sources SET last_fetched_at=?, last_fetch_status=?, last_fetch_count=0, last_fetch_error=?, updated_at=? WHERE id=?",
+                    (now, "error", error[:200], now, source_id)
+                )
+            conn.commit()
+        except Exception:
+            pass
+        finally:
+            if conn:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
 
-            Returns a dict {source_id: count} with number of entries per source.
-            Failed sources keep their previously stored entries.
-            """
+    async def _download_ip_blacklists(self) -> dict:
             sem = asyncio.Semaphore(8)
             sources = self.get_ip_blacklist_sources()
             enabled_sources = [s for s in sources if s.get("enabled")]
-            # In-memory structures will be rebuilt from the DB after the refresh,
-            # so disabled/removed sources are dropped, but failed sources keep
-            # their previous entries.
             self.ip_blacklist_entries.clear()
             self.ip_blacklist_exact.clear()
             self.ip_blacklist_networks.clear()
             results: dict[str, int] = {}
             self._ip_blacklist_fetch_progress = {}
             self._active_dl_procs = []
-
-            async def fetch(src: dict):
-                nonlocal results
-                source_id = src["id"]
-                url = src["url"]
-                source_name = src.get("name", source_id)
-                self._ip_blacklist_fetch_progress[source_id] = {
-                    "name": source_name, "status": "connecting",
-                    "downloaded": 0, "started_at": time.time(),
-                }
-                async with sem:
-                    try:
-                        cargs = curl_args(url, proxy=self._channel_curl_proxy())
-                        proc = await asyncio.create_subprocess_exec(
-                            *cargs,
-                            stdout=asyncio.subprocess.PIPE,
-                            stderr=asyncio.subprocess.DEVNULL,
-                        )
-                        self._active_dl_procs.append(proc)
-                        def on_chunk(dl):
-                            self._ip_blacklist_fetch_progress[source_id]["downloaded"] = dl
-                            self._ip_blacklist_fetch_progress[source_id]["status"] = "downloading"
-                        try:
-                            text = await stream_download(proc, on_chunk=on_chunk)
-                        except TimeoutError as e:
-                            err_msg = str(e)[:200]
-                            self._ip_blacklist_fetch_progress[source_id]["status"] = "error"
-                            conn = None
-                            try:
-                                conn = self._db()
-                                conn.execute(
-                                    "UPDATE ip_blacklist_sources SET last_fetched_at=?, last_fetch_status=?, last_fetch_count=0, last_fetch_error=?, updated_at=? WHERE id=?",
-                                    (time.time(), "error", err_msg, time.time(), source_id)
-                                )
-                                conn.commit()
-                            except Exception:
-                                pass
-                            finally:
-                                if conn:
-                                    try: conn.close()
-                                    except Exception: pass
-                            self._emit(f"IP blacklist failed: {source_name}: {err_msg}", "warn")
-                            return
-                        now = time.time()
-                        if proc.returncode == 0:
-                            count = self._parse_ip_blacklist(text, source_id, source_name, persist=True)
-                            results[source_id] = count
-                            self._ip_blacklist_fetch_progress[source_id]["status"] = "done"
-                            self._ip_blacklist_fetch_progress[source_id]["count"] = count
-                            conn = None
-                            try:
-                                conn = self._db()
-                                conn.execute(
-                                    "UPDATE ip_blacklist_sources SET last_fetched_at=?, last_fetch_status=?, last_fetch_count=?, last_fetch_error='', total_fetched=total_fetched+?, updated_at=? WHERE id=?",
-                                    (now, "ok", count, count, now, source_id)
-                                )
-                                conn.commit()
-                            except Exception:
-                                pass
-                            finally:
-                                if conn:
-                                    try: conn.close()
-                                    except Exception: pass
-                            self._emit(f"IP blacklist {source_name}: {count} entries", "info")
-                        else:
-                            err_msg = f"curl exit {proc.returncode}"
-                            self._ip_blacklist_fetch_progress[source_id]["status"] = "error"
-                            conn = None
-                            try:
-                                conn = self._db()
-                                conn.execute(
-                                    "UPDATE ip_blacklist_sources SET last_fetched_at=?, last_fetch_status=?, last_fetch_count=0, last_fetch_error=?, updated_at=? WHERE id=?",
-                                    (now, "error", err_msg, now, source_id)
-                                )
-                                conn.commit()
-                            except Exception:
-                                pass
-                            finally:
-                                if conn:
-                                    try: conn.close()
-                                    except Exception: pass
-                            self._emit(f"IP blacklist failed: {source_name}: {err_msg}", "warn")
-                    except Exception as e:
-                        now = time.time()
-                        err_msg = str(e)[:200]
-                        self._ip_blacklist_fetch_progress[source_id]["status"] = "error"
-                        conn = None
-                        try:
-                            conn = self._db()
-                            conn.execute(
-                                "UPDATE ip_blacklist_sources SET last_fetched_at=?, last_fetch_status=?, last_fetch_count=0, last_fetch_error=?, updated_at=? WHERE id=?",
-                                (now, "error", err_msg, now, source_id)
-                            )
-                            conn.commit()
-                        except Exception:
-                            pass
-                        finally:
-                            if conn:
-                                try: conn.close()
-                                except Exception: pass
-                        self._emit(f"IP blacklist failed: {source_name}: {e}", "warn")
-
-            tasks = [asyncio.create_task(fetch(s)) for s in enabled_sources]
+            tasks = [asyncio.create_task(self._fetch_one_ipbl(s, sem, results)) for s in enabled_sources]
             await self._gather_skip_aware(tasks)
-            self._load_ip_blacklist_from_db(accumulate=False)
-            self._save_ip_blacklist()
-            self._refresh_ip_blacklist_hits()
             return results
+
+    async def _fetch_one_ipbl(self, src: dict, sem: asyncio.Semaphore, results: dict):
+        source_id = src["id"]
+        url = src["url"]
+        source_name = src.get("name", source_id)
+        self._ip_blacklist_fetch_progress[source_id] = {
+            "name": source_name, "status": "connecting",
+            "downloaded": 0, "started_at": time.time(),
+        }
+        async with sem:
+            try:
+                cargs = curl_args(url, proxy=self._channel_curl_proxy())
+                proc = await asyncio.create_subprocess_exec(
+                    *cargs, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
+                )
+                self._active_dl_procs.append(proc)
+                def on_chunk(dl):
+                    self._ip_blacklist_fetch_progress[source_id]["downloaded"] = dl
+                    self._ip_blacklist_fetch_progress[source_id]["status"] = "downloading"
+                try:
+                    text = await stream_download(proc, on_chunk=on_chunk)
+                except TimeoutError as e:
+                    self._ip_blacklist_fetch_progress[source_id]["status"] = "error"
+                    self._record_ipbl_fetch(source_id, "error", 0, str(e))
+                    self._emit(f"IP blacklist failed: {source_name}: {e}", "warn")
+                    return
+                if proc.returncode == 0:
+                    count = self._parse_ip_blacklist(text, source_id, source_name, persist=True)
+                    results[source_id] = count
+                    self._ip_blacklist_fetch_progress[source_id]["status"] = "done"
+                    self._ip_blacklist_fetch_progress[source_id]["count"] = count
+                    self._record_ipbl_fetch(source_id, "ok", count)
+                    self._emit(f"IP blacklist {source_name}: {count} entries", "info")
+                else:
+                    err_msg = f"curl exit {proc.returncode}"
+                    self._ip_blacklist_fetch_progress[source_id]["status"] = "error"
+                    self._record_ipbl_fetch(source_id, "error", 0, err_msg)
+                    self._emit(f"IP blacklist failed: {source_name}: {err_msg}", "warn")
+            except Exception as e:
+                self._ip_blacklist_fetch_progress[source_id]["status"] = "error"
+                self._record_ipbl_fetch(source_id, "error", 0, str(e))
+                self._emit(f"IP blacklist failed: {source_name}: {e}", "warn")
 
     def get_ip_blacklist_fetch_progress(self) -> dict:
             return getattr(self, '_ip_blacklist_fetch_progress', {})

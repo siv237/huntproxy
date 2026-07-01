@@ -60,8 +60,6 @@ def _load_default_sources():
         logger.warning("No source INI files found in %s", SOURCES_DIR)
         return proxy_urls, ip_blacklist, blocklists
 
-    # [proxy] and [ip_blacklist] are simple key=url maps; merging across files
-    # (later value wins per key) is acceptable, so one shared parser is fine.
     parser = configparser.ConfigParser(strict=False, interpolation=None)
     parser.optionxform = str  # preserve case in keys (source names matter)
     for path in ini_files:
@@ -70,19 +68,8 @@ def _load_default_sources():
         except Exception as e:
             logger.error("Failed to read %s: %s", path, e)
 
-    # [proxy] — key is just a human-readable label; only the URL is used.
-    if parser.has_section("proxy"):
-        for _label, url in parser.items("proxy"):
-            url = (url or "").strip()
-            if url:
-                proxy_urls.append(url)
-
-    # [ip_blacklist] — key is the source name, value is the URL.
-    if parser.has_section("ip_blacklist"):
-        for name, url in parser.items("ip_blacklist"):
-            url = (url or "").strip()
-            if url:
-                ip_blacklist.append((name.strip(), url))
+    _parse_proxy_section(parser, proxy_urls)
+    _parse_ip_blacklist_section(parser, ip_blacklist)
 
     # [blocklist:<id>] — one section per country blocklist source. Parsed
     # per-file so that a duplicate id in another INI is detected explicitly
@@ -98,35 +85,57 @@ def _load_default_sources():
         for section in fp.sections():
             if not section.startswith("blocklist:"):
                 continue
-            sid = section.split(":", 1)[1].strip()
-            if not sid:
-                continue
-            if sid in seen_sids:
-                logger.warning("Duplicate blocklist id %s in %s, skipping", sid, path.name)
-                continue
-            get = lambda k, d="": fp.get(section, k, fallback=d).strip()
-            name = get("name")
-            country = get("country").upper()
-            direction = get("direction").lower()
-            list_type = get("type").lower()
-            url = get("url")
-            if not (name and country and direction and list_type and url):
-                logger.warning("Skipping incomplete blocklist source [%s] in %s", section, path.name)
-                continue
-            if direction not in ("inside", "outside"):
-                logger.warning("Blocklist %s has bad direction=%r (expected inside/outside)", sid, direction)
-                continue
-            if list_type not in ("ip", "domain"):
-                logger.warning("Blocklist %s has bad type=%r (expected ip/domain)", sid, list_type)
-                continue
-            seen_sids.add(sid)
-            blocklists.append((sid, name, country, direction, list_type, url))
+            entry = _parse_blocklist_section(fp, section, path.name, seen_sids)
+            if entry:
+                blocklists.append(entry)
 
     logger.info(
         "Loaded default sources from INI: %d proxy, %d ip_blacklist, %d blocklist",
         len(proxy_urls), len(ip_blacklist), len(blocklists),
     )
     return proxy_urls, ip_blacklist, blocklists
+
+
+def _parse_proxy_section(parser, proxy_urls: list):
+    if parser.has_section("proxy"):
+        for _label, url in parser.items("proxy"):
+            url = (url or "").strip()
+            if url:
+                proxy_urls.append(url)
+
+
+def _parse_ip_blacklist_section(parser, ip_blacklist: list):
+    if parser.has_section("ip_blacklist"):
+        for name, url in parser.items("ip_blacklist"):
+            url = (url or "").strip()
+            if url:
+                ip_blacklist.append((name.strip(), url))
+
+
+def _parse_blocklist_section(fp, section, fname, seen_sids):
+    sid = section.split(":", 1)[1].strip()
+    if not sid:
+        return None
+    if sid in seen_sids:
+        logger.warning("Duplicate blocklist id %s in %s, skipping", sid, fname)
+        return None
+    get = lambda k, d="": fp.get(section, k, fallback=d).strip()
+    name = get("name")
+    country = get("country").upper()
+    direction = get("direction").lower()
+    list_type = get("type").lower()
+    url = get("url")
+    if not (name and country and direction and list_type and url):
+        logger.warning("Skipping incomplete blocklist source [%s] in %s", section, fname)
+        return None
+    if direction not in ("inside", "outside"):
+        logger.warning("Blocklist %s has bad direction=%r (expected inside/outside)", sid, direction)
+        return None
+    if list_type not in ("ip", "domain"):
+        logger.warning("Blocklist %s has bad type=%r (expected ip/domain)", sid, list_type)
+        return None
+    seen_sids.add(sid)
+    return (sid, name, country, direction, list_type, url)
 
 
 DEFAULT_SOURCES, DEFAULT_IP_BLACKLIST_SOURCES, DEFAULT_BLOCKLIST_SOURCES = _load_default_sources()

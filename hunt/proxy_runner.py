@@ -161,8 +161,23 @@ class ProxyRunner(ProxyRouteMixin):
 
     async def _handle_http_forward(self, reader, writer, method, url, peer, t0):
         target = url.decode(errors="replace")
-        target_host = ""
-        target_port = 80
+        host_hdr, raw_headers = await self._read_http_headers(reader)
+        target_host, target_port = self._parse_forward_target(target, host_hdr)
+        if not target_host:
+            writer.write(b"HTTP/1.1 400 Bad Request\r\n\r\n"); await writer.drain(); return
+        upstream = await self._connect_upstream(target_host, target_port, need_connect=False)
+        if not upstream:
+            writer.write(b"HTTP/1.1 502 Bad Gateway\r\n\r\n"); await writer.drain()
+            dur = time.monotonic() - t0
+            self._log(peer, target_host, "502 no upstream", duration=dur); return
+        up_r, up_w, chain, is_raw_proxy = upstream
+        await self._forward_request(up_w, method, url, target, is_raw_proxy, raw_headers)
+        await self._pipe_response(up_r, writer)
+        bi, bo = await self._relay(reader, writer, up_r, up_w)
+        dur = time.monotonic() - t0
+        self._log(peer, target_host, "ok", " → ".join(chain), bytes_in=bi, bytes_out=bo, duration=dur)
+
+    async def _read_http_headers(self, reader) -> tuple:
         raw_headers = []
         host_hdr = None
         while True:
@@ -170,39 +185,29 @@ class ProxyRunner(ProxyRouteMixin):
                 line = await asyncio.wait_for(reader.readline(), timeout=15)
             except Exception:
                 break
-            if line in (b"\r\n", b"\n", b""): break
+            if line in (b"\r\n", b"\n", b""):
+                break
             raw_headers.append(line)
             if line.lower().startswith(b"host:"):
                 host_hdr = line[5:].strip().decode(errors="replace")
+        return host_hdr, raw_headers
 
+    def _parse_forward_target(self, target: str, host_hdr: str) -> tuple:
         if target.startswith("/"):
             if host_hdr and ":" in host_hdr:
-                target_host, ps = host_hdr.rsplit(":", 1)
-                try: target_port = int(ps)
-                except: pass
-            elif host_hdr:
-                target_host = host_hdr
-        else:
-            parsed = urlparse(target)
-            target_host = parsed.hostname or ""
-            target_port = parsed.port or 80
+                host, ps = host_hdr.rsplit(":", 1)
+                try:
+                    return host, int(ps)
+                except Exception:
+                    pass
+            return host_hdr or "", 80
+        parsed = urlparse(target)
+        return parsed.hostname or "", parsed.port or 80
 
-        if not target_host:
-            writer.write(b"HTTP/1.1 400 Bad Request\r\n\r\n"); await writer.drain(); return
-
-        upstream = await self._connect_upstream(target_host, target_port, need_connect=False)
-        if not upstream:
-            writer.write(b"HTTP/1.1 502 Bad Gateway\r\n\r\n"); await writer.drain()
-            dur = time.monotonic() - t0
-            self._log(peer, target_host, "502 no upstream", duration=dur); return
-
-        up_r, up_w, chain, is_raw_proxy = upstream
-
+    async def _forward_request(self, up_w, method, url, target, is_raw_proxy, raw_headers):
         if is_raw_proxy and not target.startswith("/"):
-            # Raw HTTP proxy: send full URL so the proxy can forward it.
             up_w.write(method + b" " + url + b" HTTP/1.1\r\n")
         else:
-            # Direct or tunneled connection: target expects a relative request.
             parsed = urlparse(target)
             rel_path = parsed.path or "/"
             if parsed.query:
@@ -211,9 +216,9 @@ class ProxyRunner(ProxyRouteMixin):
         for h in raw_headers:
             up_w.write(h)
         up_w.write(b"\r\n")
-
         await up_w.drain()
 
+    async def _pipe_response(self, up_r, writer):
         resp_line = await asyncio.wait_for(up_r.readline(), timeout=30)
         writer.write(resp_line)
         while True:
@@ -225,9 +230,6 @@ class ProxyRunner(ProxyRouteMixin):
                 writer.write(b"\r\n"); break
             writer.write(line)
         await writer.drain()
-        bi, bo = await self._relay(reader, writer, up_r, up_w)
-        dur = time.monotonic() - t0
-        self._log(peer, target_host, "ok", " → ".join(chain), bytes_in=bi, bytes_out=bo, duration=dur)
 
     async def _http_connect_cmd(self, r, w, h, p):
         return await http_connect(r, w, h, p)

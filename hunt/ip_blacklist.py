@@ -6,76 +6,67 @@ from hunt.constants import logger
 
 class IPBlacklistMixin:
     def _parse_ip_blacklist(self, text: str, source_id: str, source_name: str = "", accumulate: bool = True, persist: bool = False) -> int:
-            """Parse IP blacklist text. Returns number of entries added.
-
-            Supported formats:
-              - plain IP per line: 1.2.3.4
-              - CIDR: 1.2.3.0/24
-              - IP range: 1.2.3.4-1.2.3.10
-              - ip-sum: 1.2.3.4 5 (second token ignored)
-            Comments (#, ;, //) and empty lines are ignored.
-            """
             added = 0
             parsed: list[tuple[str, str]] = []
             if not accumulate:
                 self.ip_blacklist_entries.clear()
                 self.ip_blacklist_exact.clear()
                 self.ip_blacklist_networks.clear()
-
-            def _add_entry(key: str, reason: str):
-                nonlocal added
-                meta = {"source_id": source_id, "source_name": source_name, "reason": reason}
-                existing = self.ip_blacklist_entries.get(key)
-                if existing is None:
-                    self.ip_blacklist_entries[key] = [meta]
-                    return True
-                # Track each source only once per entry to get accurate hit counts.
-                if not any(m["source_id"] == source_id for m in existing):
-                    existing.append(meta)
-                    return True
-                return False
-
             for raw in text.splitlines():
                 line = raw.strip()
-                if not line:
-                    continue
-                if line.startswith("#") or line.startswith(";") or line.startswith("//"):
+                if not line or line.startswith(("#", ";", "//")):
                     continue
                 token = line.split()[0]
-                if "-" in token and "/" not in token:
-                    try:
-                        start, end = token.split("-", 1)
-                        start_ip = ipaddress.ip_address(start.strip())
-                        end_ip = ipaddress.ip_address(end.strip())
-                        # collapse range into CIDR networks
-                        network = ipaddress.summarize_address_range(start_ip, end_ip)
-                        for net in network:
-                            key = str(net)
-                            reason = f"range from {source_name}"
-                            if _add_entry(key, reason):
-                                self.ip_blacklist_networks.append(net)
-                                added += 1
-                            parsed.append((key, reason))
-                    except Exception:
-                        continue
-                else:
-                    try:
-                        net = ipaddress.ip_network(token, strict=False)
-                        is_host = net.prefixlen == (32 if isinstance(net, ipaddress.IPv4Network) else 128)
-                        key = str(net.network_address) if is_host else str(net)
-                        reason = f"blacklist from {source_name}"
-                        if _add_entry(key, reason):
-                            if is_host:
-                                self.ip_blacklist_exact.add(str(net.network_address))
-                            else:
-                                self.ip_blacklist_networks.append(net)
-                            added += 1
-                        parsed.append((key, reason))
-                    except Exception:
-                        continue
+                entries = self._parse_ip_blacklist_entry(token, source_id, source_name)
+                for key, reason, net, is_host in entries:
+                    if self._add_ipbl_entry(key, reason, source_id, source_name):
+                        if is_host:
+                            self.ip_blacklist_exact.add(str(net.network_address))
+                        else:
+                            self.ip_blacklist_networks.append(net)
+                        added += 1
+                    parsed.append((key, reason))
             if persist and parsed:
                 self._replace_ip_blacklist_source(source_id, source_name, parsed)
             return added
+
+    def _add_ipbl_entry(self, key, reason, source_id, source_name) -> bool:
+        meta = {"source_id": source_id, "source_name": source_name, "reason": reason}
+        existing = self.ip_blacklist_entries.get(key)
+        if existing is None:
+            self.ip_blacklist_entries[key] = [meta]
+            return True
+        if not any(m["source_id"] == source_id for m in existing):
+            existing.append(meta)
+            return True
+        return False
+
+    def _parse_ip_blacklist_entry(self, token, source_id, source_name) -> list:
+        if "-" in token and "/" not in token:
+            return self._parse_ip_range(token, source_name)
+        return self._parse_ip_network(token, source_name)
+
+    def _parse_ip_range(self, token, source_name) -> list:
+        try:
+            start, end = token.split("-", 1)
+            start_ip = ipaddress.ip_address(start.strip())
+            end_ip = ipaddress.ip_address(end.strip())
+            reason = f"range from {source_name}"
+            result = []
+            for net in ipaddress.summarize_address_range(start_ip, end_ip):
+                result.append((str(net), reason, net, False))
+            return result
+        except Exception:
+            return []
+
+    def _parse_ip_network(self, token, source_name) -> list:
+        try:
+            net = ipaddress.ip_network(token, strict=False)
+            is_host = net.prefixlen == (32 if isinstance(net, ipaddress.IPv4Network) else 128)
+            key = str(net.network_address) if is_host else str(net)
+            return [(key, f"blacklist from {source_name}", net, is_host)]
+        except Exception:
+            return []
 
     def _is_ip_blacklisted(self, ip: str) -> tuple[bool, list[dict]]:
             """Return (is_blacklisted, sources) for a given IP address.

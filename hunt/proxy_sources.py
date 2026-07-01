@@ -16,26 +16,7 @@ class ProxySourcesMixin:
                     return
                 now = time.time()
                 for i, url in enumerate(DEFAULT_SOURCES):
-                    parts = url.rstrip("/").split("/")
-                    fname = parts[-1].replace(".txt", "") if parts else "list"
-                    if "github.com" in url or "githubusercontent.com" in url:
-                        owner = parts[3] if len(parts) > 3 else ""
-                        repo = parts[4] if len(parts) > 4 else ""
-                        label = f"{owner}/{repo}" if owner and repo else fname
-                    else:
-                        label = parts[-2] if len(parts) >= 2 else fname
-                    name = f"{label}/{fname}"
-                    slug = (label + "-" + fname).lower().replace("_", "-").replace("/", "-")
-                    slug = slug.replace("--", "-").strip("-")
-                    protocol = "mixed"
-                    if "socks5" in fname.lower():
-                        protocol = "socks5"
-                    elif "socks4" in fname.lower():
-                        protocol = "socks4"
-                    elif "https" in fname.lower():
-                        protocol = "https"
-                    elif "http" in fname.lower():
-                        protocol = "http"
+                    slug, name, protocol = self._parse_source_url(url)
                     conn.execute(
                         "INSERT OR IGNORE INTO proxy_sources (id, name, url, protocol, enabled, priority, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)",
                         (slug, name, url, protocol, 1, i, now, now)
@@ -45,6 +26,58 @@ class ProxySourcesMixin:
                 logger.info("Seeded %d default proxy sources", len(DEFAULT_SOURCES))
             except Exception as e:
                 logger.error("seed_default_sources: %s", e)
+
+    def _parse_source_url(self, url: str) -> tuple:
+        """Parse a source URL into (slug, name, protocol)."""
+        parts = url.rstrip("/").split("/")
+        fname = parts[-1].replace(".txt", "") if parts else "list"
+        if "github.com" in url or "githubusercontent.com" in url:
+            owner = parts[3] if len(parts) > 3 else ""
+            repo = parts[4] if len(parts) > 4 else ""
+            label = f"{owner}/{repo}" if owner and repo else fname
+        else:
+            label = parts[-2] if len(parts) >= 2 else fname
+        name = f"{label}/{fname}"
+        slug = (label + "-" + fname).lower().replace("_", "-").replace("/", "-")
+        slug = slug.replace("--", "-").strip("-")
+        protocol = "mixed"
+        fl = fname.lower()
+        if "socks5" in fl:
+            protocol = "socks5"
+        elif "socks4" in fl:
+            protocol = "socks4"
+        elif "https" in fl:
+            protocol = "https"
+        elif "http" in fl:
+            protocol = "http"
+        return slug, name, protocol
+
+    def _record_source_fetch(self, source_id: str, status: str, count: int, error: str = ""):
+        """Update proxy_sources DB row after a fetch attempt."""
+        conn = None
+        try:
+            conn = self._db()
+            now = time.time()
+            if status == "ok":
+                conn.execute(
+                    "UPDATE proxy_sources SET last_fetched_at=?, last_fetch_status=?, last_fetch_count=?, last_fetch_error='', "
+                    "total_fetched=total_fetched+?, updated_at=? WHERE id=?",
+                    (now, "ok", count, count, now, source_id)
+                )
+            else:
+                conn.execute(
+                    "UPDATE proxy_sources SET last_fetched_at=?, last_fetch_status=?, last_fetch_count=0, last_fetch_error=?, updated_at=? WHERE id=?",
+                    (now, "error", error[:200], now, source_id)
+                )
+            conn.commit()
+        except Exception:
+            pass
+        finally:
+            if conn:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
 
     def _migrate_sources(self):
             try:
@@ -61,28 +94,9 @@ class ProxySourcesMixin:
                 for i, url in enumerate(DEFAULT_SOURCES):
                     if url in existing_urls:
                         continue
-                    parts = url.rstrip("/").split("/")
-                    fname = parts[-1].replace(".txt", "") if parts else "list"
-                    if "github.com" in url or "githubusercontent.com" in url:
-                        owner = parts[3] if len(parts) > 3 else ""
-                        repo = parts[4] if len(parts) > 4 else ""
-                        label = f"{owner}/{repo}" if owner and repo else fname
-                    else:
-                        label = parts[-2] if len(parts) >= 2 else fname
-                    name = f"{label}/{fname}"
-                    slug = (label + "-" + fname).lower().replace("_", "-").replace("/", "-")
-                    slug = slug.replace("--", "-").strip("-")
+                    slug, name, protocol = self._parse_source_url(url)
                     if slug in existing_ids:
                         continue
-                    protocol = "mixed"
-                    if "socks5" in fname.lower():
-                        protocol = "socks5"
-                    elif "socks4" in fname.lower():
-                        protocol = "socks4"
-                    elif "https" in fname.lower():
-                        protocol = "https"
-                    elif "http" in fname.lower():
-                        protocol = "http"
                     conn.execute(
                         "INSERT OR IGNORE INTO proxy_sources (id, name, url, protocol, enabled, priority, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)",
                         (slug, name, url, protocol, 1, max_pri + i, now, now)
@@ -116,122 +130,11 @@ class ProxySourcesMixin:
             self._source_fetch_status = {s["id"]: "pending" for s in enabled_sources}
             self._source_fetch_progress = {}
             self._active_dl_procs = []
-            seen = set()
             source_proxies: dict[str, set] = {}
 
-            async def fetch(src: dict):
-                source_id = src["id"]
-                url = src["url"]
-                self._source_fetch_progress[source_id] = {
-                    "name": src.get("name", source_id), "status": "connecting",
-                    "downloaded": 0, "started_at": time.time(),
-                }
-                async with sem:
-                    try:
-                        cargs = curl_args(url, proxy=self._channel_curl_proxy())
-                        proc = await asyncio.create_subprocess_exec(
-                            *cargs,
-                            stdout=asyncio.subprocess.PIPE,
-                            stderr=asyncio.subprocess.DEVNULL,
-                        )
-                        self._active_dl_procs.append(proc)
-                        def on_chunk(dl):
-                            self._source_fetch_progress[source_id]["downloaded"] = dl
-                            self._source_fetch_progress[source_id]["status"] = "downloading"
-                        try:
-                            text = await stream_download(proc, on_chunk=on_chunk)
-                        except TimeoutError as e:
-                            self.sources_done += 1
-                            self._source_fetch_status[source_id] = "error"
-                            self._source_fetch_progress[source_id]["status"] = "error"
-                            err_msg = str(e)[:200]
-                            conn = None
-                            try:
-                                conn = self._db()
-                                conn.execute(
-                                    "UPDATE proxy_sources SET last_fetched_at=?, last_fetch_status=?, last_fetch_count=0, last_fetch_error=?, updated_at=? WHERE id=?",
-                                    (time.time(), "error", err_msg, time.time(), source_id)
-                                )
-                                conn.commit()
-                            except Exception:
-                                pass
-                            finally:
-                                if conn:
-                                    try: conn.close()
-                                    except Exception: pass
-                            self._emit(f"Source failed: {src['name']}: {err_msg}", "warn")
-                            return
-                        self.sources_done += 1
-                        now = time.time()
-                        if proc.returncode == 0:
-                            found = self._parse_source_text(text)
-                            self._replace_proxy_source_entries(source_id, found)
-                            source_proxies[source_id] = found
-                            self._source_fetch_status[source_id] = "ok"
-                            self._source_fetch_progress[source_id]["status"] = "done"
-                            self._source_fetch_progress[source_id]["count"] = len(found)
-                            conn = None
-                            try:
-                                conn = self._db()
-                                conn.execute(
-                                    "UPDATE proxy_sources SET last_fetched_at=?, last_fetch_status=?, last_fetch_count=?, last_fetch_error='', "
-                                    "total_fetched=total_fetched+?, updated_at=? WHERE id=?",
-                                    (now, "ok", len(found), len(found), now, source_id)
-                                )
-                                conn.commit()
-                            except Exception:
-                                pass
-                            finally:
-                                if conn:
-                                    try: conn.close()
-                                    except Exception: pass
-                            self._emit(f"Source {src['name']}: {len(found)} proxies", "info")
-                        else:
-                            err_msg = f"curl exit {proc.returncode}"
-                            self._source_fetch_status[source_id] = "error"
-                            self._source_fetch_progress[source_id]["status"] = "error"
-                            conn = None
-                            try:
-                                conn = self._db()
-                                conn.execute(
-                                    "UPDATE proxy_sources SET last_fetched_at=?, last_fetch_status=?, last_fetch_count=0, last_fetch_error=?, updated_at=? WHERE id=?",
-                                    (now, "error", err_msg, now, source_id)
-                                )
-                                conn.commit()
-                            except Exception:
-                                pass
-                            finally:
-                                if conn:
-                                    try: conn.close()
-                                    except Exception: pass
-                            self._emit(f"Source failed: {src['name']}: {err_msg}", "warn")
-                    except Exception as e:
-                        self.sources_done += 1
-                        self._source_fetch_status[source_id] = "error"
-                        self._source_fetch_progress[source_id]["status"] = "error"
-                        now = time.time()
-                        err_msg = str(e)[:200]
-                        conn = None
-                        try:
-                            conn = self._db()
-                            conn.execute(
-                                "UPDATE proxy_sources SET last_fetched_at=?, last_fetch_status=?, last_fetch_count=0, last_fetch_error=?, updated_at=? WHERE id=?",
-                                (now, "error", err_msg, now, source_id)
-                            )
-                            conn.commit()
-                        except Exception:
-                            pass
-                        finally:
-                            if conn:
-                                try: conn.close()
-                                except Exception: pass
-                        self._emit(f"Source failed: {src['name']}: {e}", "warn")
-
-            tasks = [asyncio.create_task(fetch(s)) for s in enabled_sources]
+            tasks = [asyncio.create_task(self._fetch_one_source(s, sem, source_proxies)) for s in enabled_sources]
             await self._gather_skip_aware(tasks)
             self._load_all_proxy_source_entries()
-            # Build the candidate set from all enabled sources currently in the DB.
-            # This keeps addresses from sources that failed to fetch this cycle.
             seen: set[str] = set()
             for sid, addrs in self._source_proxies.items():
                 seen.update(addrs)
@@ -240,6 +143,65 @@ class ProxySourcesMixin:
                     if r and sid not in r.source_ids:
                         r.source_ids.append(sid)
             return seen
+
+    async def _fetch_one_source(self, src: dict, sem: asyncio.Semaphore, source_proxies: dict):
+        source_id = src["id"]
+        url = src["url"]
+        self._source_fetch_progress[source_id] = {
+            "name": src.get("name", source_id), "status": "connecting",
+            "downloaded": 0, "started_at": time.time(),
+        }
+        async with sem:
+            try:
+                text = await self._download_source_text(src, source_id, url)
+                if text is None:
+                    return
+                self.sources_done += 1
+                found = self._parse_source_text(text)
+                self._replace_proxy_source_entries(source_id, found)
+                source_proxies[source_id] = found
+                self._source_fetch_status[source_id] = "ok"
+                self._source_fetch_progress[source_id]["status"] = "done"
+                self._source_fetch_progress[source_id]["count"] = len(found)
+                self._record_source_fetch(source_id, "ok", len(found))
+                self._emit(f"Source {src['name']}: {len(found)} proxies", "info")
+            except Exception as e:
+                self.sources_done += 1
+                self._source_fetch_status[source_id] = "error"
+                self._source_fetch_progress[source_id]["status"] = "error"
+                self._record_source_fetch(source_id, "error", 0, str(e))
+                self._emit(f"Source failed: {src['name']}: {e}", "warn")
+
+    async def _download_source_text(self, src: dict, source_id: str, url: str):
+        """Download and return source text, or None on fetch failure."""
+        cargs = curl_args(url, proxy=self._channel_curl_proxy())
+        proc = await asyncio.create_subprocess_exec(
+            *cargs,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        self._active_dl_procs.append(proc)
+        def on_chunk(dl):
+            self._source_fetch_progress[source_id]["downloaded"] = dl
+            self._source_fetch_progress[source_id]["status"] = "downloading"
+        try:
+            text = await stream_download(proc, on_chunk=on_chunk)
+        except TimeoutError as e:
+            self.sources_done += 1
+            self._source_fetch_status[source_id] = "error"
+            self._source_fetch_progress[source_id]["status"] = "error"
+            self._record_source_fetch(source_id, "error", 0, str(e))
+            self._emit(f"Source failed: {src['name']}: {e}", "warn")
+            return None
+        if proc.returncode != 0:
+            err_msg = f"curl exit {proc.returncode}"
+            self.sources_done += 1
+            self._source_fetch_status[source_id] = "error"
+            self._source_fetch_progress[source_id]["status"] = "error"
+            self._record_source_fetch(source_id, "error", 0, err_msg)
+            self._emit(f"Source failed: {src['name']}: {err_msg}", "warn")
+            return None
+        return text
 
     def get_proxy_source_fetch_progress(self) -> dict:
             return getattr(self, '_source_fetch_progress', {})

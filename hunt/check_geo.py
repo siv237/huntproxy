@@ -65,44 +65,12 @@ class CheckGeoMixin:
                 return {}
             try:
                 if port == 4145:
-                    req = bytes([4, 1, 0, 80, 0, 0, 0, 1]) + b"\x00" + b"ip-api.com\x00"
-                    w.write(req); await asyncio.wait_for(w.drain(), timeout=8)
-                    resp = await asyncio.wait_for(r.readexactly(8), timeout=8)
-                    if resp[1] != 0x5A:
+                    if not await self._socks4_egress_handshake(w, r):
                         return {}
                 else:
-                    w.write(bytes([5, 1, 0])); await asyncio.wait_for(w.drain(), timeout=8)
-                    resp = await asyncio.wait_for(r.readexactly(2), timeout=8)
-                    if resp[1] != 0:
+                    if not await self._socks5_egress_handshake(w, r):
                         return {}
-                    req = bytes([5, 1, 0, 3, 9]) + b"ip-api.com" + b"\x00\x50"
-                    w.write(req); await asyncio.wait_for(w.drain(), timeout=8)
-                    hdr = await asyncio.wait_for(r.readexactly(4), timeout=8)
-                    if hdr[1] != 0:
-                        return {}
-                    atyp = hdr[3]
-                    if atyp == 1:
-                        await asyncio.wait_for(r.readexactly(6), timeout=8)
-                    elif atyp == 3:
-                        dl = await asyncio.wait_for(r.readexactly(1), timeout=8)
-                        await asyncio.wait_for(r.readexactly(dl[0] + 2), timeout=8)
-                    elif atyp == 4:
-                        await asyncio.wait_for(r.readexactly(18), timeout=8)
-                    else:
-                        return {}
-                w.write(b"GET /json/ HTTP/1.0\r\nHost: ip-api.com\r\nUser-Agent: huntproxy\r\nConnection: close\r\n\r\n")
-                await asyncio.wait_for(w.drain(), timeout=8)
-                buf = b""
-                while True:
-                    try:
-                        chunk = await asyncio.wait_for(r.read(4096), timeout=8)
-                    except asyncio.TimeoutError:
-                        break
-                    if not chunk:
-                        break
-                    buf += chunk
-                    if buf.count(b"}") >= 1 and len(buf) > 200:
-                        break
+                buf = await self._egress_http_get(w, r)
             except Exception:
                 return {}
             finally:
@@ -110,19 +78,66 @@ class CheckGeoMixin:
                     w.close()
                 except Exception:
                     pass
-            sep = buf.find(b"\r\n\r\n")
-            if sep == -1:
-                sep = buf.find(b"\n\n")
-            if sep == -1:
-                return {}
+            return self._parse_egress_response(buf)
+
+    async def _socks4_egress_handshake(self, w, r) -> bool:
+        req = bytes([4, 1, 0, 80, 0, 0, 0, 1]) + b"\x00" + b"ip-api.com\x00"
+        w.write(req); await asyncio.wait_for(w.drain(), timeout=8)
+        resp = await asyncio.wait_for(r.readexactly(8), timeout=8)
+        return resp[1] == 0x5A
+
+    async def _socks5_egress_handshake(self, w, r) -> bool:
+        w.write(bytes([5, 1, 0])); await asyncio.wait_for(w.drain(), timeout=8)
+        resp = await asyncio.wait_for(r.readexactly(2), timeout=8)
+        if resp[1] != 0:
+            return False
+        req = bytes([5, 1, 0, 3, 9]) + b"ip-api.com" + b"\x00\x50"
+        w.write(req); await asyncio.wait_for(w.drain(), timeout=8)
+        hdr = await asyncio.wait_for(r.readexactly(4), timeout=8)
+        if hdr[1] != 0:
+            return False
+        atyp = hdr[3]
+        if atyp == 1:
+            await asyncio.wait_for(r.readexactly(6), timeout=8)
+        elif atyp == 3:
+            dl = await asyncio.wait_for(r.readexactly(1), timeout=8)
+            await asyncio.wait_for(r.readexactly(dl[0] + 2), timeout=8)
+        elif atyp == 4:
+            await asyncio.wait_for(r.readexactly(18), timeout=8)
+        else:
+            return False
+        return True
+
+    async def _egress_http_get(self, w, r) -> bytes:
+        w.write(b"GET /json/ HTTP/1.0\r\nHost: ip-api.com\r\nUser-Agent: huntproxy\r\nConnection: close\r\n\r\n")
+        await asyncio.wait_for(w.drain(), timeout=8)
+        buf = b""
+        while True:
             try:
-                data = json.loads(buf[sep:].strip())
-            except Exception:
-                return {}
-            return {
-                "egress_ip": data.get("query", ""),
-                "egress_city": data.get("city", ""),
-                "egress_isp": data.get("isp", ""),
-                "egress_country": data.get("country", ""),
-            }
+                chunk = await asyncio.wait_for(r.read(4096), timeout=8)
+            except asyncio.TimeoutError:
+                break
+            if not chunk:
+                break
+            buf += chunk
+            if buf.count(b"}") >= 1 and len(buf) > 200:
+                break
+        return buf
+
+    def _parse_egress_response(self, buf: bytes) -> dict:
+        sep = buf.find(b"\r\n\r\n")
+        if sep == -1:
+            sep = buf.find(b"\n\n")
+        if sep == -1:
+            return {}
+        try:
+            data = json.loads(buf[sep:].strip())
+        except Exception:
+            return {}
+        return {
+            "egress_ip": data.get("query", ""),
+            "egress_city": data.get("city", ""),
+            "egress_isp": data.get("isp", ""),
+            "egress_country": data.get("country", ""),
+        }
 

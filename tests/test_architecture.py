@@ -75,7 +75,7 @@ MAX_LINES = {
 
 MAX_CYCLOMATIC = 15  # per function — industry standard threshold
 
-MAX_MIXIN_COUNT = 26  # HuntState God Object — was 16, grew to 26 after checking+health split
+MAX_MIXIN_COUNT = 28  # HuntState God Object — was 16, grew to 28 after checking+health+state split
 # Target: <8 — requires replacing mixin inheritance with composition
 
 

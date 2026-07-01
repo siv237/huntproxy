@@ -86,19 +86,8 @@ class CheckRatingMixin:
         r.last_status = "ok"
         r.last_ok = time.time()
         r.consecutive_fails = 0
-        if speed > 0:
-            r.speed_sum += speed
-            r.speed_count += 1
-            r.last_speed = speed
-            r.speed_fails = 0
-        else:
-            r.speed_fails += 1
-        if country and (not r.country or len(country) > len(r.country)):
-            r.country = country
-        if country_code and not r.country_code:
-            r.country_code = country_code
-        elif country and not r.country_code:
-            r.country_code = country_code_from_name(country)
+        self._apply_speed(r, speed)
+        self._apply_country(r, country, country_code)
         r.supports_connect = supports_connect
         r.ssl_supported = ssl_supported
         if ssl_supported and r.protocol not in ('socks5', 'socks4'):
@@ -106,16 +95,39 @@ class CheckRatingMixin:
         if mitm_suspect:
             r.mitm_suspect = True
         if egress:
-            r.egress_ip = egress.get("egress_ip") or r.egress_ip
-            r.egress_city = egress.get("egress_city") or r.egress_city
-            r.egress_isp = egress.get("egress_isp") or r.egress_isp
-            r.egress_country = egress.get("egress_country") or r.egress_country
-            if egress.get("egress_country") and not r.egress_country_code:
-                r.egress_country_code = country_code_from_name(egress["egress_country"])
+            self._apply_egress(r, egress)
         if listen:
-            r.listen_country = listen.get("country") or r.listen_country
-            if listen.get("country") and not r.listen_country_code:
-                r.listen_country_code = country_code_from_name(listen["country"])
-            r.listen_city = listen.get("city") or r.listen_city
-            r.listen_isp = listen.get("isp") or r.listen_isp
+            self._apply_listen(r, listen)
+
+    def _apply_speed(self, r: ProxyRating, speed: float):
+        if speed > 0:
+            r.speed_sum += speed
+            r.speed_count += 1
+            r.last_speed = speed
+            r.speed_fails = 0
+        else:
+            r.speed_fails += 1
+
+    def _apply_country(self, r: ProxyRating, country: str, country_code: str):
+        if country and (not r.country or len(country) > len(r.country)):
+            r.country = country
+        if country_code and not r.country_code:
+            r.country_code = country_code
+        elif country and not r.country_code:
+            r.country_code = country_code_from_name(country)
+
+    def _apply_egress(self, r: ProxyRating, egress: dict):
+        r.egress_ip = egress.get("egress_ip") or r.egress_ip
+        r.egress_city = egress.get("egress_city") or r.egress_city
+        r.egress_isp = egress.get("egress_isp") or r.egress_isp
+        r.egress_country = egress.get("egress_country") or r.egress_country
+        if egress.get("egress_country") and not r.egress_country_code:
+            r.egress_country_code = country_code_from_name(egress["egress_country"])
+
+    def _apply_listen(self, r: ProxyRating, listen: dict):
+        r.listen_country = listen.get("country") or r.listen_country
+        if listen.get("country") and not r.listen_country_code:
+            r.listen_country_code = country_code_from_name(listen["country"])
+        r.listen_city = listen.get("city") or r.listen_city
+        r.listen_isp = listen.get("isp") or r.listen_isp
 

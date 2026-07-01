@@ -160,76 +160,97 @@ class CustomProxiesMixin:
                 logger.error("toggle_custom_proxy: %s", e)
                 return None
 
+    async def _read_http_code(self, reader, writer, path, host_hdr, start) -> dict:
+        """Send GET, read response, return result dict with HTTP code."""
+        req = f"GET {path} HTTP/1.1\r\nHost: {host_hdr}\r\nConnection: close\r\n\r\n"
+        writer.write(req.encode())
+        await writer.drain()
+        resp_data = b""
+        while True:
+            chunk = await asyncio.wait_for(reader.read(4096), timeout=10)
+            if not chunk:
+                break
+            resp_data += chunk
+            if len(resp_data) > 65536:
+                break
+        latency = int((time.monotonic() - start) * 1000)
+        try:
+            writer.close()
+        except Exception:
+            pass
+        status_line = resp_data.split(b"\r\n")[0] if resp_data else b""
+        http_code = 0
+        parts = status_line.split(b" ", 2)
+        if len(parts) >= 2:
+            try:
+                http_code = int(parts[1])
+            except Exception:
+                pass
+        check_status = "ok" if 200 <= http_code < 400 else "fail"
+        return {"status": check_status, "http_code": http_code, "latency_ms": latency, "error": ""}
+
+    @staticmethod
+    def _fail_result(error: str) -> dict:
+        return {"status": "fail", "http_code": 0, "latency_ms": -1, "error": error}
+
+    @staticmethod
+    def _timeout_result(error: str = "read timeout") -> dict:
+        return {"status": "timeout", "http_code": 0, "latency_ms": -1, "error": error}
+
+    @staticmethod
+    def _safe_close(writer):
+        try:
+            writer.close()
+        except Exception:
+            pass
+
     async def test_custom_proxy(self, proxy_id: str) -> dict:
             proxy = self.get_custom_proxy_raw(proxy_id)
             if not proxy:
-                return {"status": "fail", "http_code": 0, "latency_ms": -1, "error": "proxy not found"}
+                return self._fail_result("proxy not found")
             if not proxy["enabled"]:
-                return {"status": "fail", "http_code": 0, "latency_ms": -1, "error": "proxy is disabled"}
+                return self._fail_result("proxy is disabled")
             url = proxy["test_url"] or "http://httpbin.org/ip"
             start = time.monotonic()
             try:
-                p_host, p_port = proxy["host"], proxy["port"]
-                protocol = proxy["protocol"]
                 reader, writer = await asyncio.wait_for(
-                    asyncio.open_connection(p_host, p_port), timeout=10)
+                    asyncio.open_connection(proxy["host"], proxy["port"]), timeout=10)
             except asyncio.TimeoutError:
                 self._update_proxy_check(proxy_id, "timeout", -1)
-                return {"status": "timeout", "http_code": 0, "latency_ms": -1, "error": "connection timeout"}
+                return self._timeout_result("connection timeout")
             except OSError as e:
                 self._update_proxy_check(proxy_id, "fail", -1)
-                return {"status": "fail", "http_code": 0, "latency_ms": -1, "error": str(e)}
+                return self._fail_result(str(e))
             try:
-                if protocol == "socks5":
-                    ok = await self._socks5_handshake(reader, writer, url, proxy)
-                else:
-                    ok = await self._http_proxy_handshake(reader, writer, url, proxy)
+                protocol = proxy["protocol"]
+                ok = await self._do_handshake(reader, writer, url, proxy, protocol)
                 if not ok:
-                    try: writer.close()
-                    except: pass
+                    self._safe_close(writer)
                     self._update_proxy_check(proxy_id, "fail", -1)
-                    return {"status": "fail", "http_code": 0, "latency_ms": -1, "error": "handshake failed"}
-                host_hdr = url.split('//', 1)[-1].split('/', 1)[0]
-                path = '/' + url.split('/', 3)[-1] if url.count('/') >= 3 else '/'
+                    return self._fail_result("handshake failed")
                 if protocol == "socks5" and url.lower().startswith("https://"):
-                    try: writer.close()
-                    except: pass
+                    self._safe_close(writer)
                     latency = int((time.monotonic() - start) * 1000)
                     self._update_proxy_check(proxy_id, "ok", latency)
                     return {"status": "ok", "http_code": 0, "latency_ms": latency, "error": ""}
-                req = f"GET {path} HTTP/1.1\r\nHost: {host_hdr}\r\nConnection: close\r\n\r\n"
-                writer.write(req.encode())
-                await writer.drain()
-                resp_data = b""
-                while True:
-                    chunk = await asyncio.wait_for(reader.read(4096), timeout=10)
-                    if not chunk:
-                        break
-                    resp_data += chunk
-                    if len(resp_data) > 65536:
-                        break
-                latency = int((time.monotonic() - start) * 1000)
-                try: writer.close()
-                except: pass
-                status_line = resp_data.split(b"\r\n")[0] if resp_data else b""
-                http_code = 0
-                parts = status_line.split(b" ", 2)
-                if len(parts) >= 2:
-                    try: http_code = int(parts[1])
-                    except: pass
-                check_status = "ok" if 200 <= http_code < 400 else "fail"
-                self._update_proxy_check(proxy_id, check_status, latency)
-                return {"status": check_status, "http_code": http_code, "latency_ms": latency, "error": ""}
+                host_hdr = url.split('//', 1)[-1].split('/', 1)[0]
+                path = '/' + url.split('/', 3)[-1] if url.count('/') >= 3 else '/'
+                result = await self._read_http_code(reader, writer, path, host_hdr, start)
+                self._update_proxy_check(proxy_id, result["status"], result["latency_ms"])
+                return result
             except asyncio.TimeoutError:
-                try: writer.close()
-                except: pass
+                self._safe_close(writer)
                 self._update_proxy_check(proxy_id, "timeout", -1)
-                return {"status": "timeout", "http_code": 0, "latency_ms": -1, "error": "read timeout"}
+                return self._timeout_result()
             except Exception as e:
-                try: writer.close()
-                except: pass
+                self._safe_close(writer)
                 self._update_proxy_check(proxy_id, "fail", -1)
-                return {"status": "fail", "http_code": 0, "latency_ms": -1, "error": str(e)}
+                return self._fail_result(str(e))
+
+    async def _do_handshake(self, reader, writer, url, proxy, protocol) -> bool:
+        if protocol == "socks5":
+            return await self._socks5_handshake(reader, writer, url, proxy)
+        return await self._http_proxy_handshake(reader, writer, url, proxy)
 
     async def _socks5_handshake(self, reader, writer, url, proxy) -> bool:
             try:
@@ -272,58 +293,33 @@ class CustomProxiesMixin:
             passwd = data.get("password", "")
             url = data.get("test_url", "") or "http://httpbin.org/ip"
             if not host or not port:
-                return {"status": "fail", "http_code": 0, "latency_ms": -1, "error": "host and port required"}
+                return self._fail_result("host and port required")
             start = time.monotonic()
             try:
                 reader, writer = await asyncio.wait_for(
                     asyncio.open_connection(host, port), timeout=10)
             except asyncio.TimeoutError:
-                return {"status": "timeout", "http_code": 0, "latency_ms": -1, "error": "connection timeout"}
+                return self._timeout_result("connection timeout")
             except OSError as e:
-                return {"status": "fail", "http_code": 0, "latency_ms": -1, "error": str(e)}
+                return self._fail_result(str(e))
             proxy = {"protocol": protocol, "username": uname, "password": passwd}
             try:
-                if protocol == "socks5":
-                    ok = await self._socks5_handshake(reader, writer, url, proxy)
-                else:
-                    ok = await self._http_proxy_handshake(reader, writer, url, proxy)
+                ok = await self._do_handshake(reader, writer, url, proxy, protocol)
                 if not ok:
-                    try: writer.close()
-                    except: pass
-                    return {"status": "fail", "http_code": 0, "latency_ms": -1, "error": "handshake failed"}
-                target = url.split("//", 1)[-1].split("/", 1)[0]
+                    self._safe_close(writer)
+                    return self._fail_result("handshake failed")
                 if protocol == "socks5" and url.lower().startswith("https://"):
-                    try: writer.close()
-                    except: pass
+                    self._safe_close(writer)
                     latency = int((time.monotonic() - start) * 1000)
                     return {"status": "ok", "http_code": 0, "latency_ms": latency, "error": ""}
-                req = f"GET {url} HTTP/1.1\r\nHost: {target.split(':')[0]}\r\nConnection: close\r\n\r\n"
-                writer.write(req.encode()); await writer.drain()
-                resp_data = b""
-                while True:
-                    chunk = await asyncio.wait_for(reader.read(4096), timeout=10)
-                    if not chunk: break
-                    resp_data += chunk
-                    if len(resp_data) > 65536: break
-                latency = int((time.monotonic() - start) * 1000)
-                try: writer.close()
-                except: pass
-                status_line = resp_data.split(b"\r\n")[0] if resp_data else b""
-                http_code = 0
-                parts = status_line.split(b" ", 2)
-                if len(parts) >= 2:
-                    try: http_code = int(parts[1])
-                    except: pass
-                check_status = "ok" if 200 <= http_code < 400 else "fail"
-                return {"status": check_status, "http_code": http_code, "latency_ms": latency, "error": ""}
+                target = url.split("//", 1)[-1].split("/", 1)[0]
+                return await self._read_http_code(reader, writer, url, target.split(':')[0], start)
             except asyncio.TimeoutError:
-                try: writer.close()
-                except: pass
-                return {"status": "timeout", "http_code": 0, "latency_ms": -1, "error": "read timeout"}
+                self._safe_close(writer)
+                return self._timeout_result()
             except Exception as e:
-                try: writer.close()
-                except: pass
-                return {"status": "fail", "http_code": 0, "latency_ms": -1, "error": str(e)}
+                self._safe_close(writer)
+                return self._fail_result(str(e))
 
     def _update_proxy_check(self, proxy_id: str, status: str, latency: int):
             try:

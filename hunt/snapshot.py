@@ -8,17 +8,7 @@ from hunt.models import ProxyRating
 
 class SnapshotMixin:
     def get_snapshot(self) -> dict:
-            # Manual operator blacklist is the only hard exclusion; IP blacklist
-            # only lowers the score and keeps the proxy alive/working.
-            alive = [r for r in self.ratings.values()
-                     if (r.last_status == "ok" or r.in_grace) and not r.in_blacklist]
-            sorted_alive = sorted(alive, key=lambda r: r.score, reverse=True)
-            dead = [r for r in self.ratings.values()
-                    if r.last_status == "failed" and not r.in_grace]
-            sorted_dead = sorted(dead, key=lambda r: r.last_check, reverse=True)
-            banned = [r for r in self.ratings.values() if r.in_blacklist]
-            ip_blacklisted = sum(1 for r in self.ratings.values() if r.ip_blacklist_reason and not r.in_blacklist)
-
+            alive, sorted_alive, sorted_dead, ip_blacklisted = self._snapshot_lists()
             return {
                 "phase": self.phase,
                 "phase_started": self.phase_started,
@@ -26,32 +16,8 @@ class SnapshotMixin:
                 "paused": self._paused,
                 "manual_pause": self._manual_pause,
                 "health_manual": getattr(self, '_health_manual', False),
-                "progress": {
-                    "sources_total": self.sources_total,
-                    "sources_done": self.sources_done,
-                    "downloaded": self.downloaded,
-                    "bl_sources_total": self.bl_sources_total,
-                    "bl_sources_done": self.bl_sources_done,
-                    "bl_source_results": self.bl_results,
-                    "checking_total": self.checking_total,
-                    "checked": self.checked,
-                    "working": self.working,
-                    "new_working": self.new_working,
-                    "confirmed_working": self.confirmed_working,
-                    "failed": self.failed,
-                    "last_proxy": self.last_proxy,
-                    "last_country": self.last_country,
-                    "source_results": self._get_source_download_results(),
-                    "active_checks": list(self._active_checks.values()),
-                },
-                "counts": {
-                    "ratings": len(self.ratings),
-                    "alive": len(alive),
-                    "dead": len(dead),
-                    "blacklist": len(self.blacklist) + ip_blacklisted,
-                    "ip_blacklisted": ip_blacklisted,
-                    "new_today": sum(1 for r in self.ratings.values() if r.first_seen > time.time() - 86400),
-                },
+                "progress": self._snapshot_progress(),
+                "counts": self._snapshot_counts(alive, sorted_dead, ip_blacklisted),
                 "settings": {
                     "parallel": self.parallel,
                     "timeout": self.effective_timeout,
@@ -67,6 +33,46 @@ class SnapshotMixin:
                 "resources": self._get_system(),
                 "scheduler": self._get_scheduler_snapshot(),
             }
+
+    def _snapshot_lists(self) -> tuple:
+        alive = [r for r in self.ratings.values()
+                 if (r.last_status == "ok" or r.in_grace) and not r.in_blacklist]
+        sorted_alive = sorted(alive, key=lambda r: r.score, reverse=True)
+        dead = [r for r in self.ratings.values()
+                if r.last_status == "failed" and not r.in_grace]
+        sorted_dead = sorted(dead, key=lambda r: r.last_check, reverse=True)
+        ip_blacklisted = sum(1 for r in self.ratings.values() if r.ip_blacklist_reason and not r.in_blacklist)
+        return alive, sorted_alive, sorted_dead, ip_blacklisted
+
+    def _snapshot_progress(self) -> dict:
+        return {
+            "sources_total": self.sources_total,
+            "sources_done": self.sources_done,
+            "downloaded": self.downloaded,
+            "bl_sources_total": self.bl_sources_total,
+            "bl_sources_done": self.bl_sources_done,
+            "bl_source_results": self.bl_results,
+            "checking_total": self.checking_total,
+            "checked": self.checked,
+            "working": self.working,
+            "new_working": self.new_working,
+            "confirmed_working": self.confirmed_working,
+            "failed": self.failed,
+            "last_proxy": self.last_proxy,
+            "last_country": self.last_country,
+            "source_results": self._get_source_download_results(),
+            "active_checks": list(self._active_checks.values()),
+        }
+
+    def _snapshot_counts(self, alive, sorted_dead, ip_blacklisted) -> dict:
+        return {
+            "ratings": len(self.ratings),
+            "alive": len(alive),
+            "dead": len(sorted_dead),
+            "blacklist": len(self.blacklist) + ip_blacklisted,
+            "ip_blacklisted": ip_blacklisted,
+            "new_today": sum(1 for r in self.ratings.values() if r.first_seen > time.time() - 86400),
+        }
 
     def _blacklist_view(self) -> list:
             out = []
@@ -235,76 +241,70 @@ class SnapshotMixin:
             }
 
     def get_proxy_heatmap(self, hours: int = 72) -> dict:
-            """Return a 72-hour check heatmap for all alive proxies.
-
-            Each proxy gets an array of ``segments`` buckets (one per hour),
-            where each bucket is 0 = no check, 1 = ok, 2 = failed. Proxies are
-            sorted by score descending so the best ones appear at the top.
-            """
             segments = min(hours, 72)
             now = time.time()
             cutoff = now - segments * 3600
             seg_dur = 3600.0
-
-            alive = [r for r in self.ratings.values()
-                     if (r.last_status == "ok" or r.in_grace)
-                     and not r.in_blacklist
-                     and r.speed_count > 0
-                     and r.speed_avg > 0]
-            alive.sort(key=lambda r: r.score, reverse=True)
+            alive = self._heatmap_alive()
             if not alive:
                 return {"segments": segments, "proxies": [], "cutoff": cutoff}
-
-            addrs = [r.address for r in alive]
-            addr_set = set(addrs)
-
-            try:
-                conn = self._stats_db()
-                rows = conn.execute(
-                    "SELECT address, ts, ok FROM proxy_checks "
-                    "WHERE ts >= ? AND address IN (%s) "
-                    "ORDER BY ts ASC" % ",".join("?" * len(addrs)),
-                    (cutoff, *addrs),
-                ).fetchall()
-                conn.close()
-            except Exception as e:
-                logger.error("get_proxy_heatmap: %s", e)
-                rows = []
-
-            by_addr: dict[str, list] = {}
-            for row in rows:
-                a = row["address"]
-                if a not in addr_set:
-                    continue
-                idx = int((row["ts"] - cutoff) / seg_dur)
-                if idx < 0 or idx >= segments:
-                    continue
-                buckets = by_addr.setdefault(a, [0] * segments)
-                cur = buckets[idx]
-                val = 1 if row["ok"] else 2
-                if cur == 0 or (cur == 1 and val == 2):
-                    buckets[idx] = val
-
-            proxies = []
-            for r in alive:
-                buckets = by_addr.get(r.address, [0] * segments)
-                ok_count = sum(1 for b in buckets if b == 1)
-                err_count = sum(1 for b in buckets if b == 2)
-                proxies.append({
-                    "address": r.address,
-                    "country": r.country,
-                    "country_code": r.country_code,
-                    "score": round(r.score, 1),
-                    "protocol": r.protocol,
-                    "ssl_supported": r.ssl_supported,
-                    "is_favorite": r.is_favorite,
-                    "speed_avg": round(r.speed_avg, 1),
-                    "buckets": buckets,
-                    "ok_count": ok_count,
-                    "err_count": err_count,
-                })
-
+            by_addr = self._heatmap_buckets(alive, cutoff, segments, seg_dur)
+            proxies = self._heatmap_proxies(alive, by_addr, segments)
             return {"segments": segments, "cutoff": cutoff, "proxies": proxies}
+
+    def _heatmap_alive(self) -> list:
+        alive = [r for r in self.ratings.values()
+                 if (r.last_status == "ok" or r.in_grace)
+                 and not r.in_blacklist
+                 and r.speed_count > 0
+                 and r.speed_avg > 0]
+        alive.sort(key=lambda r: r.score, reverse=True)
+        return alive
+
+    def _heatmap_buckets(self, alive, cutoff, segments, seg_dur) -> dict:
+        addrs = [r.address for r in alive]
+        addr_set = set(addrs)
+        try:
+            conn = self._stats_db()
+            rows = conn.execute(
+                "SELECT address, ts, ok FROM proxy_checks "
+                "WHERE ts >= ? AND address IN (%s) "
+                "ORDER BY ts ASC" % ",".join("?" * len(addrs)),
+                (cutoff, *addrs),
+            ).fetchall()
+            conn.close()
+        except Exception as e:
+            logger.error("get_proxy_heatmap: %s", e)
+            rows = []
+        by_addr: dict[str, list] = {}
+        for row in rows:
+            a = row["address"]
+            if a not in addr_set:
+                continue
+            idx = int((row["ts"] - cutoff) / seg_dur)
+            if idx < 0 or idx >= segments:
+                continue
+            buckets = by_addr.setdefault(a, [0] * segments)
+            cur = buckets[idx]
+            val = 1 if row["ok"] else 2
+            if cur == 0 or (cur == 1 and val == 2):
+                buckets[idx] = val
+        return by_addr
+
+    def _heatmap_proxies(self, alive, by_addr, segments) -> list:
+        proxies = []
+        for r in alive:
+            buckets = by_addr.get(r.address, [0] * segments)
+            ok_count = sum(1 for b in buckets if b == 1)
+            err_count = sum(1 for b in buckets if b == 2)
+            proxies.append({
+                "address": r.address, "country": r.country,
+                "country_code": r.country_code, "score": round(r.score, 1),
+                "protocol": r.protocol, "ssl_supported": r.ssl_supported,
+                "is_favorite": r.is_favorite, "speed_avg": round(r.speed_avg, 1),
+                "buckets": buckets, "ok_count": ok_count, "err_count": err_count,
+            })
+        return proxies
 
     def get_live_traffic(self) -> dict:
             """Return total traffic bytes (last 24h) and request count."""

@@ -111,45 +111,34 @@ class ProxyHandlers:
         qs = _qs(raw_path)
         address = qs.get("address", "").strip()
         self.state._log_action("proxy.recheck", address or "no-addr")
-        if address:
-            host, port_str = address.rsplit(":", 1)
-            port = int(port_str)
-            is_socks = port in (1080, 10808, 9050, 4145)
-            http_task = asyncio.create_task(self.state._check_proxy(address))
-            ssl_task = asyncio.create_task(self.state._check_ssl(address))
-            results = await asyncio.gather(http_task, ssl_task, return_exceptions=True)
-            if isinstance(results[0], Exception):
-                ok, country, supports_connect, mitm_suspect, egress, listen, http_latency, cc, fast_fail = False, "", False, False, {}, {}, 0.0, "", False
-            else:
-                ok, country, supports_connect, mitm_suspect, egress, listen, http_latency, cc, fast_fail = results[0]
-            if isinstance(results[1], Exception):
-                ssl_ok, ssl_country, ssl_cc, ssl_egress, ssl_latency, ssl_supports_connect = False, "", "", {}, 0.0, False
-            else:
-                ssl_ok, ssl_country, ssl_cc, ssl_egress, ssl_latency, ssl_supports_connect = results[1]
-            if not ok and ssl_ok:
-                ok = True
-                country = ssl_country
-                cc = ssl_cc
-                egress = ssl_egress
-                http_latency = ssl_latency
-                supports_connect = ssl_supports_connect
-            elif ok and ssl_ok:
-                if not egress and ssl_egress:
-                    egress = ssl_egress
-                if not supports_connect and ssl_supports_connect:
-                    supports_connect = ssl_supports_connect
-            speed = 0.0
-            if ok:
-                use_ssl = ssl_ok and not is_socks
-                try:
-                    speed = await self.state._measure_speed(host, port, is_socks, use_ssl=use_ssl, supports_connect=supports_connect)
-                except Exception:
-                    speed = 0.0
-            self.state._update_rating(address, ok, country, http_latency, supports_connect, mitm_suspect, egress, listen, speed, country_code=cc, ssl_supported=ssl_ok)
-            self.state._save_state()
-            self.state._save_working_file()
-            return json.dumps({"ok": ok, "address": address}), 200, "application/json"
-        return json.dumps({"ok": False, "error": "no address"}), 400, "application/json"
+        if not address:
+            return json.dumps({"ok": False, "error": "no address"}), 400, "application/json"
+        host, port_str = address.rsplit(":", 1)
+        port = int(port_str)
+        is_socks = port in (1080, 10808, 9050, 4145)
+        results = await asyncio.gather(
+            asyncio.create_task(self.state._check_proxy(address)),
+            asyncio.create_task(self.state._check_ssl(address)),
+            return_exceptions=True,
+        )
+        merged = self.state._merge_check_results(results, address)
+        ok, country, supports_connect, mitm_suspect, egress, listen, http_latency, cc, ssl_ok, _, _ = (
+            merged["ok"], merged["country"], merged["supports_connect"],
+            merged["mitm_suspect"], merged["egress"], merged["listen"],
+            merged["http_latency"], merged["cc"], merged["ssl_ok"],
+            merged["ssl_egress"], merged["ssl_supports_connect"],
+        )
+        speed = 0.0
+        if ok:
+            use_ssl = ssl_ok and not is_socks
+            try:
+                speed = await self.state._measure_speed(host, port, is_socks, use_ssl=use_ssl, supports_connect=supports_connect)
+            except Exception:
+                speed = 0.0
+        self.state._update_rating(address, ok, country, http_latency, supports_connect, mitm_suspect, egress, listen, speed, country_code=cc, ssl_supported=ssl_ok)
+        self.state._save_state()
+        self.state._save_working_file()
+        return json.dumps({"ok": ok, "address": address}), 200, "application/json"
 
     async def _handle_proxy_direct(self, raw_path, body):
         qs = _qs(raw_path)
@@ -274,7 +263,6 @@ class ProxyHandlers:
         group_by = qs.get("group_by", "country")
         group_status = qs.get("status", "")
         all_ratings = list(self.state.ratings.values())
-        sources_map = {s["id"]: s.get("name", s["id"]) for s in self.state.get_proxy_sources()}
         if group_by == "source":
             filtered = [r for r in all_ratings if (
                 (self.state._addr_sources.get(r.address, []) or ["_unknown"])[0] == group_key
