@@ -22,7 +22,7 @@ TASK_TYPES: dict[str, dict[str, Any]] = {
         "mutex_with": ["health_check"],
         "respect_pause": False,
         "respect_internet": True,
-        "busy_flag": None,
+        "busy_flag": "_hunt_running",
     },
     "ip_blacklist": {
         "description": "Download IP blacklist sources",
