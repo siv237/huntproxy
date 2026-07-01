@@ -496,8 +496,21 @@ class CheckingMixin:
             return True, country, country_code, egress, ssl_latency, supports_connect
 
     async def _measure_speed(self, host: str, port: int, is_socks: bool = False, use_ssl: bool = False, supports_connect: bool = False) -> float:
+            # Overall deadline across all servers/attempts — without this, a
+            # slow-drip proxy that trickles data can hang across multiple
+            # speed servers for many minutes, blocking the entire check cycle.
+            overall_deadline = time.monotonic() + 45
             for srv_host, srv_path, expected_size in self.SPEED_SERVERS:
-                speed = await self._speed_single(host, port, is_socks, srv_host, srv_path, expected_size, use_ssl, supports_connect)
+                remaining = overall_deadline - time.monotonic()
+                if remaining <= 0:
+                    break
+                try:
+                    speed = await asyncio.wait_for(
+                        self._speed_single(host, port, is_socks, srv_host, srv_path, expected_size, use_ssl, supports_connect),
+                        timeout=remaining,
+                    )
+                except asyncio.TimeoutError:
+                    break
                 if speed > 0:
                     return speed
             return 0.0
