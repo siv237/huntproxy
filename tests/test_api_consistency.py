@@ -53,24 +53,52 @@ def _collect_frontend_calls():
 
 
 def _collect_server_endpoints():
-    """Collect (method, path_pattern) tuples from server.py."""
+    """Collect (method, path_pattern) tuples from server.py.
+
+    Routes are registered on ``self._router`` via ``add`` / ``add_prefix``
+    calls inside ``HuntServer._register_routes``.  A ``for m in ("GET",
+    "POST"):`` loop expands a single registration into one endpoint per
+    method (preserving the original any-method behaviour of routes that
+    had no ``method ==`` guard).
+    """
     src = SERVER_PATH.read_text(encoding="utf-8")
     endpoints = set()
+    # Matches: self._router.add("GET", "/api/...", ...) and add_prefix(...)
+    # The method token may be a quoted literal or a loop variable (e.g. ``m``).
+    add_re = re.compile(
+        r'self\._router\.add(?:_prefix)?\(\s*'
+        r'([\'"]?[A-Za-z_]+[\'"]?)\s*,\s*'
+        r'([\'"])(/[^\'"]+)\2'
+    )
+    loop_var = None
+    loop_methods = []
+    loop_indent = None
     for line in src.splitlines():
-        line = line.strip()
-        # path.startswith("/api/...") or path == "/api/..."
-        m = re.search(r'path\.startswith\(\s*["\']([^"\']+)["\']\s*\)', line)
-        if not m:
-            m = re.search(r'path\s*==\s*["\']([^"\']+)["\']', line)
+        indent = len(line) - len(line.lstrip())
+        if loop_var is not None and indent <= loop_indent:
+            loop_var = None
+            loop_methods = []
+            loop_indent = None
+        mfor = re.match(r'\s*for\s+(\w+)\s+in\s+\(([^)]*)\)\s*:', line)
+        if mfor:
+            loop_var = mfor.group(1)
+            loop_methods = re.findall(r'["\']([A-Z]+)["\']', mfor.group(2))
+            loop_indent = indent
+            continue
+        m = add_re.search(line)
         if not m:
             continue
-        path = m.group(1)
+        method_tok = m.group(1)
+        path = m.group(3)
         if not path.startswith("/api/"):
             continue
-        # method check on same line
-        m2 = re.search(r'method\s*==\s*["\']([A-Z]+)["\']', line)
-        method = m2.group(1) if m2 else "ANY"
-        endpoints.add((method, path))
+        if method_tok.startswith(("'", '"')):
+            endpoints.add((method_tok.strip("'\""), path))
+        elif loop_var is not None and method_tok == loop_var:
+            for mv in loop_methods:
+                endpoints.add((mv, path))
+        else:
+            endpoints.add(("ANY", path))
     return endpoints
 
 

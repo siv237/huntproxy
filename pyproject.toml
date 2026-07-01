@@ -8,4 +8,10 @@ asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 filterwarnings = [
     "ignore::pytest.PytestUnraisableExceptionWarning",
-]
+  ]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "arch: architecture/quality invariants (file sizes, complexity, boundaries)",
+    "router: router contract — all API endpoints must resolve",
+    "executor: task executor contract — planning vs execution separation",
+  ]

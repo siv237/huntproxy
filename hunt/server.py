@@ -11,6 +11,7 @@ from hunt.proxy_runner import ProxyRunner
 from hunt.socks5_runner import Socks5Runner
 from hunt.transparent_runner import TransparentRunner
 from hunt.state import HuntState
+from hunt.router import Router
 from typing import Optional
 from urllib.parse import unquote, urlparse
 
@@ -429,6 +430,8 @@ class HuntServer:
             self.proxy.direct_mode = state._proxy_direct_mode
         if hasattr(state, '_proxy_active_addr') and state._proxy_active_addr:
             self.proxy.active_proxy_addr = state._proxy_active_addr
+        self._router = Router()
+        self._register_routes()
 
     def _mem_traffic(self, cutoff: float = 0) -> list:
         """Recent traffic entries from the in-memory proxy log.
@@ -596,1307 +599,1526 @@ class HuntServer:
         return data, 200, ct
 
     async def _route(self, method, path, raw_path, body):
-        if path.startswith("/css/") or path.startswith("/js/") or path.startswith("/img/") or path.startswith("/assets/") or path.startswith("/locales/"):
-            static = self._serve_static(path)
-            if static:
-                return static
+        handler = self._router.match(method, path)
+        if handler is not None:
+            return await handler(raw_path, body)
+        return json.dumps({"error": "not found"}), 404, "application/json"
 
-        if path == "/legacy":
-            return WEB_HTML, 200, "text/html; charset=utf-8"
+    def _register_routes(self):
+        self._router.add_static(["/css/", "/js/", "/img/", "/assets/", "/locales/"], self._handle_static)
 
-        if path == "/favicon.ico":
-            return self._serve_static("assets/favicon.ico")
+        self._router.add("GET", "/legacy", self._handle_legacy)
+        self._router.add("GET", "/favicon.ico", self._handle_favicon)
+        self._router.add("GET", "/", self._handle_index)
+        self._router.add_prefix("GET", "/index", self._handle_index)
 
-        if path == "/" or path.startswith("/index"):
-            if WEB_DIR.exists() and (WEB_DIR / "index.html").exists():
-                return self._serve_static("index.html")
-            return WEB_HTML, 200, "text/html; charset=utf-8"
+        self._router.add("GET", "/api/snapshot", self._handle_snapshot)
+        self._router.add_prefix("GET", "/api/events", self._handle_events)
 
-        if path == "/api/snapshot":
-            return json.dumps(self.state.get_snapshot()), 200, "application/json"
+        self._router.add("POST", "/api/hunt/start", self._handle_hunt_start)
+        self._router.add("POST", "/api/hunt/stop", self._handle_hunt_stop)
+        self._router.add("POST", "/api/hunt/pause", self._handle_hunt_pause)
+        self._router.add("POST", "/api/hunt/resume", self._handle_hunt_resume)
+        self._router.add("POST", "/api/hunt/skip", self._handle_hunt_skip)
 
-        if path.startswith("/api/events"):
-            qs = _qs(raw_path)
-            since = int(qs.get("since", 0))
-            events = self.state.events
-            new = [e for e in events if e["seq"] > since]
-            if not new:
-                # short wait for new events
-                try:
-                    async with self.state._cond:
-                        await asyncio.wait_for(self.state._cond.wait(), timeout=0.5)
-                except asyncio.TimeoutError:
-                    pass
-                new = [e for e in self.state.events if e["seq"] > since]
-            return json.dumps(new), 200, "application/json"
+        self._router.add("POST", "/api/blacklist/add", self._handle_blacklist_add)
+        self._router.add("POST", "/api/blacklist/remove", self._handle_blacklist_remove)
+        self._router.add("POST", "/api/favorites/add", self._handle_favorites_add)
+        self._router.add("POST", "/api/favorites/remove", self._handle_favorites_remove)
+        self._router.add("GET", "/api/favorites", self._handle_favorites_list)
 
-        if path == "/api/hunt/start" and method == "POST":
-            ok = self.state.start_hunt()
-            self.state._log_action("hunt.start", "ok" if ok else "already-running")
-            return json.dumps({"ok": ok, "error": None if ok else "already running"}), 200, "application/json"
+        self._router.add("GET", "/api/proxy/status", self._handle_proxy_status)
+        self._router.add("GET", "/api/proxy/alive", self._handle_proxy_alive)
+        for m in ("GET", "POST"):
+            self._router.add_prefix(m, "/api/proxy/start", self._handle_proxy_start)
+            self._router.add(m, "/api/proxy/stop", self._handle_proxy_stop)
+            self._router.add_prefix(m, "/api/proxy/select", self._handle_proxy_select)
+            self._router.add(m, "/api/proxy/next", self._handle_proxy_next)
+            self._router.add_prefix(m, "/api/proxy/recheck", self._handle_proxy_recheck)
+            self._router.add_prefix(m, "/api/proxy/direct", self._handle_proxy_direct)
+        self._router.add("GET", "/api/socks5/status", self._handle_socks5_status)
+        for m in ("GET", "POST"):
+            self._router.add_prefix(m, "/api/socks5/start", self._handle_socks5_start)
+            self._router.add(m, "/api/socks5/stop", self._handle_socks5_stop)
+        self._router.add("GET", "/api/transparent/status", self._handle_transparent_status)
+        for m in ("GET", "POST"):
+            self._router.add_prefix(m, "/api/transparent/start", self._handle_transparent_start)
+            self._router.add(m, "/api/transparent/stop", self._handle_transparent_stop)
+        self._router.add_prefix("GET", "/api/proxy/", self._handle_proxy_detail)
 
-        if path == "/api/hunt/stop" and method == "POST":
-            self.state._log_action("hunt.stop")
-            self.state.stop_hunt()
-            return json.dumps({"ok": True}), 200, "application/json"
+        self._router.add("GET", "/api/channel/status", self._handle_channel_status)
+        self._router.add("POST", "/api/channel/select", self._handle_channel_select)
+        self._router.add_prefix("POST", "/api/settings/country_filter", self._handle_country_filter)
 
-        if path == "/api/hunt/pause" and method == "POST":
-            ok = self.state.pause_hunt(manual=True)
-            self.state._log_action("hunt.pause", "ok" if ok else "not-running")
-            return json.dumps({"ok": ok, "error": None if ok else "not running or already paused"}), 200, "application/json"
+        self._router.add("GET", "/api/countries", self._handle_countries)
+        self._router.add_prefix("GET", "/api/system", self._handle_system)
+        self._router.add_prefix("GET", "/api/activity", self._handle_activity)
+        self._router.add_prefix("GET", "/api/actions", self._handle_actions)
+        self._router.add_prefix("GET", "/api/history", self._handle_history)
+        self._router.add_prefix("GET", "/api/proxies", self._handle_proxies)
+        self._router.add_prefix("GET", "/api/proxy-checks/", self._handle_proxy_checks)
+        self._router.add_prefix("GET", "/api/proxy-heatmap", self._handle_proxy_heatmap)
+        self._router.add_prefix("GET", "/api/blacklist", self._handle_blacklist_list)
 
-        if path == "/api/hunt/resume" and method == "POST":
-            ok = self.state.resume_hunt(manual=True)
-            self.state._log_action("hunt.resume", "ok" if ok else "not-paused")
-            return json.dumps({"ok": ok, "error": None if ok else "not paused or manual pause requires manual resume"}), 200, "application/json"
+        self._router.add_prefix("POST", "/api/clear_dead", self._handle_clear_dead)
+        self._router.add_prefix("POST", "/api/export", self._handle_export)
+        self._router.add_prefix("POST", "/api/import", self._handle_import)
+        self._router.add_prefix("POST", "/api/health/start", self._handle_health_start)
+        self._router.add_prefix("POST", "/api/health/stop", self._handle_health_stop)
 
-        if path == "/api/hunt/skip" and method == "POST":
-            ok = self.state.skip_phase()
-            self.state._log_action("hunt.skip", "ok" if ok else "not-skippable")
-            return json.dumps({"ok": ok, "error": None if ok else "nothing to skip right now"}), 200, "application/json"
+        self._router.add_prefix("GET", "/api/settings", self._handle_settings_get)
+        self._router.add_prefix("POST", "/api/settings", self._handle_settings_post)
+        self._router.add_prefix("GET", "/api/logs", self._handle_logs)
 
-        if path == "/api/blacklist/add" and method == "POST":
+        self._router.add_prefix("GET", "/api/downloads/count", self._handle_downloads_count)
+        self._router.add_prefix("GET", "/api/download/", self._handle_download)
+
+        self._router.add_prefix("GET", "/api/backup/groups", self._handle_backup_groups)
+        self._router.add_prefix("POST", "/api/backup", self._handle_backup)
+        self._router.add_prefix("POST", "/api/restore", self._handle_restore)
+
+        self._router.add_prefix("GET", "/api/traffic/live", self._handle_traffic_live)
+        self._router.add("GET", "/api/traffic", self._handle_traffic)
+        self._router.add_prefix("GET", "/api/requests", self._handle_requests)
+        self._router.add_prefix("GET", "/api/clients", self._handle_clients)
+        self._router.add_prefix("GET", "/api/domains", self._handle_domains)
+        self._router.add_prefix("GET", "/api/errors", self._handle_errors)
+        self._router.add_prefix("GET", "/api/traffic/routes", self._handle_traffic_routes)
+        self._router.add_prefix("GET", "/api/bandwidth", self._handle_bandwidth)
+        self._router.add_prefix("GET", "/api/traffic/summary", self._handle_traffic_summary)
+
+        self._router.add("GET", "/api/routing/status", self._handle_routing_status)
+        self._router.add("POST", "/api/routing/enable", self._handle_routing_enable)
+        self._router.add("POST", "/api/routing/disable", self._handle_routing_disable)
+        self._router.add("POST", "/api/routing/default", self._handle_routing_default)
+        self._router.add("POST", "/api/routing/reorder", self._handle_routing_reorder)
+        self._router.add("POST", "/api/routing/test", self._handle_routing_test)
+
+        self._router.add("GET", "/api/domain-lists", self._handle_domain_lists_list)
+        self._router.add("POST", "/api/domain-lists", self._handle_domain_list_create)
+        self._router.add_prefix("GET", "/api/domain-lists/", self._handle_domain_list_get)
+        self._router.add_prefix("POST", "/api/domain-lists/", self._handle_domain_list_post)
+        self._router.add_prefix("DELETE", "/api/domain-lists/", self._handle_domain_list_delete)
+
+        self._router.add("GET", "/api/proxy-sources", self._handle_proxy_sources_list)
+        self._router.add("POST", "/api/proxy-sources", self._handle_proxy_source_create)
+        self._router.add("POST", "/api/proxy-sources/fetch", self._handle_proxy_sources_fetch)
+        self._router.add("GET", "/api/proxy-sources/progress", self._handle_proxy_sources_progress)
+        self._router.add_prefix("GET", "/api/proxy-sources/", self._handle_proxy_source_get)
+        self._router.add_prefix("POST", "/api/proxy-sources/", self._handle_proxy_source_post)
+        self._router.add_prefix("DELETE", "/api/proxy-sources/", self._handle_proxy_source_delete)
+
+        self._router.add("GET", "/api/ip-blacklists", self._handle_ip_blacklists_list)
+        self._router.add("POST", "/api/ip-blacklists", self._handle_ip_blacklist_create)
+        self._router.add("POST", "/api/ip-blacklists/fetch", self._handle_ip_blacklists_fetch)
+        self._router.add("GET", "/api/ip-blacklists/progress", self._handle_ip_blacklists_progress)
+        self._router.add_prefix("GET", "/api/ip-blacklists/", self._handle_ip_blacklist_get)
+        self._router.add_prefix("POST", "/api/ip-blacklists/", self._handle_ip_blacklist_post)
+        self._router.add_prefix("DELETE", "/api/ip-blacklists/", self._handle_ip_blacklist_delete)
+        self._router.add("GET", "/api/ip-blacklist/entries", self._handle_ip_blacklist_entries)
+        self._router.add("GET", "/api/ip-blacklist/matches", self._handle_ip_blacklist_matches)
+
+        self._router.add("GET", "/api/blocklists", self._handle_blocklists_list)
+        self._router.add("POST", "/api/blocklists", self._handle_blocklist_create)
+        self._router.add("POST", "/api/blocklists/fetch", self._handle_blocklists_fetch)
+        self._router.add("GET", "/api/blocklists/progress", self._handle_blocklists_progress)
+        self._router.add_prefix("GET", "/api/blocklists/", self._handle_blocklist_get)
+        self._router.add_prefix("POST", "/api/blocklists/", self._handle_blocklist_post)
+        self._router.add_prefix("DELETE", "/api/blocklists/", self._handle_blocklist_delete)
+
+        self._router.add("GET", "/api/custom-proxies", self._handle_custom_proxies_list)
+        self._router.add("POST", "/api/custom-proxies", self._handle_custom_proxy_create)
+        self._router.add("POST", "/api/custom-proxies/test-direct", self._handle_custom_proxy_test_direct)
+        self._router.add_prefix("GET", "/api/custom-proxies/", self._handle_custom_proxy_get)
+        self._router.add_prefix("POST", "/api/custom-proxies/", self._handle_custom_proxy_post)
+        self._router.add_prefix("DELETE", "/api/custom-proxies/", self._handle_custom_proxy_delete)
+
+        self._router.add("GET", "/api/schedules", self._handle_schedules_list)
+        self._router.add("POST", "/api/schedules", self._handle_schedule_create)
+        self._router.add_prefix("GET", "/api/schedules/status", self._handle_schedules_status)
+        self._router.add_prefix("GET", "/api/schedules/log", self._handle_schedules_log)
+        self._router.add("POST", "/api/schedules/pause", self._handle_schedules_pause)
+        self._router.add("POST", "/api/schedules/resume", self._handle_schedules_resume)
+        self._router.add("POST", "/api/schedules/restore-defaults", self._handle_schedules_restore_defaults)
+        self._router.add_prefix("POST", "/api/schedules/", self._handle_schedule_post_subpath)
+        self._router.add_prefix("DELETE", "/api/schedules/", self._handle_schedule_delete)
+
+        self._router.add("GET", "/api/canary/status", self._handle_canary_status)
+        self._router.add_prefix("GET", "/api/canary/history", self._handle_canary_history)
+        self._router.add("POST", "/api/canary/hosts", self._handle_canary_hosts)
+
+    # === Static / pages ===
+
+    async def _handle_static(self, raw_path, body):
+        path = raw_path.split("?", 1)[0]
+        static = self._serve_static(path)
+        if static:
+            return static
+        return json.dumps({"error": "not found"}), 404, "application/json"
+
+    async def _handle_legacy(self, raw_path, body):
+        return WEB_HTML, 200, "text/html; charset=utf-8"
+
+    async def _handle_favicon(self, raw_path, body):
+        return self._serve_static("assets/favicon.ico")
+
+    async def _handle_index(self, raw_path, body):
+        if WEB_DIR.exists() and (WEB_DIR / "index.html").exists():
+            return self._serve_static("index.html")
+        return WEB_HTML, 200, "text/html; charset=utf-8"
+
+    async def _handle_snapshot(self, raw_path, body):
+        return json.dumps(self.state.get_snapshot()), 200, "application/json"
+
+    async def _handle_events(self, raw_path, body):
+        qs = _qs(raw_path)
+        since = int(qs.get("since", 0))
+        events = self.state.events
+        new = [e for e in events if e["seq"] > since]
+        if not new:
+            # short wait for new events
             try:
-                data = json.loads(body or b"{}")
-            except Exception:
-                data = {}
-            addr = data.get("address", "")
-            self.state.blacklist_add(addr, data.get("reason", ""))
-            self.state._log_action("blacklist.add", addr)
-            return json.dumps({"ok": True}), 200, "application/json"
+                async with self.state._cond:
+                    await asyncio.wait_for(self.state._cond.wait(), timeout=0.5)
+            except asyncio.TimeoutError:
+                pass
+            new = [e for e in self.state.events if e["seq"] > since]
+        return json.dumps(new), 200, "application/json"
 
-        if path == "/api/blacklist/remove" and method == "POST":
-            try:
-                data = json.loads(body or b"{}")
-            except Exception:
-                data = {}
-            addr = data.get("address", "")
-            self.state.blacklist_remove(addr)
-            self.state._log_action("blacklist.remove", addr)
-            return json.dumps({"ok": True}), 200, "application/json"
+    # === Hunt control ===
 
-        if path == "/api/favorites/add" and method == "POST":
-            try:
-                data = json.loads(body or b"{}")
-            except Exception:
-                data = {}
-            addr = data.get("address", "")
-            self.state.favorite_add(addr)
-            self.state._log_action("favorites.add", addr)
-            return json.dumps({"ok": True}), 200, "application/json"
+    async def _handle_hunt_start(self, raw_path, body):
+        ok = self.state.start_hunt()
+        self.state._log_action("hunt.start", "ok" if ok else "already-running")
+        return json.dumps({"ok": ok, "error": None if ok else "already running"}), 200, "application/json"
 
-        if path == "/api/favorites/remove" and method == "POST":
-            try:
-                data = json.loads(body or b"{}")
-            except Exception:
-                data = {}
-            addr = data.get("address", "")
-            self.state.favorite_remove(addr)
-            self.state._log_action("favorites.remove", addr)
-            return json.dumps({"ok": True}), 200, "application/json"
+    async def _handle_hunt_stop(self, raw_path, body):
+        self.state._log_action("hunt.stop")
+        self.state.stop_hunt()
+        return json.dumps({"ok": True}), 200, "application/json"
 
-        if path == "/api/favorites" and method == "GET":
-            favs = [r for r in self.state.ratings.values() if r.is_favorite]
-            favs.sort(key=lambda r: r.score, reverse=True)
-            return json.dumps([r.to_dict() for r in favs]), 200, "application/json"
+    async def _handle_hunt_pause(self, raw_path, body):
+        ok = self.state.pause_hunt(manual=True)
+        self.state._log_action("hunt.pause", "ok" if ok else "not-running")
+        return json.dumps({"ok": ok, "error": None if ok else "not running or already paused"}), 200, "application/json"
 
-        # === Proxy routes ===
-        if path == "/api/proxy/status":
-            return json.dumps(self.proxy.get_status()), 200, "application/json"
+    async def _handle_hunt_resume(self, raw_path, body):
+        ok = self.state.resume_hunt(manual=True)
+        self.state._log_action("hunt.resume", "ok" if ok else "not-paused")
+        return json.dumps({"ok": ok, "error": None if ok else "not paused or manual pause requires manual resume"}), 200, "application/json"
 
-        if path == "/api/proxy/alive":
-            # IP-blacklisted proxies are no longer a hard sentence: they can be
-            # selected as upstream but with a reduced score. Only operator-curated
-            # manual blacklists are excluded here.
-            ratings = [r for r in self.state.ratings.values()
-                       if (r.last_status == "ok" or r.in_grace) and not r.in_blacklist]
-            ratings.sort(key=lambda r: r.score, reverse=True)
-            ip_bl_total = len(self.state.get_ip_blacklist_sources())
-            result = []
-            for r in ratings:
-                d = r.to_pool_dict()
-                d["ip_blacklist_sources_total"] = ip_bl_total
-                result.append(d)
-            return json.dumps(result), 200, "application/json"
+    async def _handle_hunt_skip(self, raw_path, body):
+        ok = self.state.skip_phase()
+        self.state._log_action("hunt.skip", "ok" if ok else "not-skippable")
+        return json.dumps({"ok": ok, "error": None if ok else "nothing to skip right now"}), 200, "application/json"
 
-        if path.startswith("/api/proxy/start"):
-            qs = _qs(raw_path)
-            port = int(qs.get("port", 17277))
-            self.state._log_action("proxy.start", str(port))
-            await self.proxy.start(port)
-            return json.dumps(self.proxy.get_status()), 200, "application/json"
+    # === Blacklist / favorites ===
 
-        if path == "/api/proxy/stop":
-            self.state._log_action("proxy.stop")
-            await self.proxy.stop()
-            self.state._save_state()
-            return json.dumps({"ok": True}), 200, "application/json"
+    async def _handle_blacklist_add(self, raw_path, body):
+        try:
+            data = json.loads(body or b"{}")
+        except Exception:
+            data = {}
+        addr = data.get("address", "")
+        self.state.blacklist_add(addr, data.get("reason", ""))
+        self.state._log_action("blacklist.add", addr)
+        return json.dumps({"ok": True}), 200, "application/json"
 
-        if path == "/api/socks5/status":
-            return json.dumps(self.socks5.get_status()), 200, "application/json"
+    async def _handle_blacklist_remove(self, raw_path, body):
+        try:
+            data = json.loads(body or b"{}")
+        except Exception:
+            data = {}
+        addr = data.get("address", "")
+        self.state.blacklist_remove(addr)
+        self.state._log_action("blacklist.remove", addr)
+        return json.dumps({"ok": True}), 200, "application/json"
 
-        if path.startswith("/api/socks5/start"):
-            qs = _qs(raw_path)
-            port = int(qs.get("port", 17278))
-            self.state._socks5_port = port
-            self.state._save_state()
-            self.state._log_action("socks5.start", str(port))
-            await self.socks5.start(port)
-            return json.dumps(self.socks5.get_status()), 200, "application/json"
+    async def _handle_favorites_add(self, raw_path, body):
+        try:
+            data = json.loads(body or b"{}")
+        except Exception:
+            data = {}
+        addr = data.get("address", "")
+        self.state.favorite_add(addr)
+        self.state._log_action("favorites.add", addr)
+        return json.dumps({"ok": True}), 200, "application/json"
 
-        if path == "/api/socks5/stop":
-            self.state._log_action("socks5.stop")
-            await self.socks5.stop()
-            return json.dumps({"ok": True}), 200, "application/json"
+    async def _handle_favorites_remove(self, raw_path, body):
+        try:
+            data = json.loads(body or b"{}")
+        except Exception:
+            data = {}
+        addr = data.get("address", "")
+        self.state.favorite_remove(addr)
+        self.state._log_action("favorites.remove", addr)
+        return json.dumps({"ok": True}), 200, "application/json"
 
-        if path == "/api/transparent/status":
-            return json.dumps(self.transparent.get_status()), 200, "application/json"
+    async def _handle_favorites_list(self, raw_path, body):
+        favs = [r for r in self.state.ratings.values() if r.is_favorite]
+        favs.sort(key=lambda r: r.score, reverse=True)
+        return json.dumps([r.to_dict() for r in favs]), 200, "application/json"
 
-        if path.startswith("/api/transparent/start"):
-            qs = _qs(raw_path)
-            port = int(qs.get("port", 17477))
-            self.state._transparent_port = port
-            self.state._save_state()
-            self.state._log_action("transparent.start", str(port))
-            await self.transparent.start(port)
-            return json.dumps(self.transparent.get_status()), 200, "application/json"
+    # === Proxy routes ===
 
-        if path == "/api/transparent/stop":
-            self.state._log_action("transparent.stop")
-            await self.transparent.stop()
-            return json.dumps({"ok": True}), 200, "application/json"
+    async def _handle_proxy_status(self, raw_path, body):
+        return json.dumps(self.proxy.get_status()), 200, "application/json"
 
-        if path.startswith("/api/proxy/select"):
-            qs = _qs(raw_path)
-            address = qs.get("address") or None
-            self.proxy.select(address)
+    async def _handle_proxy_alive(self, raw_path, body):
+        # IP-blacklisted proxies are no longer a hard sentence: they can be
+        # selected as upstream but with a reduced score. Only operator-curated
+        # manual blacklists are excluded here.
+        ratings = [r for r in self.state.ratings.values()
+                   if (r.last_status == "ok" or r.in_grace) and not r.in_blacklist]
+        ratings.sort(key=lambda r: r.score, reverse=True)
+        ip_bl_total = len(self.state.get_ip_blacklist_sources())
+        result = []
+        for r in ratings:
+            d = r.to_pool_dict()
+            d["ip_blacklist_sources_total"] = ip_bl_total
+            result.append(d)
+        return json.dumps(result), 200, "application/json"
+
+    async def _handle_proxy_start(self, raw_path, body):
+        qs = _qs(raw_path)
+        port = int(qs.get("port", 17277))
+        self.state._log_action("proxy.start", str(port))
+        await self.proxy.start(port)
+        return json.dumps(self.proxy.get_status()), 200, "application/json"
+
+    async def _handle_proxy_stop(self, raw_path, body):
+        self.state._log_action("proxy.stop")
+        await self.proxy.stop()
+        self.state._save_state()
+        return json.dumps({"ok": True}), 200, "application/json"
+
+    async def _handle_socks5_status(self, raw_path, body):
+        return json.dumps(self.socks5.get_status()), 200, "application/json"
+
+    async def _handle_socks5_start(self, raw_path, body):
+        qs = _qs(raw_path)
+        port = int(qs.get("port", 17278))
+        self.state._socks5_port = port
+        self.state._save_state()
+        self.state._log_action("socks5.start", str(port))
+        await self.socks5.start(port)
+        return json.dumps(self.socks5.get_status()), 200, "application/json"
+
+    async def _handle_socks5_stop(self, raw_path, body):
+        self.state._log_action("socks5.stop")
+        await self.socks5.stop()
+        return json.dumps({"ok": True}), 200, "application/json"
+
+    async def _handle_transparent_status(self, raw_path, body):
+        return json.dumps(self.transparent.get_status()), 200, "application/json"
+
+    async def _handle_transparent_start(self, raw_path, body):
+        qs = _qs(raw_path)
+        port = int(qs.get("port", 17477))
+        self.state._transparent_port = port
+        self.state._save_state()
+        self.state._log_action("transparent.start", str(port))
+        await self.transparent.start(port)
+        return json.dumps(self.transparent.get_status()), 200, "application/json"
+
+    async def _handle_transparent_stop(self, raw_path, body):
+        self.state._log_action("transparent.stop")
+        await self.transparent.stop()
+        return json.dumps({"ok": True}), 200, "application/json"
+
+    async def _handle_proxy_select(self, raw_path, body):
+        qs = _qs(raw_path)
+        address = qs.get("address") or None
+        self.proxy.select(address)
+        self.state._proxy_active_addr = self.proxy.active_proxy_addr
+        self.state._proxy_direct_mode = self.proxy.direct_mode
+        self.state._save_state()
+        self.state._log_action("proxy.select", address or "none")
+        return json.dumps({"ok": True, "address": address}), 200, "application/json"
+
+    async def _handle_proxy_next(self, raw_path, body):
+        alive = [r for r in self.state.ratings.values()
+                 if (r.last_status == "ok" or r.in_grace) and not r.in_blacklist]
+        alive.sort(key=lambda r: r.score, reverse=True)
+        current = self.proxy.active_proxy_addr
+        next_proxy = None
+        for r in alive:
+            if r.address != current:
+                next_proxy = r
+                break
+        if next_proxy:
+            self.proxy.select(next_proxy.address)
             self.state._proxy_active_addr = self.proxy.active_proxy_addr
-            self.state._proxy_direct_mode = self.proxy.direct_mode
             self.state._save_state()
-            self.state._log_action("proxy.select", address or "none")
-            return json.dumps({"ok": True, "address": address}), 200, "application/json"
+            self.state._log_action("proxy.next", next_proxy.address)
+            return json.dumps({"ok": True, "address": next_proxy.address}), 200, "application/json"
+        self.state._log_action("proxy.next", "no-other")
+        return json.dumps({"ok": False, "error": "no other alive proxy"}), 200, "application/json"
 
-        if path == "/api/proxy/next":
-            alive = [r for r in self.state.ratings.values()
-                     if (r.last_status == "ok" or r.in_grace) and not r.in_blacklist]
-            alive.sort(key=lambda r: r.score, reverse=True)
-            current = self.proxy.active_proxy_addr
-            next_proxy = None
-            for r in alive:
-                if r.address != current:
-                    next_proxy = r
-                    break
-            if next_proxy:
-                self.proxy.select(next_proxy.address)
-                self.state._proxy_active_addr = self.proxy.active_proxy_addr
-                self.state._save_state()
-                self.state._log_action("proxy.next", next_proxy.address)
-                return json.dumps({"ok": True, "address": next_proxy.address}), 200, "application/json"
-            self.state._log_action("proxy.next", "no-other")
-            return json.dumps({"ok": False, "error": "no other alive proxy"}), 200, "application/json"
-
-        if path.startswith("/api/proxy/recheck"):
-            qs = _qs(raw_path)
-            address = qs.get("address", "").strip()
-            self.state._log_action("proxy.recheck", address or "no-addr")
-            if address:
-                host, port_str = address.rsplit(":", 1)
-                port = int(port_str)
-                is_socks = port in (1080, 10808, 9050, 4145)
-                http_task = asyncio.create_task(self.state._check_proxy(address))
-                ssl_task = asyncio.create_task(self.state._check_ssl(address))
-                results = await asyncio.gather(http_task, ssl_task, return_exceptions=True)
-                if isinstance(results[0], Exception):
-                    ok, country, supports_connect, mitm_suspect, egress, listen, http_latency, cc, fast_fail = False, "", False, False, {}, {}, 0.0, "", False
-                else:
-                    ok, country, supports_connect, mitm_suspect, egress, listen, http_latency, cc, fast_fail = results[0]
-                if isinstance(results[1], Exception):
-                    ssl_ok, ssl_country, ssl_cc, ssl_egress, ssl_latency, ssl_supports_connect = False, "", "", {}, 0.0, False
-                else:
-                    ssl_ok, ssl_country, ssl_cc, ssl_egress, ssl_latency, ssl_supports_connect = results[1]
-                if not ok and ssl_ok:
-                    ok = True
-                    country = ssl_country
-                    cc = ssl_cc
+    async def _handle_proxy_recheck(self, raw_path, body):
+        qs = _qs(raw_path)
+        address = qs.get("address", "").strip()
+        self.state._log_action("proxy.recheck", address or "no-addr")
+        if address:
+            host, port_str = address.rsplit(":", 1)
+            port = int(port_str)
+            is_socks = port in (1080, 10808, 9050, 4145)
+            http_task = asyncio.create_task(self.state._check_proxy(address))
+            ssl_task = asyncio.create_task(self.state._check_ssl(address))
+            results = await asyncio.gather(http_task, ssl_task, return_exceptions=True)
+            if isinstance(results[0], Exception):
+                ok, country, supports_connect, mitm_suspect, egress, listen, http_latency, cc, fast_fail = False, "", False, False, {}, {}, 0.0, "", False
+            else:
+                ok, country, supports_connect, mitm_suspect, egress, listen, http_latency, cc, fast_fail = results[0]
+            if isinstance(results[1], Exception):
+                ssl_ok, ssl_country, ssl_cc, ssl_egress, ssl_latency, ssl_supports_connect = False, "", "", {}, 0.0, False
+            else:
+                ssl_ok, ssl_country, ssl_cc, ssl_egress, ssl_latency, ssl_supports_connect = results[1]
+            if not ok and ssl_ok:
+                ok = True
+                country = ssl_country
+                cc = ssl_cc
+                egress = ssl_egress
+                http_latency = ssl_latency
+                supports_connect = ssl_supports_connect
+            elif ok and ssl_ok:
+                if not egress and ssl_egress:
                     egress = ssl_egress
-                    http_latency = ssl_latency
+                if not supports_connect and ssl_supports_connect:
                     supports_connect = ssl_supports_connect
-                elif ok and ssl_ok:
-                    if not egress and ssl_egress:
-                        egress = ssl_egress
-                    if not supports_connect and ssl_supports_connect:
-                        supports_connect = ssl_supports_connect
-                speed = 0.0
-                if ok:
-                    use_ssl = ssl_ok and not is_socks
-                    try:
-                        speed = await self.state._measure_speed(host, port, is_socks, use_ssl=use_ssl, supports_connect=supports_connect)
-                    except Exception:
-                        speed = 0.0
-                self.state._update_rating(address, ok, country, http_latency, supports_connect, mitm_suspect, egress, listen, speed, country_code=cc, ssl_supported=ssl_ok)
-                self.state._save_state()
-                self.state._save_working_file()
-                return json.dumps({"ok": ok, "address": address}), 200, "application/json"
-            return json.dumps({"ok": False, "error": "no address"}), 400, "application/json"
-
-        if path.startswith("/api/proxy/direct"):
-            qs = _qs(raw_path)
-            en = qs.get("on", "true").lower() != "false"
-            self.proxy.direct_mode = en
-            if en:
-                self.proxy.active_proxy_addr = None
-            self.state._proxy_direct_mode = en
-            self.state._proxy_active_addr = self.proxy.active_proxy_addr
-            self.proxy._record_switch("direct" if en else "proxy", None)
-            self.state._emit(f"Direct mode: {'ON' if en else 'OFF'}", "info")
-            self.state._save_state()
-            return json.dumps({"ok": True, "direct_mode": en}), 200, "application/json"
-
-        # === Channel (engine outbound proxy) ===
-        if path == "/api/channel/status" and method == "GET":
-            return json.dumps(self.state.get_channel_status()), 200, "application/json"
-
-        if path == "/api/channel/select" and method == "POST":
-            qs = _qs(raw_path)
-            route = qs.get("route", "").strip()
-            self.state.set_channel(route)
-            self.state._log_action("channel.select", route or "direct")
-            return json.dumps(self.state.get_channel_status()), 200, "application/json"
-
-        if path.startswith("/api/settings/country_filter") and method == "POST":
-            qs = _qs(raw_path)
-            code = qs.get("code", "").upper()
-            self.state.country_filter = code
-            self.state._save_state()
-            self.state._emit(f"Country filter set to: {code or 'ALL'}", "info")
-            return json.dumps({"ok": True, "country_filter": self.state.country_filter}), 200, "application/json"
-
-        # === Overview / Dashboard endpoints ===
-        if path == "/api/countries":
-            return json.dumps(self.state.get_countries()), 200, "application/json"
-
-        if path.startswith("/api/system"):
-            return json.dumps(self.state._get_system()), 200, "application/json"
-
-        if path.startswith("/api/activity"):
-            qs = _qs(raw_path)
-            limit = int(qs.get("limit", 10))
-            return json.dumps(self.state.get_activity(limit)), 200, "application/json"
-
-        if path.startswith("/api/actions"):
-            qs = _qs(raw_path)
-            limit = int(qs.get("limit", 100))
-            return json.dumps(self.state.get_actions(limit)), 200, "application/json"
-
-        if path.startswith("/api/history"):
-            qs = _qs(raw_path)
-            last = qs.get("last", "1h")
-            return json.dumps(self.state.get_history(last)), 200, "application/json"
-
-        # === Proxies ===
-        if path.startswith("/api/proxies"):
-            qs = _qs(raw_path)
-            status = qs.get("status", "")
-            page = int(qs.get("page", 1))
-            limit = int(qs.get("limit", 20))
-            mode = qs.get("mode", "")
-            all_proxies = list(self.state.ratings.values())
-            if mode == "grouped":
-                sources_map = {}
-                for s in self.state.get_proxy_sources():
-                    sources_map[s["id"]] = s.get("name", s["id"])
-                groups = {}
-                if qs.get("group_by") == "source":
-                    for r in all_proxies:
-                        src_ids = self.state._addr_sources.get(r.address, [])
-                        if not src_ids:
-                            key = "_unknown"
-                            label = "Unknown source"
-                        else:
-                            key = src_ids[0]
-                            label = sources_map.get(key, key)
-                        if key not in groups:
-                            groups[key] = {"key": key, "label": label, "total": 0, "alive": 0, "dead": 0}
-                        groups[key]["total"] += 1
-                        if (r.last_status == "ok" or r.in_grace) and not r.in_blacklist:
-                            groups[key]["alive"] += 1
-                        else:
-                            groups[key]["dead"] += 1
-                elif qs.get("group_by") == "protocol":
-                    for r in all_proxies:
-                        proto = r.protocol or "http"
-                        if proto in ("socks5", "socks4"):
-                            key = proto
-                        elif proto == "https" or r.ssl_supported:
-                            key = "https"
-                        else:
-                            key = "http"
-                        labels = {"http": "HTTP", "https": "HTTPS", "socks4": "SOCKS4", "socks5": "SOCKS5"}
-                        if key not in groups:
-                            groups[key] = {"key": key, "label": labels.get(key, key.upper()), "total": 0, "alive": 0, "dead": 0}
-                        groups[key]["total"] += 1
-                        if (r.last_status == "ok" or r.in_grace) and not r.in_blacklist:
-                            groups[key]["alive"] += 1
-                        else:
-                            groups[key]["dead"] += 1
-                else:
-                    for r in all_proxies:
-                        cc = r.country_code or country_code_from_name(r.country) or "??"
-                        if cc not in groups:
-                            groups[cc] = {"key": cc, "label": f"{country_flag(cc)} {country_name_from_code(cc)}", "total": 0, "alive": 0, "dead": 0}
-                        groups[cc]["total"] += 1
-                        if (r.last_status == "ok" or r.in_grace) and not r.in_blacklist:
-                            groups[cc]["alive"] += 1
-                        else:
-                            groups[cc]["dead"] += 1
-                result = []
-                for g in groups.values():
-                    g["alive_pct"] = round(g["alive"] / g["total"] * 100, 1) if g["total"] else 0
-                    if status == "alive" and g["alive"] == 0:
-                        continue
-                    elif status == "dead" and g["dead"] == 0:
-                        continue
-                    result.append(g)
-                result.sort(key=lambda g: g["alive"], reverse=True)
-                return json.dumps({"groups": result, "total": len(all_proxies)}), 200, "application/json"
-            if mode == "group-proxies":
-                group_key = qs.get("group_key", "")
-                group_by = qs.get("group_by", "country")
-                group_status = qs.get("status", "")
-                all_ratings = list(self.state.ratings.values())
-                sources_map = {}
-                for s in self.state.get_proxy_sources():
-                    sources_map[s["id"]] = s.get("name", s["id"])
-                if group_by == "source":
-                    filtered = [r for r in all_ratings if (
-                        (self.state._addr_sources.get(r.address, []) or ["_unknown"])[0] == group_key
-                    )]
-                elif group_by == "protocol":
-                    def _proto_key(r):
-                        proto = r.protocol or "http"
-                        if proto in ("socks5", "socks4"):
-                            return proto
-                        if proto == "https" or r.ssl_supported:
-                            return "https"
-                        return "http"
-                    filtered = [r for r in all_ratings if _proto_key(r) == group_key]
-                else:
-                    filtered = [r for r in all_ratings if (r.country_code or country_code_from_name(r.country) or "??") == group_key]
-                if group_status == "alive":
-                    filtered = [r for r in filtered if (r.last_status == "ok" or r.in_grace) and not r.in_blacklist]
-                elif group_status == "dead":
-                    filtered = [r for r in filtered if r.last_status == "failed"]
-                elif group_status == "blacklisted":
-                    filtered = [r for r in filtered if r.is_blacklisted]
-                filtered.sort(key=lambda r: r.score, reverse=True)
-                return json.dumps({"proxies": [r.to_dict() for r in filtered]}), 200, "application/json"
-            filtered_proxies = all_proxies
-            if status == "alive":
-                filtered_proxies = [r for r in filtered_proxies if (r.last_status == "ok" or r.in_grace) and not r.in_blacklist]
-            elif status == "dead":
-                filtered_proxies = [r for r in filtered_proxies if r.last_status == "failed"]
-            elif status == "blacklisted":
-                filtered_proxies = [r for r in filtered_proxies if r.is_blacklisted]
-            total = len(filtered_proxies)
-            start = (page - 1) * limit
-            end = start + limit
-            page_data = filtered_proxies[start:end]
-            proxy_list = []
-            for r in page_data:
-                d = r.to_dict()
-                d["source_ids"] = self.state._addr_sources.get(r.address, [])
-                proxy_list.append(d)
-            return json.dumps({
-                "total": total,
-                "page": page,
-                "limit": limit,
-                "proxies": proxy_list,
-            }), 200, "application/json"
-
-        if path.startswith("/api/proxy-checks/") and method == "GET":
-            addr = path[len("/api/proxy-checks/"):]
-            addr = unquote(addr)
-            qs = _qs(raw_path)
-            limit = int(qs.get("limit", 30))
-            data = self.state.get_proxy_checks(addr, limit)
-            return json.dumps(data), 200, "application/json"
-
-        if path.startswith("/api/proxy-heatmap") and method == "GET":
-            qs = _qs(raw_path)
-            hours = int(qs.get("hours", 72))
-            data = self.state.get_proxy_heatmap(hours)
-            return json.dumps(data), 200, "application/json"
-
-        if path.startswith("/api/proxy/") and method == "GET":
-            addr = path[len("/api/proxy/"):]
-            addr = unquote(addr)
-            r = self.state.ratings.get(addr)
-            if r:
-                d = r.to_dict()
-                d["source_ids"] = self.state._addr_sources.get(r.address, [])
-                total_sources = len(self.state.get_proxy_sources())
-                d["sources_total"] = total_sources
-                d["ip_blacklist_sources_total"] = len(self.state.get_ip_blacklist_sources())
-                return json.dumps(d), 200, "application/json"
-            return json.dumps({"error": "not found"}), 404, "application/json"
-
-        # === Blacklist ===
-        if path.startswith("/api/blacklist"):
-            qs = _qs(raw_path)
-            page = int(qs.get("page", 1))
-            limit = int(qs.get("limit", 20))
-            bl = self.state._blacklist_view()
-            total = len(bl)
-            start = (page - 1) * limit
-            end = start + limit
-            return json.dumps({
-                "total": total,
-                "page": page,
-                "limit": limit,
-                "blacklist": bl[start:end],
-            }), 200, "application/json"
-
-        # === Actions ===
-        if path.startswith("/api/clear_dead") and method == "POST":
-            dead_addrs = [a for a, r in self.state.ratings.items()
-                          if r.last_status == "failed" and not r.is_favorite and not r.in_grace]
-            for a in dead_addrs:
-                del self.state.ratings[a]
-            self.state._emit(f"Cleared {len(dead_addrs)} dead proxies", "warn")
+            speed = 0.0
+            if ok:
+                use_ssl = ssl_ok and not is_socks
+                try:
+                    speed = await self.state._measure_speed(host, port, is_socks, use_ssl=use_ssl, supports_connect=supports_connect)
+                except Exception:
+                    speed = 0.0
+            self.state._update_rating(address, ok, country, http_latency, supports_connect, mitm_suspect, egress, listen, speed, country_code=cc, ssl_supported=ssl_ok)
             self.state._save_state()
             self.state._save_working_file()
-            self.state._log_action("clear_dead", f"{len(dead_addrs)} proxies")
-            return json.dumps({"ok": True, "cleared": len(dead_addrs)}), 200, "application/json"
+            return json.dumps({"ok": ok, "address": address}), 200, "application/json"
+        return json.dumps({"ok": False, "error": "no address"}), 400, "application/json"
 
-        if path.startswith("/api/export") and method == "POST":
-            alive = [r for r in self.state.ratings.values()
-                     if (r.last_status == "ok" or r.in_grace) and not r.in_blacklist]
-            alive.sort(key=lambda r: r.score, reverse=True)
-            data = "\n".join(f"{r.address}  {r.country}  {r.last_latency:.3f}" for r in alive)
-            return json.dumps({"ok": True, "data": data}), 200, "application/json"
+    async def _handle_proxy_direct(self, raw_path, body):
+        qs = _qs(raw_path)
+        en = qs.get("on", "true").lower() != "false"
+        self.proxy.direct_mode = en
+        if en:
+            self.proxy.active_proxy_addr = None
+        self.state._proxy_direct_mode = en
+        self.state._proxy_active_addr = self.proxy.active_proxy_addr
+        self.proxy._record_switch("direct" if en else "proxy", None)
+        self.state._emit(f"Direct mode: {'ON' if en else 'OFF'}", "info")
+        self.state._save_state()
+        return json.dumps({"ok": True, "direct_mode": en}), 200, "application/json"
 
-        if path.startswith("/api/import") and method == "POST":
-            try:
-                data = json.loads(body or b"{}")
-                lines = data.get("proxies", [])
-                mark_favorite = bool(data.get("favorite", False))
-                added = 0
-                favorited = 0
-                for line in lines:
-                    line = line.strip() if isinstance(line, str) else str(line).strip()
-                    if not line or line.startswith("#"):
-                        continue
-                    # working.txt / export format: "address  country  latency"
-                    # — take only the first whitespace-separated token.
-                    addr = line.split()[0] if line.split() else ""
-                    if not addr or ":" not in addr:
-                        continue
-                    is_new = addr not in self.state.ratings and addr not in self.state.blacklist
-                    if is_new:
-                        self.state.ratings[addr] = ProxyRating(
-                            address=addr, first_seen=time.time(),
-                            last_check=time.time(), checks_total=1, checks_ok=1,
-                            last_status="ok")
-                        added += 1
-                    if mark_favorite and addr not in self.state.favorites:
-                        self.state.favorite_add(addr)
-                        favorited += 1
-                msg = f"Imported {added} proxies"
-                if mark_favorite:
-                    msg += f", favorited {favorited}"
-                self.state._emit(msg, "info")
-                self.state._save_state()
-                self.state._save_working_file()
-                result = {"ok": True, "added": added}
-                if mark_favorite:
-                    result["favorited"] = favorited
-                return json.dumps(result), 200, "application/json"
-            except Exception as e:
-                return json.dumps({"ok": False, "error": str(e)}), 400, "application/json"
+    async def _handle_proxy_detail(self, raw_path, body):
+        path = raw_path.split("?", 1)[0]
+        addr = path[len("/api/proxy/"):]
+        addr = unquote(addr)
+        r = self.state.ratings.get(addr)
+        if r:
+            d = r.to_dict()
+            d["source_ids"] = self.state._addr_sources.get(r.address, [])
+            total_sources = len(self.state.get_proxy_sources())
+            d["sources_total"] = total_sources
+            d["ip_blacklist_sources_total"] = len(self.state.get_ip_blacklist_sources())
+            return json.dumps(d), 200, "application/json"
+        return json.dumps({"error": "not found"}), 404, "application/json"
 
-        if path.startswith("/api/health/start") and method == "POST":
-            try:
-                if self.state._health_running:
-                    self.state._log_action("health.start", "already-running")
-                    return json.dumps({"ok": False, "error": "already_running"}), 409, "application/json"
-                self.state._log_action("health.start", "recheck-all")
-                self.state._health_task = asyncio.create_task(self.state._health_check(manual=True))
-                return json.dumps({"ok": True}), 200, "application/json"
-            except Exception as e:
-                return json.dumps({"ok": False, "error": str(e)}), 500, "application/json"
+    # === Channel (engine outbound proxy) ===
 
-        if path.startswith("/api/health/stop") and method == "POST":
-            try:
-                if not self.state._health_running:
-                    return json.dumps({"ok": False, "error": "not_running"}), 409, "application/json"
-                self.state._log_action("health.stop", "abort-recheck")
-                self.state.stop_health()
-                return json.dumps({"ok": True}), 200, "application/json"
-            except Exception as e:
-                return json.dumps({"ok": False, "error": str(e)}), 500, "application/json"
+    async def _handle_channel_status(self, raw_path, body):
+        return json.dumps(self.state.get_channel_status()), 200, "application/json"
 
-        # === Settings ===
-        if path.startswith("/api/settings") and method == "GET":
-            if not CONFIG_PATH.exists():
-                return json.dumps({"error": "config not found"}), 404, "application/json"
-            with open(CONFIG_PATH) as f:
-                cfg = yaml.safe_load(f)
-            return json.dumps(cfg or {}), 200, "application/json"
+    async def _handle_channel_select(self, raw_path, body):
+        qs = _qs(raw_path)
+        route = qs.get("route", "").strip()
+        self.state.set_channel(route)
+        self.state._log_action("channel.select", route or "direct")
+        return json.dumps(self.state.get_channel_status()), 200, "application/json"
 
-        if path.startswith("/api/settings") and method == "POST":
-            try:
-                data = json.loads(body or b"{}")
-                with open(CONFIG_PATH, "w") as f:
-                    yaml.dump(data, f, default_flow_style=False, sort_keys=False)
-                self.state._emit("Settings updated", "info")
-                return json.dumps({"ok": True}), 200, "application/json"
-            except Exception as e:
-                return json.dumps({"ok": False, "error": str(e)}), 400, "application/json"
+    async def _handle_country_filter(self, raw_path, body):
+        qs = _qs(raw_path)
+        code = qs.get("code", "").upper()
+        self.state.country_filter = code
+        self.state._save_state()
+        self.state._emit(f"Country filter set to: {code or 'ALL'}", "info")
+        return json.dumps({"ok": True, "country_filter": self.state.country_filter}), 200, "application/json"
 
-        # === Logs ===
-        if path.startswith("/api/logs"):
-            qs = _qs(raw_path)
-            limit = int(qs.get("limit", 200))
-            event_type = qs.get("type", "")
-            events = self.state.get_events(limit, event_type or None)
-            return json.dumps({"events": events}), 200, "application/json"
+    # === Overview / Dashboard endpoints ===
 
-        # === Downloads ===
-        if path.startswith("/api/downloads/count") and method == "GET":
-            counts = self.state.get_download_counts()
-            return json.dumps(counts), 200, "application/json"
+    async def _handle_countries(self, raw_path, body):
+        return json.dumps(self.state.get_countries()), 200, "application/json"
 
-        if path.startswith("/api/download/"):
-            filename = path[len("/api/download/"):]
-            filename = unquote(filename)
-            allowed = ("working.txt", "blacklist.txt", "ip_blacklist.txt", "ratings.json", "config.yaml")
-            if filename not in allowed:
-                return json.dumps({"error": "forbidden"}), 403, "application/json"
-            try:
-                data = self.state.generate_download(filename)
-            except FileNotFoundError:
-                return json.dumps({"error": "not found"}), 404, "application/json"
-            except Exception as e:
-                return json.dumps({"error": str(e)}), 500, "application/json"
-            ct = "application/octet-stream"
-            if filename.endswith(".txt"):
-                ct = "text/plain; charset=utf-8"
-            elif filename.endswith(".json"):
-                ct = "application/json"
-            elif filename.endswith(".yaml"):
-                ct = "text/yaml"
-            return data, 200, ct
+    async def _handle_system(self, raw_path, body):
+        return json.dumps(self.state._get_system()), 200, "application/json"
 
-        # === Backup / Restore ===
-        if path.startswith("/api/backup/groups") and method == "GET":
-            return json.dumps({"groups": self.state.get_backup_groups()}), 200, "application/json"
+    async def _handle_activity(self, raw_path, body):
+        qs = _qs(raw_path)
+        limit = int(qs.get("limit", 10))
+        return json.dumps(self.state.get_activity(limit)), 200, "application/json"
 
-        if path.startswith("/api/backup") and method == "POST":
-            try:
-                payload = json.loads(body or b"{}")
-                groups = payload.get("groups", [])
-                if not groups:
-                    return json.dumps({"error": "no groups selected"}), 400, "application/json"
-                data = self.state.create_backup(groups)
-                self.state._log_action("backup", f"groups: {','.join(groups)}")
-                ts = time.strftime("%Y%m%d_%H%M%S")
-                return data, 200, "application/json"
-            except Exception as e:
-                return json.dumps({"error": str(e)}), 500, "application/json"
+    async def _handle_actions(self, raw_path, body):
+        qs = _qs(raw_path)
+        limit = int(qs.get("limit", 100))
+        return json.dumps(self.state.get_actions(limit)), 200, "application/json"
 
-        if path.startswith("/api/restore") and method == "POST":
-            try:
-                payload = json.loads(body or b"{}")
-                groups = payload.get("groups", [])
-                backup_data = payload.get("data", "")
-                if not groups:
-                    return json.dumps({"error": "no groups selected"}), 400, "application/json"
-                if not backup_data:
-                    return json.dumps({"error": "no backup data"}), 400, "application/json"
-                result = self.state.restore_backup(
-                    backup_data.encode() if isinstance(backup_data, str) else backup_data,
-                    groups,
-                )
-                if result.get("ok"):
-                    self.state._log_action("restore", f"groups: {','.join(groups)}")
-                return json.dumps(result), 200 if result.get("ok") else 400, "application/json"
-            except Exception as e:
-                return json.dumps({"error": str(e)}), 500, "application/json"
+    async def _handle_history(self, raw_path, body):
+        qs = _qs(raw_path)
+        last = qs.get("last", "1h")
+        return json.dumps(self.state.get_history(last)), 200, "application/json"
 
-        # === Proxy Control / Traffic stubs (Phase 2) ===
-        if path.startswith("/api/traffic/live"):
-            return json.dumps(self.state.get_live_traffic()), 200, "application/json"
+    # === Proxies ===
 
-        if path == "/api/traffic":
-            return json.dumps({"points": self.state.get_history("24h")}), 200, "application/json"
-
-        if path.startswith("/api/requests"):
-            mem = list(self.proxy.log)[-50:]
-            try:
-                conn = self.state._stats_db()
-                rows = conn.execute("SELECT ts, client, target, status, upstream, bytes_in, bytes_out, duration FROM traffic_log ORDER BY id DESC LIMIT 50").fetchall()
-                conn.close()
-                db_reqs = [dict(r) for r in rows]
-            except Exception:
-                db_reqs = []
-            reqs = db_reqs if db_reqs else mem
-            return json.dumps({"requests": reqs}), 200, "application/json"
-
-        if path.startswith("/api/clients"):
-            clients = {}
-            try:
-                conn = self.state._stats_db()
-                rows = conn.execute("SELECT client, COUNT(*) as requests, MAX(ts) as last_seen FROM traffic_log GROUP BY client ORDER BY requests DESC LIMIT 20").fetchall()
-                conn.close()
-                for r in rows:
-                    clients[r["client"]] = {"client": r["client"], "requests": r["requests"], "last_seen": r["last_seen"]}
-            except Exception:
-                for entry in self.proxy.log:
-                    c = entry.get("client", "?")
-                    if c not in clients:
-                        clients[c] = {"client": c, "requests": 0, "last_seen": entry.get("ts", 0)}
-                    clients[c]["requests"] += 1
-                    clients[c]["last_seen"] = max(clients[c]["last_seen"], entry.get("ts", 0))
-            return json.dumps({"clients": sorted(clients.values(), key=lambda x: x["requests"], reverse=True)[:20]}), 200, "application/json"
-
-        if path.startswith("/api/domains"):
-            domains = {}
-            try:
-                conn = self.state._stats_db()
-                rows = conn.execute("SELECT target, COUNT(*) as requests FROM traffic_log WHERE client != '?' GROUP BY target ORDER BY requests DESC LIMIT 50").fetchall()
-                conn.close()
-                for r in rows:
-                    t = r["target"]
-                    try:
-                        h = urlparse(t if t.startswith("http") else f"http://{t}").hostname or t
-                    except Exception:
-                        h = t
-                    if not h:
-                        continue
-                    if h not in domains:
-                        domains[h] = {"domain": h, "requests": 0}
-                    domains[h]["requests"] += r["requests"]
-            except Exception:
-                for entry in self.proxy.log:
-                    t = entry.get("target", "")
-                    try:
-                        h = urlparse(t if t.startswith("http") else f"http://{t}").hostname or t
-                    except Exception:
-                        h = t
-                    if not h:
-                        continue
-                    if h not in domains:
-                        domains[h] = {"domain": h, "requests": 0}
-                    domains[h]["requests"] += 1
-            top = sorted(domains.values(), key=lambda x: x["requests"], reverse=True)[:10]
-            total = sum(d["requests"] for d in top) or 1
-            for d in top:
-                d["pct"] = round(d["requests"] / total * 100, 1)
-            return json.dumps({"domains": top}), 200, "application/json"
-
-        if path.startswith("/api/errors"):
-            errors = {"timeout": 0, "connect_failed": 0, "4xx": 0, "5xx": 0, "other": 0}
-            try:
-                conn = self.state._stats_db()
-                rows = conn.execute("SELECT status, COUNT(*) as cnt FROM traffic_log WHERE status != 'ok' GROUP BY status").fetchall()
-                conn.close()
-                for r in rows:
-                    st = r["status"]
-                    cnt = r["cnt"]
-                    if "timeout" in st.lower():
-                        errors["timeout"] += cnt
-                    elif "connect" in st.lower() or "fail" in st.lower():
-                        errors["connect_failed"] += cnt
-                    elif st.startswith("4"):
-                        errors["4xx"] += cnt
-                    elif st.startswith("5") or st.startswith("502") or st.startswith("503"):
-                        errors["5xx"] += cnt
+    async def _handle_proxies(self, raw_path, body):
+        qs = _qs(raw_path)
+        status = qs.get("status", "")
+        page = int(qs.get("page", 1))
+        limit = int(qs.get("limit", 20))
+        mode = qs.get("mode", "")
+        all_proxies = list(self.state.ratings.values())
+        if mode == "grouped":
+            sources_map = {}
+            for s in self.state.get_proxy_sources():
+                sources_map[s["id"]] = s.get("name", s["id"])
+            groups = {}
+            if qs.get("group_by") == "source":
+                for r in all_proxies:
+                    src_ids = self.state._addr_sources.get(r.address, [])
+                    if not src_ids:
+                        key = "_unknown"
+                        label = "Unknown source"
                     else:
-                        errors["other"] += cnt
-            except Exception:
-                for entry in self.proxy.log:
-                    st = entry.get("status", "")
-                    if "timeout" in st.lower():
-                        errors["timeout"] += 1
-                    elif "connect" in st.lower() or "fail" in st.lower():
-                        errors["connect_failed"] += 1
-                    elif st.startswith("4"):
-                        errors["4xx"] += 1
-                    elif st.startswith("5") or st.startswith("502") or st.startswith("503"):
-                        errors["5xx"] += 1
+                        key = src_ids[0]
+                        label = sources_map.get(key, key)
+                    if key not in groups:
+                        groups[key] = {"key": key, "label": label, "total": 0, "alive": 0, "dead": 0}
+                    groups[key]["total"] += 1
+                    if (r.last_status == "ok" or r.in_grace) and not r.in_blacklist:
+                        groups[key]["alive"] += 1
                     else:
-                        errors["other"] += 1
-            total = sum(errors.values()) or 1
+                        groups[key]["dead"] += 1
+            elif qs.get("group_by") == "protocol":
+                for r in all_proxies:
+                    proto = r.protocol or "http"
+                    if proto in ("socks5", "socks4"):
+                        key = proto
+                    elif proto == "https" or r.ssl_supported:
+                        key = "https"
+                    else:
+                        key = "http"
+                    labels = {"http": "HTTP", "https": "HTTPS", "socks4": "SOCKS4", "socks5": "SOCKS5"}
+                    if key not in groups:
+                        groups[key] = {"key": key, "label": labels.get(key, key.upper()), "total": 0, "alive": 0, "dead": 0}
+                    groups[key]["total"] += 1
+                    if (r.last_status == "ok" or r.in_grace) and not r.in_blacklist:
+                        groups[key]["alive"] += 1
+                    else:
+                        groups[key]["dead"] += 1
+            else:
+                for r in all_proxies:
+                    cc = r.country_code or country_code_from_name(r.country) or "??"
+                    if cc not in groups:
+                        groups[cc] = {"key": cc, "label": f"{country_flag(cc)} {country_name_from_code(cc)}", "total": 0, "alive": 0, "dead": 0}
+                    groups[cc]["total"] += 1
+                    if (r.last_status == "ok" or r.in_grace) and not r.in_blacklist:
+                        groups[cc]["alive"] += 1
+                    else:
+                        groups[cc]["dead"] += 1
             result = []
-            for k, v in errors.items():
-                if v:
-                    result.append({"type": k, "count": v, "pct": round(v / total * 100, 1)})
-            return json.dumps({"errors": result, "total": total}), 200, "application/json"
+            for g in groups.values():
+                g["alive_pct"] = round(g["alive"] / g["total"] * 100, 1) if g["total"] else 0
+                if status == "alive" and g["alive"] == 0:
+                    continue
+                elif status == "dead" and g["dead"] == 0:
+                    continue
+                result.append(g)
+            result.sort(key=lambda g: g["alive"], reverse=True)
+            return json.dumps({"groups": result, "total": len(all_proxies)}), 200, "application/json"
+        if mode == "group-proxies":
+            group_key = qs.get("group_key", "")
+            group_by = qs.get("group_by", "country")
+            group_status = qs.get("status", "")
+            all_ratings = list(self.state.ratings.values())
+            sources_map = {}
+            for s in self.state.get_proxy_sources():
+                sources_map[s["id"]] = s.get("name", s["id"])
+            if group_by == "source":
+                filtered = [r for r in all_ratings if (
+                    (self.state._addr_sources.get(r.address, []) or ["_unknown"])[0] == group_key
+                )]
+            elif group_by == "protocol":
+                def _proto_key(r):
+                    proto = r.protocol or "http"
+                    if proto in ("socks5", "socks4"):
+                        return proto
+                    if proto == "https" or r.ssl_supported:
+                        return "https"
+                    return "http"
+                filtered = [r for r in all_ratings if _proto_key(r) == group_key]
+            else:
+                filtered = [r for r in all_ratings if (r.country_code or country_code_from_name(r.country) or "??") == group_key]
+            if group_status == "alive":
+                filtered = [r for r in filtered if (r.last_status == "ok" or r.in_grace) and not r.in_blacklist]
+            elif group_status == "dead":
+                filtered = [r for r in filtered if r.last_status == "failed"]
+            elif group_status == "blacklisted":
+                filtered = [r for r in filtered if r.is_blacklisted]
+            filtered.sort(key=lambda r: r.score, reverse=True)
+            return json.dumps({"proxies": [r.to_dict() for r in filtered]}), 200, "application/json"
+        filtered_proxies = all_proxies
+        if status == "alive":
+            filtered_proxies = [r for r in filtered_proxies if (r.last_status == "ok" or r.in_grace) and not r.in_blacklist]
+        elif status == "dead":
+            filtered_proxies = [r for r in filtered_proxies if r.last_status == "failed"]
+        elif status == "blacklisted":
+            filtered_proxies = [r for r in filtered_proxies if r.is_blacklisted]
+        total = len(filtered_proxies)
+        start = (page - 1) * limit
+        end = start + limit
+        page_data = filtered_proxies[start:end]
+        proxy_list = []
+        for r in page_data:
+            d = r.to_dict()
+            d["source_ids"] = self.state._addr_sources.get(r.address, [])
+            proxy_list.append(d)
+        return json.dumps({
+            "total": total,
+            "page": page,
+            "limit": limit,
+            "proxies": proxy_list,
+        }), 200, "application/json"
 
-        if path.startswith("/api/traffic/routes"):
-            cutoff = time.time() - 86400
+    async def _handle_proxy_checks(self, raw_path, body):
+        path = raw_path.split("?", 1)[0]
+        addr = path[len("/api/proxy-checks/"):]
+        addr = unquote(addr)
+        qs = _qs(raw_path)
+        limit = int(qs.get("limit", 30))
+        data = self.state.get_proxy_checks(addr, limit)
+        return json.dumps(data), 200, "application/json"
+
+    async def _handle_proxy_heatmap(self, raw_path, body):
+        qs = _qs(raw_path)
+        hours = int(qs.get("hours", 72))
+        data = self.state.get_proxy_heatmap(hours)
+        return json.dumps(data), 200, "application/json"
+
+    async def _handle_blacklist_list(self, raw_path, body):
+        qs = _qs(raw_path)
+        page = int(qs.get("page", 1))
+        limit = int(qs.get("limit", 20))
+        bl = self.state._blacklist_view()
+        total = len(bl)
+        start = (page - 1) * limit
+        end = start + limit
+        return json.dumps({
+            "total": total,
+            "page": page,
+            "limit": limit,
+            "blacklist": bl[start:end],
+        }), 200, "application/json"
+
+    # === Actions ===
+
+    async def _handle_clear_dead(self, raw_path, body):
+        dead_addrs = [a for a, r in self.state.ratings.items()
+                      if r.last_status == "failed" and not r.is_favorite and not r.in_grace]
+        for a in dead_addrs:
+            del self.state.ratings[a]
+        self.state._emit(f"Cleared {len(dead_addrs)} dead proxies", "warn")
+        self.state._save_state()
+        self.state._save_working_file()
+        self.state._log_action("clear_dead", f"{len(dead_addrs)} proxies")
+        return json.dumps({"ok": True, "cleared": len(dead_addrs)}), 200, "application/json"
+
+    async def _handle_export(self, raw_path, body):
+        alive = [r for r in self.state.ratings.values()
+                 if (r.last_status == "ok" or r.in_grace) and not r.in_blacklist]
+        alive.sort(key=lambda r: r.score, reverse=True)
+        data = "\n".join(f"{r.address}  {r.country}  {r.last_latency:.3f}" for r in alive)
+        return json.dumps({"ok": True, "data": data}), 200, "application/json"
+
+    async def _handle_import(self, raw_path, body):
+        try:
+            data = json.loads(body or b"{}")
+            lines = data.get("proxies", [])
+            mark_favorite = bool(data.get("favorite", False))
+            added = 0
+            favorited = 0
+            for line in lines:
+                line = line.strip() if isinstance(line, str) else str(line).strip()
+                if not line or line.startswith("#"):
+                    continue
+                # working.txt / export format: "address  country  latency"
+                # — take only the first whitespace-separated token.
+                addr = line.split()[0] if line.split() else ""
+                if not addr or ":" not in addr:
+                    continue
+                is_new = addr not in self.state.ratings and addr not in self.state.blacklist
+                if is_new:
+                    self.state.ratings[addr] = ProxyRating(
+                        address=addr, first_seen=time.time(),
+                        last_check=time.time(), checks_total=1, checks_ok=1,
+                        last_status="ok")
+                    added += 1
+                if mark_favorite and addr not in self.state.favorites:
+                    self.state.favorite_add(addr)
+                    favorited += 1
+            msg = f"Imported {added} proxies"
+            if mark_favorite:
+                msg += f", favorited {favorited}"
+            self.state._emit(msg, "info")
+            self.state._save_state()
+            self.state._save_working_file()
+            result = {"ok": True, "added": added}
+            if mark_favorite:
+                result["favorited"] = favorited
+            return json.dumps(result), 200, "application/json"
+        except Exception as e:
+            return json.dumps({"ok": False, "error": str(e)}), 400, "application/json"
+
+    async def _handle_health_start(self, raw_path, body):
+        try:
+            if self.state._health_running:
+                self.state._log_action("health.start", "already-running")
+                return json.dumps({"ok": False, "error": "already_running"}), 409, "application/json"
+            self.state._log_action("health.start", "recheck-all")
+            self.state._health_task = asyncio.create_task(self.state._health_check(manual=True))
+            return json.dumps({"ok": True}), 200, "application/json"
+        except Exception as e:
+            return json.dumps({"ok": False, "error": str(e)}), 500, "application/json"
+
+    async def _handle_health_stop(self, raw_path, body):
+        try:
+            if not self.state._health_running:
+                return json.dumps({"ok": False, "error": "not_running"}), 409, "application/json"
+            self.state._log_action("health.stop", "abort-recheck")
+            self.state.stop_health()
+            return json.dumps({"ok": True}), 200, "application/json"
+        except Exception as e:
+            return json.dumps({"ok": False, "error": str(e)}), 500, "application/json"
+
+    # === Settings ===
+
+    async def _handle_settings_get(self, raw_path, body):
+        if not CONFIG_PATH.exists():
+            return json.dumps({"error": "config not found"}), 404, "application/json"
+        with open(CONFIG_PATH) as f:
+            cfg = yaml.safe_load(f)
+        return json.dumps(cfg or {}), 200, "application/json"
+
+    async def _handle_settings_post(self, raw_path, body):
+        try:
+            data = json.loads(body or b"{}")
+            with open(CONFIG_PATH, "w") as f:
+                yaml.dump(data, f, default_flow_style=False, sort_keys=False)
+            self.state._emit("Settings updated", "info")
+            return json.dumps({"ok": True}), 200, "application/json"
+        except Exception as e:
+            return json.dumps({"ok": False, "error": str(e)}), 400, "application/json"
+
+    # === Logs ===
+
+    async def _handle_logs(self, raw_path, body):
+        qs = _qs(raw_path)
+        limit = int(qs.get("limit", 200))
+        event_type = qs.get("type", "")
+        events = self.state.get_events(limit, event_type or None)
+        return json.dumps({"events": events}), 200, "application/json"
+
+    # === Downloads ===
+
+    async def _handle_downloads_count(self, raw_path, body):
+        counts = self.state.get_download_counts()
+        return json.dumps(counts), 200, "application/json"
+
+    async def _handle_download(self, raw_path, body):
+        path = raw_path.split("?", 1)[0]
+        filename = path[len("/api/download/"):]
+        filename = unquote(filename)
+        allowed = ("working.txt", "blacklist.txt", "ip_blacklist.txt", "ratings.json", "config.yaml")
+        if filename not in allowed:
+            return json.dumps({"error": "forbidden"}), 403, "application/json"
+        try:
+            data = self.state.generate_download(filename)
+        except FileNotFoundError:
+            return json.dumps({"error": "not found"}), 404, "application/json"
+        except Exception as e:
+            return json.dumps({"error": str(e)}), 500, "application/json"
+        ct = "application/octet-stream"
+        if filename.endswith(".txt"):
+            ct = "text/plain; charset=utf-8"
+        elif filename.endswith(".json"):
+            ct = "application/json"
+        elif filename.endswith(".yaml"):
+            ct = "text/yaml"
+        return data, 200, ct
+
+    # === Backup / Restore ===
+
+    async def _handle_backup_groups(self, raw_path, body):
+        return json.dumps({"groups": self.state.get_backup_groups()}), 200, "application/json"
+
+    async def _handle_backup(self, raw_path, body):
+        try:
+            payload = json.loads(body or b"{}")
+            groups = payload.get("groups", [])
+            if not groups:
+                return json.dumps({"error": "no groups selected"}), 400, "application/json"
+            data = self.state.create_backup(groups)
+            self.state._log_action("backup", f"groups: {','.join(groups)}")
+            ts = time.strftime("%Y%m%d_%H%M%S")
+            return data, 200, "application/json"
+        except Exception as e:
+            return json.dumps({"error": str(e)}), 500, "application/json"
+
+    async def _handle_restore(self, raw_path, body):
+        try:
+            payload = json.loads(body or b"{}")
+            groups = payload.get("groups", [])
+            backup_data = payload.get("data", "")
+            if not groups:
+                return json.dumps({"error": "no groups selected"}), 400, "application/json"
+            if not backup_data:
+                return json.dumps({"error": "no backup data"}), 400, "application/json"
+            result = self.state.restore_backup(
+                backup_data.encode() if isinstance(backup_data, str) else backup_data,
+                groups,
+            )
+            if result.get("ok"):
+                self.state._log_action("restore", f"groups: {','.join(groups)}")
+            return json.dumps(result), 200 if result.get("ok") else 400, "application/json"
+        except Exception as e:
+            return json.dumps({"error": str(e)}), 500, "application/json"
+
+    # === Proxy Control / Traffic stubs (Phase 2) ===
+
+    async def _handle_traffic_live(self, raw_path, body):
+        return json.dumps(self.state.get_live_traffic()), 200, "application/json"
+
+    async def _handle_traffic(self, raw_path, body):
+        return json.dumps({"points": self.state.get_history("24h")}), 200, "application/json"
+
+    async def _handle_requests(self, raw_path, body):
+        mem = list(self.proxy.log)[-50:]
+        try:
+            conn = self.state._stats_db()
+            rows = conn.execute("SELECT ts, client, target, status, upstream, bytes_in, bytes_out, duration FROM traffic_log ORDER BY id DESC LIMIT 50").fetchall()
+            conn.close()
+            db_reqs = [dict(r) for r in rows]
+        except Exception:
+            db_reqs = []
+        reqs = db_reqs if db_reqs else mem
+        return json.dumps({"requests": reqs}), 200, "application/json"
+
+    async def _handle_clients(self, raw_path, body):
+        clients = {}
+        try:
+            conn = self.state._stats_db()
+            rows = conn.execute("SELECT client, COUNT(*) as requests, MAX(ts) as last_seen FROM traffic_log GROUP BY client ORDER BY requests DESC LIMIT 20").fetchall()
+            conn.close()
+            for r in rows:
+                clients[r["client"]] = {"client": r["client"], "requests": r["requests"], "last_seen": r["last_seen"]}
+        except Exception:
+            for entry in self.proxy.log:
+                c = entry.get("client", "?")
+                if c not in clients:
+                    clients[c] = {"client": c, "requests": 0, "last_seen": entry.get("ts", 0)}
+                clients[c]["requests"] += 1
+                clients[c]["last_seen"] = max(clients[c]["last_seen"], entry.get("ts", 0))
+        return json.dumps({"clients": sorted(clients.values(), key=lambda x: x["requests"], reverse=True)[:20]}), 200, "application/json"
+
+    async def _handle_domains(self, raw_path, body):
+        domains = {}
+        try:
+            conn = self.state._stats_db()
+            rows = conn.execute("SELECT target, COUNT(*) as requests FROM traffic_log WHERE client != '?' GROUP BY target ORDER BY requests DESC LIMIT 50").fetchall()
+            conn.close()
+            for r in rows:
+                t = r["target"]
+                try:
+                    h = urlparse(t if t.startswith("http") else f"http://{t}").hostname or t
+                except Exception:
+                    h = t
+                if not h:
+                    continue
+                if h not in domains:
+                    domains[h] = {"domain": h, "requests": 0}
+                domains[h]["requests"] += r["requests"]
+        except Exception:
+            for entry in self.proxy.log:
+                t = entry.get("target", "")
+                try:
+                    h = urlparse(t if t.startswith("http") else f"http://{t}").hostname or t
+                except Exception:
+                    h = t
+                if not h:
+                    continue
+                if h not in domains:
+                    domains[h] = {"domain": h, "requests": 0}
+                domains[h]["requests"] += 1
+        top = sorted(domains.values(), key=lambda x: x["requests"], reverse=True)[:10]
+        total = sum(d["requests"] for d in top) or 1
+        for d in top:
+            d["pct"] = round(d["requests"] / total * 100, 1)
+        return json.dumps({"domains": top}), 200, "application/json"
+
+    async def _handle_errors(self, raw_path, body):
+        errors = {"timeout": 0, "connect_failed": 0, "4xx": 0, "5xx": 0, "other": 0}
+        try:
+            conn = self.state._stats_db()
+            rows = conn.execute("SELECT status, COUNT(*) as cnt FROM traffic_log WHERE status != 'ok' GROUP BY status").fetchall()
+            conn.close()
+            for r in rows:
+                st = r["status"]
+                cnt = r["cnt"]
+                if "timeout" in st.lower():
+                    errors["timeout"] += cnt
+                elif "connect" in st.lower() or "fail" in st.lower():
+                    errors["connect_failed"] += cnt
+                elif st.startswith("4"):
+                    errors["4xx"] += cnt
+                elif st.startswith("5") or st.startswith("502") or st.startswith("503"):
+                    errors["5xx"] += cnt
+                else:
+                    errors["other"] += cnt
+        except Exception:
+            for entry in self.proxy.log:
+                st = entry.get("status", "")
+                if "timeout" in st.lower():
+                    errors["timeout"] += 1
+                elif "connect" in st.lower() or "fail" in st.lower():
+                    errors["connect_failed"] += 1
+                elif st.startswith("4"):
+                    errors["4xx"] += 1
+                elif st.startswith("5") or st.startswith("502") or st.startswith("503"):
+                    errors["5xx"] += 1
+                else:
+                    errors["other"] += 1
+        total = sum(errors.values()) or 1
+        result = []
+        for k, v in errors.items():
+            if v:
+                result.append({"type": k, "count": v, "pct": round(v / total * 100, 1)})
+        return json.dumps({"errors": result, "total": total}), 200, "application/json"
+
+    async def _handle_traffic_routes(self, raw_path, body):
+        cutoff = time.time() - 86400
+        entries = []
+        try:
+            conn = self.state._stats_db()
+            rows = conn.execute(
+                "SELECT ts, upstream, bytes_in, bytes_out, status, duration "
+                "FROM traffic_log WHERE ts > ? ORDER BY id DESC",
+                (cutoff,)
+            ).fetchall()
+            conn.close()
+            entries = [dict(r) for r in rows]
+        except Exception:
             entries = []
-            try:
-                conn = self.state._stats_db()
-                rows = conn.execute(
-                    "SELECT ts, upstream, bytes_in, bytes_out, status, duration "
-                    "FROM traffic_log WHERE ts > ? ORDER BY id DESC",
-                    (cutoff,)
-                ).fetchall()
-                conn.close()
-                entries = [dict(r) for r in rows]
-            except Exception:
-                entries = []
-            if not entries:
-                entries = self._mem_traffic(cutoff)
-            result = self._aggregate_routes(entries)
-            return json.dumps({"routes": result}), 200, "application/json"
+        if not entries:
+            entries = self._mem_traffic(cutoff)
+        result = self._aggregate_routes(entries)
+        return json.dumps({"routes": result}), 200, "application/json"
 
-        if path.startswith("/api/bandwidth"):
-            cutoff = time.time() - 86400
+    async def _handle_bandwidth(self, raw_path, body):
+        cutoff = time.time() - 86400
+        upload = 0
+        download = 0
+        have_db = False
+        try:
+            conn = self.state._stats_db()
+            row = conn.execute(
+                "SELECT COALESCE(SUM(bytes_in),0) as bin, COALESCE(SUM(bytes_out),0) as bout "
+                "FROM traffic_log WHERE ts > ?",
+                (cutoff,)
+            ).fetchone()
+            conn.close()
+            upload = int(row["bin"] if row else 0)    # bytes_in  = client→upstream = upload
+            download = int(row["bout"] if row else 0)  # bytes_out = upstream→client = download
+            have_db = (upload + download) > 0
+        except Exception:
+            have_db = False
+        if not have_db:
             upload = 0
             download = 0
-            have_db = False
-            try:
-                conn = self.state._stats_db()
-                row = conn.execute(
-                    "SELECT COALESCE(SUM(bytes_in),0) as bin, COALESCE(SUM(bytes_out),0) as bout "
-                    "FROM traffic_log WHERE ts > ?",
-                    (cutoff,)
-                ).fetchone()
-                conn.close()
-                upload = int(row["bin"] if row else 0)    # bytes_in  = client→upstream = upload
-                download = int(row["bout"] if row else 0)  # bytes_out = upstream→client = download
-                have_db = (upload + download) > 0
-            except Exception:
-                have_db = False
-            if not have_db:
-                upload = 0
-                download = 0
-                for e in self._mem_traffic(cutoff):
-                    upload += int(e.get("bytes_in", 0) or 0)
-                    download += int(e.get("bytes_out", 0) or 0)
-            return json.dumps({
-                "download": download,
-                "upload": upload,
-                "total": download + upload,
-            }), 200, "application/json"
+            for e in self._mem_traffic(cutoff):
+                upload += int(e.get("bytes_in", 0) or 0)
+                download += int(e.get("bytes_out", 0) or 0)
+        return json.dumps({
+            "download": download,
+            "upload": upload,
+            "total": download + upload,
+        }), 200, "application/json"
 
-        if path.startswith("/api/traffic/summary"):
-            periods = {"day": 86400, "week": 604800, "month": 2592000}
-            result = {}
-            now = time.time()
-            conn = None
-            try:
-                conn = self.state._stats_db()
-            except Exception as e:
-                logger.error("traffic/summary: %s", e)
-            for name, secs in periods.items():
-                cutoff = now - secs
-                download = 0
-                upload = 0
-                reqs = 0
-                ok = 0
-                routes = []
-                used_db = False
-                if conn is not None:
-                    try:
-                        row = conn.execute(
-                            "SELECT COALESCE(SUM(bytes_in),0) as bin, COALESCE(SUM(bytes_out),0) as bout, "
-                            "COUNT(*) as reqs, "
-                            "COALESCE(SUM(CASE WHEN status='ok' THEN 1 ELSE 0 END),0) as ok "
-                            "FROM traffic_log WHERE ts > ?",
-                            (cutoff,)
-                        ).fetchone()
-                        download = int(row["bout"] or 0)
-                        upload = int(row["bin"] or 0)
-                        reqs = int(row["reqs"] or 0)
-                        ok = int(row["ok"] or 0)
-                        if reqs > 0:
-                            used_db = True
-                            route_rows = conn.execute(
-                                "SELECT upstream, COUNT(*) as cnt, "
-                                "COALESCE(SUM(bytes_in),0) as bin, COALESCE(SUM(bytes_out),0) as bout "
-                                "FROM traffic_log WHERE ts > ? GROUP BY upstream ORDER BY cnt DESC LIMIT 5",
-                                (cutoff,)
-                            ).fetchall()
-                            for rr in route_rows:
-                                up = rr["upstream"] or "unknown"
-                                rtype = self._route_type(up)
-                                routes.append({
-                                    "type": rtype,
-                                    "upstream": up,
-                                    "requests": int(rr["cnt"]),
-                                    "bytes": int(rr["bout"] or 0) + int(rr["bin"] or 0),
-                                })
-                    except Exception:
-                        used_db = False
-                if not used_db and name == "day":
-                    entries = self._mem_traffic(cutoff)
-                    for e in entries:
-                        upload += int(e.get("bytes_in", 0) or 0)
-                        download += int(e.get("bytes_out", 0) or 0)
-                        reqs += 1
-                        if (e.get("status") or "") == "ok":
-                            ok += 1
-                    for r in self._aggregate_routes(entries)[:5]:
-                        up = r["upstreams"][0]["upstream"] if r["upstreams"] else r["type"]
-                        routes.append({
-                            "type": r["type"],
-                            "upstream": up,
-                            "requests": r["requests"],
-                            "bytes": r["bytes_in"] + r["bytes_out"],
-                        })
-                total = download + upload
-                result[name] = {
-                    "download": download,
-                    "upload": upload,
-                    "total": total,
-                    "requests": reqs,
-                    "success": ok,
-                    "failed": reqs - ok,
-                    "success_rate": round(ok / reqs * 100, 1) if reqs else 0,
-                    "top_routes": routes,
-                }
+    async def _handle_traffic_summary(self, raw_path, body):
+        periods = {"day": 86400, "week": 604800, "month": 2592000}
+        result = {}
+        now = time.time()
+        conn = None
+        try:
+            conn = self.state._stats_db()
+        except Exception as e:
+            logger.error("traffic/summary: %s", e)
+        for name, secs in periods.items():
+            cutoff = now - secs
+            download = 0
+            upload = 0
+            reqs = 0
+            ok = 0
+            routes = []
+            used_db = False
             if conn is not None:
                 try:
-                    conn.close()
+                    row = conn.execute(
+                        "SELECT COALESCE(SUM(bytes_in),0) as bin, COALESCE(SUM(bytes_out),0) as bout, "
+                        "COUNT(*) as reqs, "
+                        "COALESCE(SUM(CASE WHEN status='ok' THEN 1 ELSE 0 END),0) as ok "
+                        "FROM traffic_log WHERE ts > ?",
+                        (cutoff,)
+                    ).fetchone()
+                    download = int(row["bout"] or 0)
+                    upload = int(row["bin"] or 0)
+                    reqs = int(row["reqs"] or 0)
+                    ok = int(row["ok"] or 0)
+                    if reqs > 0:
+                        used_db = True
+                        route_rows = conn.execute(
+                            "SELECT upstream, COUNT(*) as cnt, "
+                            "COALESCE(SUM(bytes_in),0) as bin, COALESCE(SUM(bytes_out),0) as bout "
+                            "FROM traffic_log WHERE ts > ? GROUP BY upstream ORDER BY cnt DESC LIMIT 5",
+                            (cutoff,)
+                        ).fetchall()
+                        for rr in route_rows:
+                            up = rr["upstream"] or "unknown"
+                            rtype = self._route_type(up)
+                            routes.append({
+                                "type": rtype,
+                                "upstream": up,
+                                "requests": int(rr["cnt"]),
+                                "bytes": int(rr["bout"] or 0) + int(rr["bin"] or 0),
+                            })
                 except Exception:
-                    pass
+                    used_db = False
+            if not used_db and name == "day":
+                entries = self._mem_traffic(cutoff)
+                for e in entries:
+                    upload += int(e.get("bytes_in", 0) or 0)
+                    download += int(e.get("bytes_out", 0) or 0)
+                    reqs += 1
+                    if (e.get("status") or "") == "ok":
+                        ok += 1
+                for r in self._aggregate_routes(entries)[:5]:
+                    up = r["upstreams"][0]["upstream"] if r["upstreams"] else r["type"]
+                    routes.append({
+                        "type": r["type"],
+                        "upstream": up,
+                        "requests": r["requests"],
+                        "bytes": r["bytes_in"] + r["bytes_out"],
+                    })
+            total = download + upload
+            result[name] = {
+                "download": download,
+                "upload": upload,
+                "total": total,
+                "requests": reqs,
+                "success": ok,
+                "failed": reqs - ok,
+                "success_rate": round(ok / reqs * 100, 1) if reqs else 0,
+                "top_routes": routes,
+            }
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
+        return json.dumps(result), 200, "application/json"
+
+    # === Routing API ===
+
+    async def _handle_routing_status(self, raw_path, body):
+        return json.dumps(self.state.get_routing_status()), 200, "application/json"
+
+    async def _handle_routing_enable(self, raw_path, body):
+        self.state.routing_enable()
+        return json.dumps({"ok": True}), 200, "application/json"
+
+    async def _handle_routing_disable(self, raw_path, body):
+        self.state.routing_disable()
+        return json.dumps({"ok": True}), 200, "application/json"
+
+    async def _handle_routing_default(self, raw_path, body):
+        try:
+            data = json.loads(body or b"{}")
+        except Exception:
+            data = {}
+        route = data.get("default_route", "direct")
+        self.state.routing_set_default(route)
+        return json.dumps({"ok": True, "default_route": route}), 200, "application/json"
+
+    async def _handle_routing_reorder(self, raw_path, body):
+        try:
+            data = json.loads(body or b"{}")
+        except Exception:
+            data = {}
+        order = data.get("order", [])
+        if order:
+            self.state.reorder_domain_lists(order)
+        return json.dumps({"ok": True}), 200, "application/json"
+
+    async def _handle_routing_test(self, raw_path, body):
+        try:
+            data = json.loads(body or b"{}")
+        except Exception:
+            data = {}
+        domain = data.get("domain", "").strip()
+        if not domain:
+            return json.dumps({"error": "domain is required"}), 400, "application/json"
+        result = self.state.routing_test(domain)
+        return json.dumps(result), 200, "application/json"
+
+    # === Domain Lists API ===
+
+    async def _handle_domain_lists_list(self, raw_path, body):
+        lists = self.state.get_domain_lists()
+        return json.dumps({"lists": lists}), 200, "application/json"
+
+    async def _handle_domain_list_create(self, raw_path, body):
+        try:
+            data = json.loads(body or b"{}")
+        except Exception:
+            data = {}
+        result = self.state.create_domain_list(data)
+        if result:
+            return json.dumps({"ok": True, "list": result}), 200, "application/json"
+        return json.dumps({"ok": False, "error": "id and name are required"}), 400, "application/json"
+
+    async def _handle_domain_list_get(self, raw_path, body):
+        path = raw_path.split("?", 1)[0]
+        if path.endswith("/toggle"):
+            return json.dumps({"error": "not found"}), 404, "application/json"
+        list_id = unquote(path[len("/api/domain-lists/"):])
+        result = self.state.get_domain_list(list_id)
+        if result:
             return json.dumps(result), 200, "application/json"
+        return json.dumps({"error": "not found"}), 404, "application/json"
 
-        # === Routing API ===
-        if path == "/api/routing/status":
-            return json.dumps(self.state.get_routing_status()), 200, "application/json"
-
-        if path == "/api/routing/enable" and method == "POST":
-            self.state.routing_enable()
-            return json.dumps({"ok": True}), 200, "application/json"
-
-        if path == "/api/routing/disable" and method == "POST":
-            self.state.routing_disable()
-            return json.dumps({"ok": True}), 200, "application/json"
-
-        if path == "/api/routing/default" and method == "POST":
-            try:
-                data = json.loads(body or b"{}")
-            except Exception:
-                data = {}
-            route = data.get("default_route", "direct")
-            self.state.routing_set_default(route)
-            return json.dumps({"ok": True, "default_route": route}), 200, "application/json"
-
-        if path == "/api/routing/reorder" and method == "POST":
-            try:
-                data = json.loads(body or b"{}")
-            except Exception:
-                data = {}
-            order = data.get("order", [])
-            if order:
-                self.state.reorder_domain_lists(order)
-            return json.dumps({"ok": True}), 200, "application/json"
-
-        if path == "/api/routing/test" and method == "POST":
-            try:
-                data = json.loads(body or b"{}")
-            except Exception:
-                data = {}
-            domain = data.get("domain", "").strip()
-            if not domain:
-                return json.dumps({"error": "domain is required"}), 400, "application/json"
-            result = self.state.routing_test(domain)
-            return json.dumps(result), 200, "application/json"
-
-        # === Domain Lists API ===
-        if path == "/api/domain-lists" and method == "GET":
-            lists = self.state.get_domain_lists()
-            return json.dumps({"lists": lists}), 200, "application/json"
-
-        if path == "/api/domain-lists" and method == "POST":
-            try:
-                data = json.loads(body or b"{}")
-            except Exception:
-                data = {}
-            result = self.state.create_domain_list(data)
+    async def _handle_domain_list_post(self, raw_path, body):
+        path = raw_path.split("?", 1)[0]
+        if path.endswith("/toggle"):
+            list_id = unquote(path[len("/api/domain-lists/"):-len("/toggle")])
+            result = self.state.toggle_domain_list(list_id)
             if result:
                 return json.dumps({"ok": True, "list": result}), 200, "application/json"
-            return json.dumps({"ok": False, "error": "id and name are required"}), 400, "application/json"
+            return json.dumps({"ok": False, "error": "not found"}), 404, "application/json"
+        list_id = unquote(path[len("/api/domain-lists/"):])
+        try:
+            data = json.loads(body or b"{}")
+        except Exception:
+            data = {}
+        result = self.state.update_domain_list(list_id, data)
+        if result:
+            return json.dumps({"ok": True, "list": result}), 200, "application/json"
+        return json.dumps({"ok": False, "error": "not found"}), 404, "application/json"
 
-        if path.startswith("/api/domain-lists/") and not path.endswith("/toggle"):
-            list_id = unquote(path[len("/api/domain-lists/"):])
-            if method == "GET":
-                result = self.state.get_domain_list(list_id)
-                if result:
-                    return json.dumps(result), 200, "application/json"
-                return json.dumps({"error": "not found"}), 404, "application/json"
-            elif method == "POST":
-                try:
-                    data = json.loads(body or b"{}")
-                except Exception:
-                    data = {}
-                result = self.state.update_domain_list(list_id, data)
-                if result:
-                    return json.dumps({"ok": True, "list": result}), 200, "application/json"
-                return json.dumps({"ok": False, "error": "not found"}), 404, "application/json"
-            elif method == "DELETE":
-                ok = self.state.delete_domain_list(list_id)
-                if ok:
-                    return json.dumps({"ok": True}), 200, "application/json"
-                return json.dumps({"ok": False, "error": "not found"}), 404, "application/json"
+    async def _handle_domain_list_delete(self, raw_path, body):
+        path = raw_path.split("?", 1)[0]
+        if path.endswith("/toggle"):
+            return json.dumps({"error": "not found"}), 404, "application/json"
+        list_id = unquote(path[len("/api/domain-lists/"):])
+        ok = self.state.delete_domain_list(list_id)
+        if ok:
+            return json.dumps({"ok": True}), 200, "application/json"
+        return json.dumps({"ok": False, "error": "not found"}), 404, "application/json"
 
-        if path.endswith("/toggle") and path.startswith("/api/domain-lists/"):
-            list_id = unquote(path[len("/api/domain-lists/"):-len("/toggle")])
-            if method == "POST":
-                result = self.state.toggle_domain_list(list_id)
-                if result:
-                    return json.dumps({"ok": True, "list": result}), 200, "application/json"
-                return json.dumps({"ok": False, "error": "not found"}), 404, "application/json"
+    # === Proxy Sources API ===
 
-        # === Proxy Sources API ===
-        if path == "/api/proxy-sources" and method == "GET":
+    async def _handle_proxy_sources_list(self, raw_path, body):
+        sources = self.state.get_proxy_sources()
+        return json.dumps({"sources": sources}), 200, "application/json"
+
+    async def _handle_proxy_source_create(self, raw_path, body):
+        try:
+            data = json.loads(body or b"{}")
+        except Exception:
+            data = {}
+        result = self.state.create_proxy_source(data)
+        if result:
+            return json.dumps({"ok": True, "source": result}), 200, "application/json"
+        return json.dumps({"ok": False, "error": "id, name and url are required"}), 400, "application/json"
+
+    async def _handle_proxy_sources_fetch(self, raw_path, body):
+        if getattr(self.state, '_fetching_sources', False):
+            return json.dumps({"ok": False, "error": "fetch already in progress"}), 409, "application/json"
+        self.state._fetching_sources = True
+        try:
+            seen = await self.state._download_sources()
+            self.state._update_source_stats()
             sources = self.state.get_proxy_sources()
-            return json.dumps({"sources": sources}), 200, "application/json"
+            results = []
+            for s in sources:
+                if not s.get("enabled"):
+                    continue
+                results.append({
+                    "id": s["id"],
+                    "name": s.get("name", s["id"]),
+                    "status": s.get("last_fetch_status", ""),
+                    "count": s.get("last_fetch_count", 0),
+                    "error": s.get("last_fetch_error", ""),
+                })
+            return json.dumps({"ok": True, "total_addresses": len(seen), "sources": results}), 200, "application/json"
+        except Exception as e:
+            logger.error("proxy-sources/fetch: %s", e)
+            return json.dumps({"ok": False, "error": str(e)}), 500, "application/json"
+        finally:
+            self.state._fetching_sources = False
 
-        if path == "/api/proxy-sources" and method == "POST":
-            try:
-                data = json.loads(body or b"{}")
-            except Exception:
-                data = {}
-            result = self.state.create_proxy_source(data)
-            if result:
-                return json.dumps({"ok": True, "source": result}), 200, "application/json"
-            return json.dumps({"ok": False, "error": "id, name and url are required"}), 400, "application/json"
+    async def _handle_proxy_sources_progress(self, raw_path, body):
+        return json.dumps({"progress": self.state.get_proxy_source_fetch_progress()}), 200, "application/json"
 
-        if path == "/api/proxy-sources/fetch" and method == "POST":
-            if getattr(self.state, '_fetching_sources', False):
-                return json.dumps({"ok": False, "error": "fetch already in progress"}), 409, "application/json"
-            self.state._fetching_sources = True
-            try:
-                seen = await self.state._download_sources()
-                self.state._update_source_stats()
-                sources = self.state.get_proxy_sources()
-                results = []
-                for s in sources:
-                    if not s.get("enabled"):
-                        continue
-                    results.append({
-                        "id": s["id"],
-                        "name": s.get("name", s["id"]),
-                        "status": s.get("last_fetch_status", ""),
-                        "count": s.get("last_fetch_count", 0),
-                        "error": s.get("last_fetch_error", ""),
-                    })
-                return json.dumps({"ok": True, "total_addresses": len(seen), "sources": results}), 200, "application/json"
-            except Exception as e:
-                logger.error("proxy-sources/fetch: %s", e)
-                return json.dumps({"ok": False, "error": str(e)}), 500, "application/json"
-            finally:
-                self.state._fetching_sources = False
+    async def _handle_proxy_source_get(self, raw_path, body):
+        path = raw_path.split("?", 1)[0]
+        if path.endswith("/toggle"):
+            return json.dumps({"error": "not found"}), 404, "application/json"
+        source_id = unquote(path[len("/api/proxy-sources/"):])
+        result = self.state.get_proxy_source(source_id)
+        if result:
+            return json.dumps(result), 200, "application/json"
+        return json.dumps({"error": "not found"}), 404, "application/json"
 
-        if path == "/api/proxy-sources/progress" and method == "GET":
-            return json.dumps({"progress": self.state.get_proxy_source_fetch_progress()}), 200, "application/json"
-
-        if path.startswith("/api/proxy-sources/") and not path.endswith("/toggle"):
-            source_id = unquote(path[len("/api/proxy-sources/"):])
-            if method == "GET":
-                result = self.state.get_proxy_source(source_id)
-                if result:
-                    return json.dumps(result), 200, "application/json"
-                return json.dumps({"error": "not found"}), 404, "application/json"
-            elif method == "POST":
-                try:
-                    data = json.loads(body or b"{}")
-                except Exception:
-                    data = {}
-                result = self.state.update_proxy_source(source_id, data)
-                if result:
-                    return json.dumps({"ok": True, "source": result}), 200, "application/json"
-                return json.dumps({"ok": False, "error": "not found"}), 404, "application/json"
-            elif method == "DELETE":
-                ok = self.state.delete_proxy_source(source_id)
-                if ok:
-                    return json.dumps({"ok": True}), 200, "application/json"
-                return json.dumps({"ok": False, "error": "not found"}), 404, "application/json"
-
-        if path.endswith("/toggle") and path.startswith("/api/proxy-sources/"):
+    async def _handle_proxy_source_post(self, raw_path, body):
+        path = raw_path.split("?", 1)[0]
+        if path.endswith("/toggle"):
             source_id = unquote(path[len("/api/proxy-sources/"):-len("/toggle")])
-            if method == "POST":
-                result = self.state.toggle_proxy_source(source_id)
-                if result:
-                    return json.dumps({"ok": True, "source": result}), 200, "application/json"
-                return json.dumps({"ok": False, "error": "not found"}), 404, "application/json"
-
-        # === IP Blacklist Sources API ===
-        if path == "/api/ip-blacklists" and method == "GET":
-            sources = self.state.get_ip_blacklist_sources()
-            return json.dumps({"sources": sources}), 200, "application/json"
-
-        if path == "/api/ip-blacklists" and method == "POST":
-            try:
-                data = json.loads(body or b"{}")
-            except Exception:
-                data = {}
-            result = self.state.create_ip_blacklist_source(data)
+            result = self.state.toggle_proxy_source(source_id)
             if result:
                 return json.dumps({"ok": True, "source": result}), 200, "application/json"
-            return json.dumps({"ok": False, "error": "id, name and url are required"}), 400, "application/json"
+            return json.dumps({"ok": False, "error": "not found"}), 404, "application/json"
+        source_id = unquote(path[len("/api/proxy-sources/"):])
+        try:
+            data = json.loads(body or b"{}")
+        except Exception:
+            data = {}
+        result = self.state.update_proxy_source(source_id, data)
+        if result:
+            return json.dumps({"ok": True, "source": result}), 200, "application/json"
+        return json.dumps({"ok": False, "error": "not found"}), 404, "application/json"
 
-        if path == "/api/ip-blacklists/fetch" and method == "POST":
-            if getattr(self.state, '_fetching_ip_blacklists', False):
-                return json.dumps({"ok": False, "error": "fetch already in progress"}), 409, "application/json"
-            self.state._fetching_ip_blacklists = True
-            try:
-                results = await self.state._download_ip_blacklists()
-                total = sum(results.values())
-                return json.dumps({"ok": True, "total_entries": total, "sources": [{"id": k, "count": v} for k, v in results.items()]}), 200, "application/json"
-            except Exception as e:
-                logger.error("ip-blacklists/fetch: %s", e)
-                return json.dumps({"ok": False, "error": str(e)}), 500, "application/json"
-            finally:
-                self.state._fetching_ip_blacklists = False
+    async def _handle_proxy_source_delete(self, raw_path, body):
+        path = raw_path.split("?", 1)[0]
+        if path.endswith("/toggle"):
+            return json.dumps({"error": "not found"}), 404, "application/json"
+        source_id = unquote(path[len("/api/proxy-sources/"):])
+        ok = self.state.delete_proxy_source(source_id)
+        if ok:
+            return json.dumps({"ok": True}), 200, "application/json"
+        return json.dumps({"ok": False, "error": "not found"}), 404, "application/json"
 
-        if path == "/api/ip-blacklists/progress" and method == "GET":
-            return json.dumps({"progress": self.state.get_ip_blacklist_fetch_progress()}), 200, "application/json"
+    # === IP Blacklist Sources API ===
 
-        if path.startswith("/api/ip-blacklists/") and not path.endswith("/toggle") and not path.endswith("/fetch"):
-            source_id = unquote(path[len("/api/ip-blacklists/"):])
-            if method == "GET":
-                result = self.state.get_ip_blacklist_source(source_id)
-                if result:
-                    return json.dumps(result), 200, "application/json"
-                return json.dumps({"error": "not found"}), 404, "application/json"
-            elif method == "POST":
-                try:
-                    data = json.loads(body or b"{}")
-                except Exception:
-                    data = {}
-                result = self.state.update_ip_blacklist_source(source_id, data)
-                if result:
-                    return json.dumps({"ok": True, "source": result}), 200, "application/json"
-                return json.dumps({"ok": False, "error": "not found"}), 404, "application/json"
-            elif method == "DELETE":
-                ok = self.state.delete_ip_blacklist_source(source_id)
-                if ok:
-                    return json.dumps({"ok": True}), 200, "application/json"
-                return json.dumps({"ok": False, "error": "not found"}), 404, "application/json"
+    async def _handle_ip_blacklists_list(self, raw_path, body):
+        sources = self.state.get_ip_blacklist_sources()
+        return json.dumps({"sources": sources}), 200, "application/json"
 
-        if path.endswith("/toggle") and path.startswith("/api/ip-blacklists/"):
+    async def _handle_ip_blacklist_create(self, raw_path, body):
+        try:
+            data = json.loads(body or b"{}")
+        except Exception:
+            data = {}
+        result = self.state.create_ip_blacklist_source(data)
+        if result:
+            return json.dumps({"ok": True, "source": result}), 200, "application/json"
+        return json.dumps({"ok": False, "error": "id, name and url are required"}), 400, "application/json"
+
+    async def _handle_ip_blacklists_fetch(self, raw_path, body):
+        if getattr(self.state, '_fetching_ip_blacklists', False):
+            return json.dumps({"ok": False, "error": "fetch already in progress"}), 409, "application/json"
+        self.state._fetching_ip_blacklists = True
+        try:
+            results = await self.state._download_ip_blacklists()
+            total = sum(results.values())
+            return json.dumps({"ok": True, "total_entries": total, "sources": [{"id": k, "count": v} for k, v in results.items()]}), 200, "application/json"
+        except Exception as e:
+            logger.error("ip-blacklists/fetch: %s", e)
+            return json.dumps({"ok": False, "error": str(e)}), 500, "application/json"
+        finally:
+            self.state._fetching_ip_blacklists = False
+
+    async def _handle_ip_blacklists_progress(self, raw_path, body):
+        return json.dumps({"progress": self.state.get_ip_blacklist_fetch_progress()}), 200, "application/json"
+
+    async def _handle_ip_blacklist_get(self, raw_path, body):
+        path = raw_path.split("?", 1)[0]
+        if path.endswith("/toggle") or path.endswith("/fetch"):
+            return json.dumps({"error": "not found"}), 404, "application/json"
+        source_id = unquote(path[len("/api/ip-blacklists/"):])
+        result = self.state.get_ip_blacklist_source(source_id)
+        if result:
+            return json.dumps(result), 200, "application/json"
+        return json.dumps({"error": "not found"}), 404, "application/json"
+
+    async def _handle_ip_blacklist_post(self, raw_path, body):
+        path = raw_path.split("?", 1)[0]
+        if path.endswith("/toggle"):
             source_id = unquote(path[len("/api/ip-blacklists/"):-len("/toggle")])
-            if method == "POST":
-                result = self.state.toggle_ip_blacklist_source(source_id)
-                if result:
-                    return json.dumps({"ok": True, "source": result}), 200, "application/json"
-                return json.dumps({"ok": False, "error": "not found"}), 404, "application/json"
-
-        if path == "/api/ip-blacklist/entries" and method == "GET":
-            qs = _qs(raw_path)
-            page = int(qs.get("page", 1))
-            limit = int(qs.get("limit", 50))
-            entries = sorted(self.state.ip_blacklist_entries.items())
-            total = len(entries)
-            start = (page - 1) * limit
-            end = start + limit
-            page_entries = []
-            for entry, metas in entries[start:end]:
-                for meta in metas:
-                    page_entries.append({
-                        "entry": entry,
-                        "source_id": meta.get("source_id"),
-                        "source_name": meta.get("source_name"),
-                        "reason": meta.get("reason", ""),
-                    })
-            return json.dumps({"total": total, "page": page, "limit": limit, "entries": page_entries}), 200, "application/json"
-
-        if path == "/api/ip-blacklist/matches" and method == "GET":
-            matches = self.state.get_ip_blacklist_matches()
-            return json.dumps({"matches": matches, "total": len(matches)}), 200, "application/json"
-
-        # === Country Blocklists API ===
-        if path == "/api/blocklists" and method == "GET":
-            sources = self.state.get_blocklist_sources()
-            return json.dumps({"sources": sources}), 200, "application/json"
-
-        if path == "/api/blocklists" and method == "POST":
-            try:
-                data = json.loads(body or b"{}")
-            except Exception:
-                data = {}
-            result = self.state.create_blocklist_source(data)
+            result = self.state.toggle_ip_blacklist_source(source_id)
             if result:
                 return json.dumps({"ok": True, "source": result}), 200, "application/json"
-            return json.dumps({"ok": False, "error": "id, name and url are required"}), 400, "application/json"
+            return json.dumps({"ok": False, "error": "not found"}), 404, "application/json"
+        if path.endswith("/fetch"):
+            return json.dumps({"error": "not found"}), 404, "application/json"
+        source_id = unquote(path[len("/api/ip-blacklists/"):])
+        try:
+            data = json.loads(body or b"{}")
+        except Exception:
+            data = {}
+        result = self.state.update_ip_blacklist_source(source_id, data)
+        if result:
+            return json.dumps({"ok": True, "source": result}), 200, "application/json"
+        return json.dumps({"ok": False, "error": "not found"}), 404, "application/json"
 
-        if path == "/api/blocklists/fetch" and method == "POST":
-            if getattr(self.state, '_fetching_blocklists', False):
-                return json.dumps({"ok": False, "error": "fetch already in progress"}), 409, "application/json"
-            try:
-                results = await self.state._download_blocklists()
-                total = sum(results.values())
-                return json.dumps({"ok": True, "total_entries": total, "sources": [{"id": k, "count": v} for k, v in results.items()]}), 200, "application/json"
-            except Exception as e:
-                logger.error("blocklists/fetch: %s", e)
-                return json.dumps({"ok": False, "error": str(e)}), 500, "application/json"
+    async def _handle_ip_blacklist_delete(self, raw_path, body):
+        path = raw_path.split("?", 1)[0]
+        if path.endswith("/toggle") or path.endswith("/fetch"):
+            return json.dumps({"error": "not found"}), 404, "application/json"
+        source_id = unquote(path[len("/api/ip-blacklists/"):])
+        ok = self.state.delete_ip_blacklist_source(source_id)
+        if ok:
+            return json.dumps({"ok": True}), 200, "application/json"
+        return json.dumps({"ok": False, "error": "not found"}), 404, "application/json"
 
-        if path == "/api/blocklists/progress" and method == "GET":
-            return json.dumps({"progress": self.state.get_blocklist_fetch_progress()}), 200, "application/json"
+    async def _handle_ip_blacklist_entries(self, raw_path, body):
+        qs = _qs(raw_path)
+        page = int(qs.get("page", 1))
+        limit = int(qs.get("limit", 50))
+        entries = sorted(self.state.ip_blacklist_entries.items())
+        total = len(entries)
+        start = (page - 1) * limit
+        end = start + limit
+        page_entries = []
+        for entry, metas in entries[start:end]:
+            for meta in metas:
+                page_entries.append({
+                    "entry": entry,
+                    "source_id": meta.get("source_id"),
+                    "source_name": meta.get("source_name"),
+                    "reason": meta.get("reason", ""),
+                })
+        return json.dumps({"total": total, "page": page, "limit": limit, "entries": page_entries}), 200, "application/json"
 
-        if path.startswith("/api/blocklists/") and not path.endswith("/toggle") and not path.endswith("/fetch"):
-            source_id = unquote(path[len("/api/blocklists/"):])
-            if method == "GET":
-                result = self.state.get_blocklist_source(source_id)
-                if result:
-                    return json.dumps(result), 200, "application/json"
-                return json.dumps({"error": "not found"}), 404, "application/json"
-            elif method == "POST":
-                try:
-                    data = json.loads(body or b"{}")
-                except Exception:
-                    data = {}
-                result = self.state.update_blocklist_source(source_id, data)
-                if result:
-                    return json.dumps({"ok": True, "source": result}), 200, "application/json"
-                return json.dumps({"ok": False, "error": "not found"}), 404, "application/json"
-            elif method == "DELETE":
-                ok = self.state.delete_blocklist_source(source_id)
-                if ok:
-                    return json.dumps({"ok": True}), 200, "application/json"
-                return json.dumps({"ok": False, "error": "not found"}), 404, "application/json"
+    async def _handle_ip_blacklist_matches(self, raw_path, body):
+        matches = self.state.get_ip_blacklist_matches()
+        return json.dumps({"matches": matches, "total": len(matches)}), 200, "application/json"
 
-        if path.endswith("/toggle") and path.startswith("/api/blocklists/"):
+    # === Country Blocklists API ===
+
+    async def _handle_blocklists_list(self, raw_path, body):
+        sources = self.state.get_blocklist_sources()
+        return json.dumps({"sources": sources}), 200, "application/json"
+
+    async def _handle_blocklist_create(self, raw_path, body):
+        try:
+            data = json.loads(body or b"{}")
+        except Exception:
+            data = {}
+        result = self.state.create_blocklist_source(data)
+        if result:
+            return json.dumps({"ok": True, "source": result}), 200, "application/json"
+        return json.dumps({"ok": False, "error": "id, name and url are required"}), 400, "application/json"
+
+    async def _handle_blocklists_fetch(self, raw_path, body):
+        if getattr(self.state, '_fetching_blocklists', False):
+            return json.dumps({"ok": False, "error": "fetch already in progress"}), 409, "application/json"
+        try:
+            results = await self.state._download_blocklists()
+            total = sum(results.values())
+            return json.dumps({"ok": True, "total_entries": total, "sources": [{"id": k, "count": v} for k, v in results.items()]}), 200, "application/json"
+        except Exception as e:
+            logger.error("blocklists/fetch: %s", e)
+            return json.dumps({"ok": False, "error": str(e)}), 500, "application/json"
+
+    async def _handle_blocklists_progress(self, raw_path, body):
+        return json.dumps({"progress": self.state.get_blocklist_fetch_progress()}), 200, "application/json"
+
+    async def _handle_blocklist_get(self, raw_path, body):
+        path = raw_path.split("?", 1)[0]
+        if path.endswith("/toggle") or path.endswith("/fetch"):
+            return json.dumps({"error": "not found"}), 404, "application/json"
+        source_id = unquote(path[len("/api/blocklists/"):])
+        result = self.state.get_blocklist_source(source_id)
+        if result:
+            return json.dumps(result), 200, "application/json"
+        return json.dumps({"error": "not found"}), 404, "application/json"
+
+    async def _handle_blocklist_post(self, raw_path, body):
+        path = raw_path.split("?", 1)[0]
+        if path.endswith("/toggle"):
             source_id = unquote(path[len("/api/blocklists/"):-len("/toggle")])
-            if method == "POST":
-                result = self.state.toggle_blocklist_source(source_id)
-                if result:
-                    return json.dumps({"ok": True, "source": result}), 200, "application/json"
-                return json.dumps({"ok": False, "error": "not found"}), 404, "application/json"
+            result = self.state.toggle_blocklist_source(source_id)
+            if result:
+                return json.dumps({"ok": True, "source": result}), 200, "application/json"
+            return json.dumps({"ok": False, "error": "not found"}), 404, "application/json"
+        if path.endswith("/fetch"):
+            return json.dumps({"error": "not found"}), 404, "application/json"
+        source_id = unquote(path[len("/api/blocklists/"):])
+        try:
+            data = json.loads(body or b"{}")
+        except Exception:
+            data = {}
+        result = self.state.update_blocklist_source(source_id, data)
+        if result:
+            return json.dumps({"ok": True, "source": result}), 200, "application/json"
+        return json.dumps({"ok": False, "error": "not found"}), 404, "application/json"
 
-        # === Custom Proxies API ===
-        if path == "/api/custom-proxies" and method == "GET":
-            proxies = self.state.get_custom_proxies()
-            return json.dumps({"proxies": proxies}), 200, "application/json"
+    async def _handle_blocklist_delete(self, raw_path, body):
+        path = raw_path.split("?", 1)[0]
+        if path.endswith("/toggle") or path.endswith("/fetch"):
+            return json.dumps({"error": "not found"}), 404, "application/json"
+        source_id = unquote(path[len("/api/blocklists/"):])
+        ok = self.state.delete_blocklist_source(source_id)
+        if ok:
+            return json.dumps({"ok": True}), 200, "application/json"
+        return json.dumps({"ok": False, "error": "not found"}), 404, "application/json"
 
-        if path == "/api/custom-proxies" and method == "POST":
-            try:
-                data = json.loads(body or b"{}")
-            except Exception:
-                data = {}
-            result = self.state.create_custom_proxy(data)
+    # === Custom Proxies API ===
+
+    async def _handle_custom_proxies_list(self, raw_path, body):
+        proxies = self.state.get_custom_proxies()
+        return json.dumps({"proxies": proxies}), 200, "application/json"
+
+    async def _handle_custom_proxy_create(self, raw_path, body):
+        try:
+            data = json.loads(body or b"{}")
+        except Exception:
+            data = {}
+        result = self.state.create_custom_proxy(data)
+        if result:
+            return json.dumps({"ok": True, "proxy": result}), 200, "application/json"
+        return json.dumps({"ok": False, "error": "id, name, host and port are required"}), 400, "application/json"
+
+    async def _handle_custom_proxy_test_direct(self, raw_path, body):
+        try:
+            data = json.loads(body or b"{}")
+        except Exception:
+            data = {}
+        result = await self.state.test_proxy_direct(data)
+        return json.dumps(result), 200, "application/json"
+
+    async def _handle_custom_proxy_get(self, raw_path, body):
+        path = raw_path.split("?", 1)[0]
+        if path.endswith("/toggle") or path.endswith("/test") or path == "/api/custom-proxies/test-direct":
+            return json.dumps({"error": "not found"}), 404, "application/json"
+        proxy_id = unquote(path[len("/api/custom-proxies/"):])
+        result = self.state.get_custom_proxy(proxy_id)
+        if result:
+            return json.dumps(result), 200, "application/json"
+        return json.dumps({"error": "not found"}), 404, "application/json"
+
+    async def _handle_custom_proxy_post(self, raw_path, body):
+        path = raw_path.split("?", 1)[0]
+        if path.endswith("/toggle"):
+            proxy_id = unquote(path[len("/api/custom-proxies/"):-len("/toggle")])
+            result = self.state.toggle_custom_proxy(proxy_id)
             if result:
                 return json.dumps({"ok": True, "proxy": result}), 200, "application/json"
-            return json.dumps({"ok": False, "error": "id, name, host and port are required"}), 400, "application/json"
-
-        if path == "/api/custom-proxies/test-direct" and method == "POST":
-            try:
-                data = json.loads(body or b"{}")
-            except Exception:
-                data = {}
-            result = await self.state.test_proxy_direct(data)
-            return json.dumps(result), 200, "application/json"
-
-        if path.startswith("/api/custom-proxies/") and not path.endswith("/toggle") and not path.endswith("/test") and path != "/api/custom-proxies/test-direct":
-            proxy_id = unquote(path[len("/api/custom-proxies/"):])
-            if method == "GET":
-                result = self.state.get_custom_proxy(proxy_id)
-                if result:
-                    return json.dumps(result), 200, "application/json"
-                return json.dumps({"error": "not found"}), 404, "application/json"
-            elif method == "POST":
-                try:
-                    data = json.loads(body or b"{}")
-                except Exception:
-                    data = {}
-                result = self.state.update_custom_proxy(proxy_id, data)
-                if result:
-                    return json.dumps({"ok": True, "proxy": result}), 200, "application/json"
-                return json.dumps({"ok": False, "error": "not found"}), 404, "application/json"
-            elif method == "DELETE":
-                ok = self.state.delete_custom_proxy(proxy_id)
-                if ok:
-                    return json.dumps({"ok": True}), 200, "application/json"
-                return json.dumps({"ok": False, "error": "not found"}), 404, "application/json"
-
-        if path.endswith("/toggle") and path.startswith("/api/custom-proxies/"):
-            proxy_id = unquote(path[len("/api/custom-proxies/"):-len("/toggle")])
-            if method == "POST":
-                result = self.state.toggle_custom_proxy(proxy_id)
-                if result:
-                    return json.dumps({"ok": True, "proxy": result}), 200, "application/json"
-                return json.dumps({"ok": False, "error": "not found"}), 404, "application/json"
-
-        if path.endswith("/test") and path.startswith("/api/custom-proxies/"):
+            return json.dumps({"ok": False, "error": "not found"}), 404, "application/json"
+        if path.endswith("/test"):
             proxy_id = unquote(path[len("/api/custom-proxies/"):-len("/test")])
-            if method == "POST":
-                result = await self.state.test_custom_proxy(proxy_id)
-                return json.dumps(result), 200, "application/json"
+            result = await self.state.test_custom_proxy(proxy_id)
+            return json.dumps(result), 200, "application/json"
+        proxy_id = unquote(path[len("/api/custom-proxies/"):])
+        try:
+            data = json.loads(body or b"{}")
+        except Exception:
+            data = {}
+        result = self.state.update_custom_proxy(proxy_id, data)
+        if result:
+            return json.dumps({"ok": True, "proxy": result}), 200, "application/json"
+        return json.dumps({"ok": False, "error": "not found"}), 404, "application/json"
 
-        # === Scheduler ===
-        if path == "/api/schedules" and method == "GET":
-            sched = getattr(self.state, "scheduler", None)
-            if sched is None:
-                return json.dumps({"schedules": [], "status": {"running": False, "paused": False, "running_tasks": [], "queued": []}}), 200, "application/json"
-            return json.dumps({"schedules": sched.list_schedules(), "status": sched.get_status()}), 200, "application/json"
+    async def _handle_custom_proxy_delete(self, raw_path, body):
+        path = raw_path.split("?", 1)[0]
+        if path.endswith("/toggle") or path.endswith("/test") or path == "/api/custom-proxies/test-direct":
+            return json.dumps({"error": "not found"}), 404, "application/json"
+        proxy_id = unquote(path[len("/api/custom-proxies/"):])
+        ok = self.state.delete_custom_proxy(proxy_id)
+        if ok:
+            return json.dumps({"ok": True}), 200, "application/json"
+        return json.dumps({"ok": False, "error": "not found"}), 404, "application/json"
 
-        if path == "/api/schedules" and method == "POST":
-            try:
-                data = json.loads(body or b"{}")
-            except Exception:
-                data = {}
-            sched = getattr(self.state, "scheduler", None)
-            if sched is None:
-                return json.dumps({"ok": False, "error": "scheduler not initialized"}), 500, "application/json"
-            try:
-                result = await sched.add_schedule(
-                    sid=data.get("id", ""),
-                    name=data.get("name", ""),
-                    task_type=data.get("task_type", ""),
-                    interval_sec=int(data.get("interval_sec", 3600)),
-                    config=data.get("config", {}),
-                    enabled=data.get("enabled", True),
-                )
-                self.state._log_action("schedule.add", data.get("id", ""))
-                return json.dumps({"ok": True, "schedule": result}), 200, "application/json"
-            except ValueError as e:
-                return json.dumps({"ok": False, "error": str(e)}), 400, "application/json"
+    # === Scheduler ===
 
-        if path.startswith("/api/schedules/status") and method == "GET":
-            sched = getattr(self.state, "scheduler", None)
-            if sched is None:
-                return json.dumps({"running": False, "paused": False, "running_tasks": [], "queued": []}), 200, "application/json"
-            return json.dumps(sched.get_status()), 200, "application/json"
+    async def _handle_schedules_list(self, raw_path, body):
+        sched = getattr(self.state, "scheduler", None)
+        if sched is None:
+            return json.dumps({"schedules": [], "status": {"running": False, "paused": False, "running_tasks": [], "queued": []}}), 200, "application/json"
+        return json.dumps({"schedules": sched.list_schedules(), "status": sched.get_status()}), 200, "application/json"
 
-        if path.startswith("/api/schedules/log") and method == "GET":
-            qs = _qs(raw_path)
-            limit = int(qs.get("limit", "50"))
-            sched = getattr(self.state, "scheduler", None)
-            if sched is None:
-                return json.dumps({"entries": []}), 200, "application/json"
-            return json.dumps({"entries": sched.get_log(limit)}), 200, "application/json"
+    async def _handle_schedule_create(self, raw_path, body):
+        try:
+            data = json.loads(body or b"{}")
+        except Exception:
+            data = {}
+        sched = getattr(self.state, "scheduler", None)
+        if sched is None:
+            return json.dumps({"ok": False, "error": "scheduler not initialized"}), 500, "application/json"
+        try:
+            result = await sched.add_schedule(
+                sid=data.get("id", ""),
+                name=data.get("name", ""),
+                task_type=data.get("task_type", ""),
+                interval_sec=int(data.get("interval_sec", 3600)),
+                config=data.get("config", {}),
+                enabled=data.get("enabled", True),
+            )
+            self.state._log_action("schedule.add", data.get("id", ""))
+            return json.dumps({"ok": True, "schedule": result}), 200, "application/json"
+        except ValueError as e:
+            return json.dumps({"ok": False, "error": str(e)}), 400, "application/json"
 
-        if path == "/api/schedules/pause" and method == "POST":
-            sched = getattr(self.state, "scheduler", None)
-            if sched is None:
-                return json.dumps({"ok": False, "error": "scheduler not initialized"}), 500, "application/json"
-            sched.pause_all()
-            self.state._log_action("schedule.pause_all")
-            return json.dumps({"ok": True, "paused": True}), 200, "application/json"
+    async def _handle_schedules_status(self, raw_path, body):
+        sched = getattr(self.state, "scheduler", None)
+        if sched is None:
+            return json.dumps({"running": False, "paused": False, "running_tasks": [], "queued": []}), 200, "application/json"
+        return json.dumps(sched.get_status()), 200, "application/json"
 
-        if path == "/api/schedules/resume" and method == "POST":
-            sched = getattr(self.state, "scheduler", None)
-            if sched is None:
-                return json.dumps({"ok": False, "error": "scheduler not initialized"}), 500, "application/json"
-            sched.resume_all()
-            self.state._log_action("schedule.resume_all")
-            return json.dumps({"ok": True, "paused": False}), 200, "application/json"
+    async def _handle_schedules_log(self, raw_path, body):
+        qs = _qs(raw_path)
+        limit = int(qs.get("limit", "50"))
+        sched = getattr(self.state, "scheduler", None)
+        if sched is None:
+            return json.dumps({"entries": []}), 200, "application/json"
+        return json.dumps({"entries": sched.get_log(limit)}), 200, "application/json"
 
-        if path == "/api/schedules/restore-defaults" and method == "POST":
-            sched = getattr(self.state, "scheduler", None)
-            if sched is None:
-                return json.dumps({"ok": False, "error": "scheduler not initialized"}), 500, "application/json"
-            added = await sched.restore_defaults()
-            self.state._log_action("schedule.restore_defaults", ", ".join(added) or "none")
-            return json.dumps({"ok": True, "added": added, "schedules": sched.list_schedules()}), 200, "application/json"
+    async def _handle_schedules_pause(self, raw_path, body):
+        sched = getattr(self.state, "scheduler", None)
+        if sched is None:
+            return json.dumps({"ok": False, "error": "scheduler not initialized"}), 500, "application/json"
+        sched.pause_all()
+        self.state._log_action("schedule.pause_all")
+        return json.dumps({"ok": True, "paused": True}), 200, "application/json"
 
-        if path.startswith("/api/schedules/") and path.endswith("/toggle") and method == "POST":
+    async def _handle_schedules_resume(self, raw_path, body):
+        sched = getattr(self.state, "scheduler", None)
+        if sched is None:
+            return json.dumps({"ok": False, "error": "scheduler not initialized"}), 500, "application/json"
+        sched.resume_all()
+        self.state._log_action("schedule.resume_all")
+        return json.dumps({"ok": True, "paused": False}), 200, "application/json"
+
+    async def _handle_schedules_restore_defaults(self, raw_path, body):
+        sched = getattr(self.state, "scheduler", None)
+        if sched is None:
+            return json.dumps({"ok": False, "error": "scheduler not initialized"}), 500, "application/json"
+        added = await sched.restore_defaults()
+        self.state._log_action("schedule.restore_defaults", ", ".join(added) or "none")
+        return json.dumps({"ok": True, "added": added, "schedules": sched.list_schedules()}), 200, "application/json"
+
+    async def _handle_schedule_post_subpath(self, raw_path, body):
+        path = raw_path.split("?", 1)[0]
+        if path.endswith("/toggle"):
             sid = path[len("/api/schedules/"):-len("/toggle")]
             sched = getattr(self.state, "scheduler", None)
             if sched is None:
@@ -1906,8 +2128,7 @@ class HuntServer:
                 return json.dumps({"ok": False, "error": "not found"}), 404, "application/json"
             self.state._log_action("schedule.toggle", sid)
             return json.dumps({"ok": True, "enabled": result["enabled"]}), 200, "application/json"
-
-        if path.startswith("/api/schedules/") and path.endswith("/run") and method == "POST":
+        if path.endswith("/run"):
             sid = path[len("/api/schedules/"):-len("/run")]
             sched = getattr(self.state, "scheduler", None)
             if sched is None:
@@ -1917,8 +2138,7 @@ class HuntServer:
                 return json.dumps({"ok": False, "error": "not found"}), 404, "application/json"
             self.state._log_action("schedule.run_now", sid)
             return json.dumps({"ok": True}), 200, "application/json"
-
-        if path.startswith("/api/schedules/") and path.endswith("/stop") and method == "POST":
+        if path.endswith("/stop"):
             sid = path[len("/api/schedules/"):-len("/stop")]
             sched = getattr(self.state, "scheduler", None)
             if sched is None:
@@ -1928,55 +2148,53 @@ class HuntServer:
                 return json.dumps({"ok": False, "error": "not running"}), 404, "application/json"
             self.state._log_action("schedule.stop", sid)
             return json.dumps({"ok": True}), 200, "application/json"
+        sid = path[len("/api/schedules/"):]
+        try:
+            data = json.loads(body or b"{}")
+        except Exception:
+            data = {}
+        sched = getattr(self.state, "scheduler", None)
+        if sched is None:
+            return json.dumps({"ok": False, "error": "scheduler not initialized"}), 500, "application/json"
+        try:
+            result = await sched.update_schedule(sid, **data)
+            if result is None:
+                return json.dumps({"ok": False, "error": "not found"}), 404, "application/json"
+            self.state._log_action("schedule.update", sid)
+            return json.dumps({"ok": True, "schedule": result}), 200, "application/json"
+        except ValueError as e:
+            return json.dumps({"ok": False, "error": str(e)}), 400, "application/json"
 
-        if path.startswith("/api/schedules/") and method == "POST":
-            sid = path[len("/api/schedules/"):]
-            try:
-                data = json.loads(body or b"{}")
-            except Exception:
-                data = {}
-            sched = getattr(self.state, "scheduler", None)
-            if sched is None:
-                return json.dumps({"ok": False, "error": "scheduler not initialized"}), 500, "application/json"
-            try:
-                result = await sched.update_schedule(sid, **data)
-                if result is None:
-                    return json.dumps({"ok": False, "error": "not found"}), 404, "application/json"
-                self.state._log_action("schedule.update", sid)
-                return json.dumps({"ok": True, "schedule": result}), 200, "application/json"
-            except ValueError as e:
-                return json.dumps({"ok": False, "error": str(e)}), 400, "application/json"
+    async def _handle_schedule_delete(self, raw_path, body):
+        path = raw_path.split("?", 1)[0]
+        sid = path[len("/api/schedules/"):]
+        sched = getattr(self.state, "scheduler", None)
+        if sched is None:
+            return json.dumps({"ok": False, "error": "scheduler not initialized"}), 500, "application/json"
+        ok = await sched.delete_schedule(sid)
+        if ok:
+            self.state._log_action("schedule.delete", sid)
+        return json.dumps({"ok": ok}), 200, "application/json"
 
-        if path.startswith("/api/schedules/") and method == "DELETE":
-            sid = path[len("/api/schedules/"):]
-            sched = getattr(self.state, "scheduler", None)
-            if sched is None:
-                return json.dumps({"ok": False, "error": "scheduler not initialized"}), 500, "application/json"
-            ok = await sched.delete_schedule(sid)
-            if ok:
-                self.state._log_action("schedule.delete", sid)
-            return json.dumps({"ok": ok}), 200, "application/json"
+    # === Canary / Internet Connectivity ===
 
-        # === Canary / Internet Connectivity ===
-        if path == "/api/canary/status" and method == "GET":
-            result = self.state.get_canary_status()
-            asyncio.ensure_future(self.state._check_canary())
-            return json.dumps(result), 200, "application/json"
+    async def _handle_canary_status(self, raw_path, body):
+        result = self.state.get_canary_status()
+        asyncio.ensure_future(self.state._check_canary())
+        return json.dumps(result), 200, "application/json"
 
-        if path.startswith("/api/canary/history") and method == "GET":
-            qs = _qs(raw_path)
-            hours = int(qs.get("hours", "24"))
-            result = self.state.get_canary_history(hours)
-            return json.dumps(result), 200, "application/json"
+    async def _handle_canary_history(self, raw_path, body):
+        qs = _qs(raw_path)
+        hours = int(qs.get("hours", "24"))
+        result = self.state.get_canary_history(hours)
+        return json.dumps(result), 200, "application/json"
 
-        if path == "/api/canary/hosts" and method == "POST":
-            try:
-                data = json.loads(body or b"{}")
-            except Exception:
-                data = {}
-            hosts = data.get("canary_hosts", [])
-            if hosts:
-                self.state.set_canary_hosts(hosts)
-            return json.dumps({"ok": True, "canary_hosts": self.state.canary_hosts}), 200, "application/json"
-
-        return json.dumps({"error": "not found"}), 404, "application/json"
+    async def _handle_canary_hosts(self, raw_path, body):
+        try:
+            data = json.loads(body or b"{}")
+        except Exception:
+            data = {}
+        hosts = data.get("canary_hosts", [])
+        if hosts:
+            self.state.set_canary_hosts(hosts)
+        return json.dumps({"ok": True, "canary_hosts": self.state.canary_hosts}), 200, "application/json"

@@ -24,11 +24,48 @@ if ! .venv/bin/python -c "import pytest, pytest_asyncio" 2>/dev/null; then
     .venv/bin/pip install pytest pytest-asyncio
 fi
 
-# By default skip slow tests (cert generation, real TLS, etc.).
-# Use ./test.sh --all to run everything including slow tests.
-if [[ "$#" -gt 0 && "$1" == "--all" ]]; then
-    shift
-    MARKER=""
+# ── Run modes ────────────────────────────────────────────────────────────
+#
+#   ./test.sh                # default: all tests except slow
+#   ./test.sh --all          # everything including slow
+#   ./test.sh --arch         # architecture/quality invariants only
+#   ./test.sh --router       # router contract (API endpoints) only
+#   ./test.sh --executor     # task executor contract only
+#   ./test.sh --quality      # arch + router + executor (all guardrails)
+#   ./test.sh -k rating      # pass-through to pytest -k
+#
+# The --arch / --router / --executor / --quality modes skip ESLint and
+# the slow-test filter so they run as fast as possible.
+
+QUALITY_MARKERS='arch or router or executor'
+
+if [[ "$#" -gt 0 ]]; then
+    case "$1" in
+        --all)
+            shift
+            MARKER=""
+            ;;
+        --arch)
+            shift
+            MARKER='-m "arch"'
+            ;;
+        --router)
+            shift
+            MARKER='-m "router"'
+            ;;
+        --executor)
+            shift
+            MARKER='-m "executor"'
+            ;;
+        --quality)
+            shift
+            MARKER="-m \"$QUALITY_MARKERS\""
+            ;;
+        *)
+            # Unknown flag or pytest argument (e.g. -k, -x) — pass through.
+            MARKER='-m "not slow"'
+            ;;
+    esac
 else
     MARKER='-m "not slow"'
 fi
