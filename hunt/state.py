@@ -81,6 +81,9 @@ class HuntState(DbMixin, EventsMixin, SnapshotMixin, HealthMixin, CheckingMixin,
             self._transparent_port: int = 17477
             self._proxy_direct_mode: bool = False
             self._proxy_active_addr: Optional[str] = None
+            # Chronology of upstream proxy switches (select/clear/direct),
+            # persisted in runtime_state so it survives restarts.
+            self._proxy_switch_history: list[dict] = []
             # Channel proxy: routes the engine's own internet access through an
             # upstream proxy ("" / "direct" / "proxy:<addr>" / "custom:<id>").
             self._channel_route: str = ""
@@ -291,6 +294,11 @@ class HuntState(DbMixin, EventsMixin, SnapshotMixin, HealthMixin, CheckingMixin,
                         self._transparent_port = services.get("transparent_port", 17477)
                     elif row["key"] == "country_filter":
                         self.country_filter = row["value"] or ""
+                    elif row["key"] == "switch_history":
+                        try:
+                            self._proxy_switch_history = json.loads(row["value"] or "[]")
+                        except Exception:
+                            self._proxy_switch_history = []
                 conn.close()
                 if self.ratings:
                     logger.info(f"Loaded {len(self.ratings)} ratings from SQLite")
@@ -338,6 +346,7 @@ class HuntState(DbMixin, EventsMixin, SnapshotMixin, HealthMixin, CheckingMixin,
                         "transparent_port": getattr(self, '_transparent_port', 17477),
                     })),
                     ("country_filter", self.country_filter or ""),
+                    ("switch_history", json.dumps(self._proxy_switch_history[-100:])),
                 ]
                 for key, value in runtime:
                     conn.execute(

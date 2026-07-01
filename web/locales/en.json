@@ -381,7 +381,11 @@
       "proxyStopped": "Proxy stopped",
       "socks5Started": "SOCKS5 started",
       "socks5Stopped": "SOCKS5 stopped",
-      "unknown": "Unknown"
+      "unknown": "Unknown",
+      "switchHistory": "Switch History",
+      "switchHistoryHint": "Recent upstream changes",
+      "noSwitches": "No switches yet",
+      "switchBack": "back"
     },
     "server": {
       "title": "Server",

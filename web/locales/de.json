@@ -381,7 +381,11 @@
       "socks5Started": "SOCKS5 gestartet",
       "socks5Stopped": "SOCKS5 gestoppt",
       "unknown": "Unbekannt",
-      "recheckAll": "Recheck all"
+      "recheckAll": "Recheck all",
+      "switchHistory": "Wechselverlauf",
+      "switchHistoryHint": "Letzte Upstream-Wechsel",
+      "noSwitches": "Noch keine Wechsel",
+      "switchBack": "zurück"
     },
     "server": {
       "title": "Server",

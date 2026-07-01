@@ -714,7 +714,7 @@ class HuntServer:
             ip_bl_total = len(self.state.get_ip_blacklist_sources())
             result = []
             for r in ratings:
-                d = r.to_dict()
+                d = r.to_pool_dict()
                 d["ip_blacklist_sources_total"] = ip_bl_total
                 result.append(d)
             return json.dumps(result), 200, "application/json"
@@ -847,6 +847,7 @@ class HuntServer:
                 self.proxy.active_proxy_addr = None
             self.state._proxy_direct_mode = en
             self.state._proxy_active_addr = self.proxy.active_proxy_addr
+            self.proxy._record_switch("direct" if en else "proxy", None)
             self.state._emit(f"Direct mode: {'ON' if en else 'OFF'}", "info")
             self.state._save_state()
             return json.dumps({"ok": True, "direct_mode": en}), 200, "application/json"

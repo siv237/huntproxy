@@ -381,7 +381,11 @@
       "socks5Started": "SOCKS5已启动",
       "socks5Stopped": "SOCKS5已停止",
       "unknown": "未知",
-      "recheckAll": "Recheck all"
+      "recheckAll": "Recheck all",
+      "switchHistory": "切换历史",
+      "switchHistoryHint": "最近的上游变更",
+      "noSwitches": "尚无切换",
+      "switchBack": "返回"
     },
     "server": {
       "title": "服务器",

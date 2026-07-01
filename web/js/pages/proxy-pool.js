@@ -28,6 +28,7 @@ router.register('proxy-pool', (container) => {
     const row1 = ui.el('div', 'grid grid-2 row-stretch');
     row1.style.flex = '1';
     row1.appendChild(buildSelectedProxyCard());
+    row1.appendChild(buildSwitchHistoryCard());
     container.appendChild(row1);
 
     const row2 = ui.el('div', 'grid grid-1 row-stretch');
@@ -43,6 +44,22 @@ router.register('proxy-pool', (container) => {
 
     const body = ui.el('div', '', { id: 'sel-proxy-body' });
     body.innerHTML = '<div class="empty" style="padding:8px;font-size:11px">No upstream selected</div>';
+    card.appendChild(body);
+    return card;
+  }
+
+  function buildSwitchHistoryCard() {
+    const card = ui.el('div', 'card');
+    card.id = 'switch-history-card';
+    card.style.display = 'flex';
+    card.style.flexDirection = 'column';
+    card.style.minHeight = '0';
+    const header = ui.el('div', 'card-header');
+    header.appendChild(ui.el('div', 'card-title', { text: t('page.proxyPool.switchHistory') }));
+    header.appendChild(ui.el('div', '', { style: 'font-size:11px;color:var(--text-secondary)', text: t('page.proxyPool.switchHistoryHint') }));
+    card.appendChild(header);
+    const body = ui.el('div', '', { id: 'switch-history-body', style: 'flex:1;overflow-y:auto;min-height:0;font-size:11px' });
+    body.innerHTML = `<div class="empty" style="padding:8px">${t('page.proxyPool.noSwitches')}</div>`;
     card.appendChild(body);
     return card;
   }
@@ -212,6 +229,53 @@ router.register('proxy-pool', (container) => {
     clearBtn.addEventListener('click', () => api.proxySelect('').then(() => app.toast(t('page.proxyPool.cleared'))).catch(e => app.toast(t('common.error', {message: e.message}), 'error')));
     btnRow.appendChild(clearBtn);
     body.appendChild(btnRow);
+  }
+
+  function updateSwitchHistory(ps) {
+    const body = document.getElementById('switch-history-body');
+    if (!body) return;
+    const history = (ps && ps.switch_history) || [];
+    if (!history.length) {
+      body.innerHTML = `<div class="empty" style="padding:8px">${t('page.proxyPool.noSwitches')}</div>`;
+      return;
+    }
+    body.innerHTML = '';
+    history.forEach((e, i) => {
+      const row = ui.el('div', '', { style: `display:flex;align-items:center;gap:6px;padding:4px 6px;border-radius:var(--radius-xs);${i === 0 ? 'background:var(--surface-raised)' : ''}` });
+      const icon = ui.el('span', '', { style: 'font-size:13px;flex-shrink:0;width:16px;text-align:center' });
+      if (e.action === 'select') icon.textContent = '→';
+      else if (e.action === 'clear') { icon.textContent = '×'; icon.style.color = 'var(--text-muted)'; }
+      else if (e.action === 'direct') { icon.textContent = '⇄'; icon.style.color = 'var(--warning)'; }
+      else icon.textContent = '•';
+      row.appendChild(icon);
+
+      if (e.address) {
+        const addr = ui.el('span', 'addr proxy-address-link', { 'data-card-addr': ui.escHtml(e.address), style: 'font-family:monospace;font-size:10px;cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap' });
+        addr.textContent = e.address;
+        addr.addEventListener('click', (ev) => { ev.stopPropagation(); if (window.proxyCard) window.proxyCard.show(e.address); });
+        row.appendChild(addr);
+      } else {
+        const label = ui.el('span', '', { style: 'color:var(--text-secondary);font-size:10px;flex:1' });
+        label.textContent = e.action === 'direct' ? t('page.proxyPool.directModeOn') : t('page.proxyPool.cleared');
+        row.appendChild(label);
+      }
+
+      const ago = ui.el('span', '', { style: 'color:var(--text-muted);font-size:10px;white-space:nowrap;flex-shrink:0' });
+      ago.textContent = ui.ago(e.ts);
+      row.appendChild(ago);
+
+      const backBtn = ui.el('button', 'btn btn-xs btn-ghost', { text: t('page.proxyPool.switchBack'), style: 'padding:1px 5px;font-size:9px;flex-shrink:0' });
+      if (e.action === 'select' && e.address) {
+        backBtn.addEventListener('click', (ev) => { ev.stopPropagation(); window.selectProxy(e.address); });
+      } else if (e.action === 'direct') {
+        backBtn.addEventListener('click', (ev) => { ev.stopPropagation(); api.toggleDirect(false).then(() => { app.toast(t('page.proxyPool.directModeOff')); load(); }).catch(err => app.toast(t('common.error', {message: err.message}), 'error')); });
+      } else {
+        backBtn.style.display = 'none';
+      }
+      row.appendChild(backBtn);
+
+      body.appendChild(row);
+    });
   }
 
   function proxyProtoGroup(p) {
@@ -405,6 +469,7 @@ router.register('proxy-pool', (container) => {
       state.selected = ps && ps.active_proxy ? ps.active_proxy.address : null;
       state.proxies = proxies;
       updateSelectedProxy(ps);
+      updateSwitchHistory(ps);
       updateSelectProxy(proxies);
     } catch (e) {
       console.error('proxy-pool poll', e);

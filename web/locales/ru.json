@@ -381,7 +381,11 @@
       "proxyStopped": "Прокси остановлен",
       "socks5Started": "SOCKS5 запущен",
       "socks5Stopped": "SOCKS5 остановлен",
-      "unknown": "Неизвестно"
+      "unknown": "Неизвестно",
+      "switchHistory": "История переключений",
+      "switchHistoryHint": "Недавние смены апстрима",
+      "noSwitches": "Переключений пока нет",
+      "switchBack": "назад"
     },
     "server": {
       "title": "Сервер",

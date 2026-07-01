@@ -49,6 +49,14 @@ class ProxyRunner:
             self.state.ratings[address] = r
         if address:
             self.state._emit(f"Proxy upstream selected: {address}", "info")
+        self._record_switch("select" if address else "clear", address)
+
+    def _record_switch(self, action: str, address: Optional[str]):
+        """Append an entry to the proxy switch history chronology."""
+        entry = {"ts": time.time(), "action": action, "address": address or ""}
+        self.state._proxy_switch_history.append(entry)
+        if len(self.state._proxy_switch_history) > 100:
+            self.state._proxy_switch_history = self.state._proxy_switch_history[-100:]
 
     async def start(self, port: int):
         if self.running:
@@ -542,4 +550,5 @@ class ProxyRunner:
             "connections_ok": ok,
             "connections_failed": failed,
             "log": list(reversed(self.log[-50:])),
+            "switch_history": list(reversed(self.state._proxy_switch_history[-50:])),
         }
