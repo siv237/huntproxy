@@ -53,6 +53,7 @@ fi
 #   ./test.sh --quality      # arch + router + executor (all guardrails)
 #   ./test.sh --security     # SAST (bandit) + SCA (pip-audit) + HTTP fuzzing
 #   ./test.sh --coverage     # functional + branch coverage report
+#   ./test.sh --map          # regenerate MODULES.md (live module map)
 #   ./test.sh -k rating      # pass-through to pytest -k
 #
 # Architecture tests (arch marker) are excluded from the default run
@@ -97,6 +98,10 @@ if [[ "$#" -gt 0 ]]; then
         --coverage)
             shift
             eval ".venv/bin/python -m pytest tests/ -p no:terminal -p no:capture -m \"not slow and not arch\" --cov=hunt --cov-branch --cov-report=term-missing \"\$@\"" 2>/dev/null
+            exit $?
+            ;;
+        --map)
+            .venv/bin/python scripts/module_map.py
             exit $?
             ;;
         *)
