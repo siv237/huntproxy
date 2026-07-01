@@ -764,15 +764,17 @@ class HealthMixin:
             The cycle is:
 
               1. re-validate previously-working (stale) proxies
-              2. a fresh full hunt cycle — read lists → blacklists → validate
+              2. a fresh full hunt cycle — read lists → blocklists → validate
                  new candidates
 
-            Re-validation is NOT a hunt: it does not set _hunt_running, so the
-            scheduler's proxy_check task is free to run concurrently.
+            Both phases use the shared self.checked / self.checking_total /
+            self._active_checks counters, so _hunt_running must stay True for
+            the ENTIRE cycle to prevent the scheduler's proxy_check from
+            launching a concurrent _validate_all that double-counts progress.
             """
-            # The restored _hunt_running flag is stale (no live task survived
-            # the restart) — clear it so the scheduler is not blocked.
-            self._hunt_running = False
+            # Block scheduler proxy_check for the entire startup cycle —
+            # revalidation and hunt both use the same shared counters.
+            self._hunt_running = True
             self._save_state()
 
             self._emit("Startup cycle: re-validating previously-working proxies", "phase")
@@ -789,6 +791,8 @@ class HealthMixin:
             if not self.start_hunt():
                 logger.warning("Could not start startup hunt cycle")
                 self._emit("Startup cycle: could not start hunt", "error")
+                self._hunt_running = False
+                self._save_state()
                 return
 
             deadline = time.time() + 7200  # 2h safety cap
@@ -798,4 +802,6 @@ class HealthMixin:
                     self._emit("Startup cycle: hunt exceeded 2h cap", "warn")
                     break
                 await asyncio.sleep(2)
+            self._hunt_running = False
+            self._save_state()
             self._emit("Startup cycle complete", "ok")
