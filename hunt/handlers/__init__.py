@@ -6,6 +6,7 @@ via :meth:`HuntServer._register_routes`.
 """
 
 from urllib.parse import unquote
+import json
 
 
 def _qs(path: str) -> dict:
@@ -16,3 +17,25 @@ def _qs(path: str) -> dict:
                 k, v = p.split("=", 1)
                 params[k] = unquote(v)
     return params
+
+
+def _int_param(qs: dict, key: str, default: int) -> int:
+    """Parse an integer query param, returning *default* on invalid input."""
+    raw = qs.get(key)
+    if raw is None:
+        return default
+    try:
+        return int(raw)
+    except (ValueError, TypeError):
+        return default
+
+
+def _json_body(body) -> dict:
+    """Parse a JSON request body, returning ``{}`` on invalid/non-dict input."""
+    try:
+        data = json.loads(body or b"{}")
+    except Exception:
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    return data

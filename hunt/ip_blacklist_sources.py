@@ -240,7 +240,7 @@ class IPBlacklistSourcesMixin:
                 if sets:
                     sets.append("updated_at=?"); vals.append(now)
                     vals.append(source_id)
-                    conn.execute(f"UPDATE ip_blacklist_sources SET {','.join(sets)} WHERE id=?", vals)
+                    conn.execute(f"UPDATE ip_blacklist_sources SET {','.join(sets)} WHERE id=?", vals)  # nosec B608 — column names hardcoded
                 conn.commit()
                 conn.close()
                 if became_disabled:

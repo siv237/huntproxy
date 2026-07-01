@@ -307,3 +307,102 @@ class TestBranchCoverage:
             "Deleted logic or removed tests caused coverage to fall. "
             "Restore the missing tests or logic, then raise COVERAGE_BASELINE."
         )
+
+
+# ── Security: SAST (bandit) ────────────────────────────────────────────
+
+class TestBanditClean:
+    """No HIGH or MEDIUM severity bandit findings in hunt/.
+
+    Bandit catches: hardcoded credentials, shell injection, weak crypto,
+    unsafe deserialization (pickle/yaml.load), SQL injection, binding to
+    all interfaces, and other common Python security anti-patterns.
+
+    False positives are suppressed with ``# nosec <CODE>`` comments that
+    document *why* the finding is not a real vulnerability.  The test
+    fails if any HIGH/MEDIUM finding lacks a nosec suppression.
+
+    Run standalone: ``./test.sh --security``
+    """
+
+    @pytest.mark.arch
+    def test_no_high_medium_bandit_findings(self):
+        import subprocess
+        result = subprocess.run(
+            [".venv/bin/bandit", "-r", "hunt/", "-f", "json", "-q"],
+            capture_output=True, text=True, cwd=ROOT, timeout=60,
+        )
+        import json
+        try:
+            report = json.loads(result.stdout)
+        except json.JSONDecodeError:
+            pytest.skip("bandit output not parseable — check bandit installation")
+        results = report.get("results", [])
+        offenders = []
+        for r in results:
+            severity = r.get("issue_severity", "LOW")
+            if severity in ("HIGH", "MEDIUM"):
+                rel = r["filename"].replace(str(ROOT) + "/", "")
+                offenders.append(
+                    f"{rel}:{r['line_number']} [{severity}/{r['issue_confidence']}] "
+                    f"{r['test_id']}: {r['issue_text'][:80]}"
+                )
+        assert not offenders, (
+            "Bandit found HIGH/MEDIUM security issues without nosec suppression.\n"
+            "Fix the issue or add `# nosec <CODE> — <reason>` if it's a false positive:\n  "
+            + "\n  ".join(offenders[:30])
+        )
+
+
+# ── Security: SCA (pip-audit) ──────────────────────────────────────────
+
+class TestNoKnownCVEs:
+    """No known CVEs in runtime dependencies.
+
+    ``pip-audit`` checks installed packages against the PyPA advisory
+    database.  Only runtime dependencies (from requirements.txt) are
+    checked — dev tools (pytest, bandit, ruff, etc.) are excluded.
+
+    Run standalone: ``./test.sh --security``
+    """
+
+    @pytest.mark.arch
+    def test_no_known_vulnerabilities_in_runtime_deps(self):
+        import subprocess
+        result = subprocess.run(
+            [".venv/bin/pip-audit", "--strict", "--format", "json"],
+            capture_output=True, text=True, cwd=ROOT, timeout=120,
+        )
+        import json
+        try:
+            report = json.loads(result.stdout)
+        except json.JSONDecodeError:
+            pytest.skip("pip-audit output not parseable — check pip-audit installation")
+        # Read runtime deps from requirements.txt
+        req_path = ROOT / "requirements.txt"
+        if not req_path.exists():
+            pytest.skip("requirements.txt not found")
+        runtime_deps = set()
+        for line in req_path.read_text().splitlines():
+            line = line.strip()
+            if line and not line.startswith("#"):
+                # Extract package name (strip version specifiers)
+                import re
+                m = re.match(r"^([A-Za-z0-9_.-]+)", line)
+                if m:
+                    runtime_deps.add(m.group(1).lower())
+        vulnerabilities = report.get("dependencies", [])
+        offenders = []
+        for dep in vulnerabilities:
+            name = dep.get("name", "").lower()
+            if name in runtime_deps:
+                for vuln in dep.get("vulns", []):
+                    offenders.append(
+                        f"{dep['name']} {dep.get('version','?')} "
+                        f"{vuln.get('id','?')}: fix in {vuln.get('fix_versions','?')}"
+                    )
+        assert not offenders, (
+            "Known CVEs found in runtime dependencies:\n  "
+            + "\n  ".join(offenders[:20])
+            + "\nUpdate the package in requirements.txt to the fixed version."
+        )

@@ -4,7 +4,7 @@ import json
 from urllib.parse import unquote
 
 from hunt.constants import logger
-from hunt.handlers import _qs
+from hunt.handlers import _qs, _int_param, _json_body
 
 
 class SourceHandlers:
@@ -19,10 +19,7 @@ class SourceHandlers:
         return json.dumps({"sources": sources}), 200, "application/json"
 
     async def _handle_proxy_source_create(self, raw_path, body):
-        try:
-            data = json.loads(body or b"{}")
-        except Exception:
-            data = {}
+        data = _json_body(body)
         result = self.state.create_proxy_source(data)
         if result:
             return json.dumps({"ok": True, "source": result}), 200, "application/json"
@@ -76,10 +73,7 @@ class SourceHandlers:
                 return json.dumps({"ok": True, "source": result}), 200, "application/json"
             return json.dumps({"ok": False, "error": "not found"}), 404, "application/json"
         source_id = unquote(path[len("/api/proxy-sources/"):])
-        try:
-            data = json.loads(body or b"{}")
-        except Exception:
-            data = {}
+        data = _json_body(body)
         result = self.state.update_proxy_source(source_id, data)
         if result:
             return json.dumps({"ok": True, "source": result}), 200, "application/json"
@@ -102,10 +96,7 @@ class SourceHandlers:
         return json.dumps({"sources": sources}), 200, "application/json"
 
     async def _handle_ip_blacklist_create(self, raw_path, body):
-        try:
-            data = json.loads(body or b"{}")
-        except Exception:
-            data = {}
+        data = _json_body(body)
         result = self.state.create_ip_blacklist_source(data)
         if result:
             return json.dumps({"ok": True, "source": result}), 200, "application/json"
@@ -149,10 +140,7 @@ class SourceHandlers:
         if path.endswith("/fetch"):
             return json.dumps({"error": "not found"}), 404, "application/json"
         source_id = unquote(path[len("/api/ip-blacklists/"):])
-        try:
-            data = json.loads(body or b"{}")
-        except Exception:
-            data = {}
+        data = _json_body(body)
         result = self.state.update_ip_blacklist_source(source_id, data)
         if result:
             return json.dumps({"ok": True, "source": result}), 200, "application/json"
@@ -170,8 +158,8 @@ class SourceHandlers:
 
     async def _handle_ip_blacklist_entries(self, raw_path, body):
         qs = _qs(raw_path)
-        page = int(qs.get("page", 1))
-        limit = int(qs.get("limit", 50))
+        page = _int_param(qs, "page", 1)
+        limit = _int_param(qs, "limit", 50)
         entries = sorted(self.state.ip_blacklist_entries.items())
         total = len(entries)
         start = (page - 1) * limit
@@ -198,10 +186,7 @@ class SourceHandlers:
         return json.dumps({"sources": sources}), 200, "application/json"
 
     async def _handle_blocklist_create(self, raw_path, body):
-        try:
-            data = json.loads(body or b"{}")
-        except Exception:
-            data = {}
+        data = _json_body(body)
         result = self.state.create_blocklist_source(data)
         if result:
             return json.dumps({"ok": True, "source": result}), 200, "application/json"
@@ -242,10 +227,7 @@ class SourceHandlers:
         if path.endswith("/fetch"):
             return json.dumps({"error": "not found"}), 404, "application/json"
         source_id = unquote(path[len("/api/blocklists/"):])
-        try:
-            data = json.loads(body or b"{}")
-        except Exception:
-            data = {}
+        data = _json_body(body)
         result = self.state.update_blocklist_source(source_id, data)
         if result:
             return json.dumps({"ok": True, "source": result}), 200, "application/json"
@@ -268,20 +250,14 @@ class SourceHandlers:
         return json.dumps({"proxies": proxies}), 200, "application/json"
 
     async def _handle_custom_proxy_create(self, raw_path, body):
-        try:
-            data = json.loads(body or b"{}")
-        except Exception:
-            data = {}
+        data = _json_body(body)
         result = self.state.create_custom_proxy(data)
         if result:
             return json.dumps({"ok": True, "proxy": result}), 200, "application/json"
         return json.dumps({"ok": False, "error": "id, name, host and port are required"}), 400, "application/json"
 
     async def _handle_custom_proxy_test_direct(self, raw_path, body):
-        try:
-            data = json.loads(body or b"{}")
-        except Exception:
-            data = {}
+        data = _json_body(body)
         result = await self.state.test_proxy_direct(data)
         return json.dumps(result), 200, "application/json"
 
@@ -308,10 +284,7 @@ class SourceHandlers:
             result = await self.state.test_custom_proxy(proxy_id)
             return json.dumps(result), 200, "application/json"
         proxy_id = unquote(path[len("/api/custom-proxies/"):])
-        try:
-            data = json.loads(body or b"{}")
-        except Exception:
-            data = {}
+        data = _json_body(body)
         result = self.state.update_custom_proxy(proxy_id, data)
         if result:
             return json.dumps({"ok": True, "proxy": result}), 200, "application/json"

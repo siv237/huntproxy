@@ -268,7 +268,7 @@ class SnapshotMixin:
             conn = self._stats_db()
             rows = conn.execute(
                 "SELECT address, ts, ok FROM proxy_checks "
-                "WHERE ts >= ? AND address IN (%s) "
+                "WHERE ts >= ? AND address IN (%s) "  # nosec B608 — placeholder list, values parameterized
                 "ORDER BY ts ASC" % ",".join("?" * len(addrs)),
                 (cutoff, *addrs),
             ).fetchall()

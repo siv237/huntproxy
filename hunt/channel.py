@@ -53,7 +53,7 @@ class ChannelMixin:
             return {
                 "protocol": r.protocol or "http",
                 "host": host, "port": port,
-                "username": "", "password": "",
+                "username": "", "password": "",  # nosec B105 — empty default, not a credential
             }
         if route.startswith("custom:"):
             proxy = self.get_custom_proxy_raw(route[7:])

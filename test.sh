@@ -51,6 +51,7 @@ fi
 #   ./test.sh --router       # router contract (API endpoints) only
 #   ./test.sh --executor     # task executor contract only
 #   ./test.sh --quality      # arch + router + executor (all guardrails)
+#   ./test.sh --security     # SAST (bandit) + SCA (pip-audit) + HTTP fuzzing
 #   ./test.sh --coverage     # functional + branch coverage report
 #   ./test.sh -k rating      # pass-through to pytest -k
 #
@@ -61,6 +62,7 @@ fi
 # the ruff pre-check and slow-test filter so they run as fast as possible.
 
 QUALITY_MARKERS='arch or router or executor'
+SECURITY_MARKERS='arch or fuzz'
 
 if [[ "$#" -gt 0 ]]; then
     case "$1" in
@@ -83,6 +85,14 @@ if [[ "$#" -gt 0 ]]; then
         --quality)
             shift
             MARKER="-m \"$QUALITY_MARKERS\""
+            ;;
+        --security)
+            shift
+            # Install security tools if missing
+            if ! .venv/bin/python -c "import bandit, pip_audit, hypothesis" 2>/dev/null; then
+                .venv/bin/pip install bandit pip-audit hypothesis 2>/dev/null || true
+            fi
+            MARKER="-m \"$SECURITY_MARKERS\""
             ;;
         --coverage)
             shift

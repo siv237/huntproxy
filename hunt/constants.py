@@ -81,6 +81,7 @@ def _load_default_sources():
         try:
             fp.read(path, encoding="utf-8")
         except Exception:
+            logger.debug("skipped ini file %s", path, exc_info=True)
             continue
         for section in fp.sections():
             if not section.startswith("blocklist:"):

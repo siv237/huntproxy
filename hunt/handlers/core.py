@@ -6,7 +6,7 @@ import yaml
 from urllib.parse import unquote
 
 from hunt.constants import CONFIG_PATH, WEB_DIR
-from hunt.handlers import _qs
+from hunt.handlers import _qs, _int_param
 from hunt.web_legacy import WEB_HTML
 
 
@@ -38,7 +38,7 @@ class CoreHandlers:
 
     async def _handle_events(self, raw_path, body):
         qs = _qs(raw_path)
-        since = int(qs.get("since", 0))
+        since = _int_param(qs, "since", 0)
         events = self.state.events
         new = [e for e in events if e["seq"] > since]
         if not new:
@@ -59,12 +59,12 @@ class CoreHandlers:
 
     async def _handle_activity(self, raw_path, body):
         qs = _qs(raw_path)
-        limit = int(qs.get("limit", 10))
+        limit = _int_param(qs, "limit", 10)
         return json.dumps(self.state.get_activity(limit)), 200, "application/json"
 
     async def _handle_actions(self, raw_path, body):
         qs = _qs(raw_path)
-        limit = int(qs.get("limit", 100))
+        limit = _int_param(qs, "limit", 100)
         return json.dumps(self.state.get_actions(limit)), 200, "application/json"
 
     async def _handle_history(self, raw_path, body):
@@ -74,7 +74,7 @@ class CoreHandlers:
 
     async def _handle_logs(self, raw_path, body):
         qs = _qs(raw_path)
-        limit = int(qs.get("limit", 200))
+        limit = _int_param(qs, "limit", 200)
         event_type = qs.get("type", "")
         events = self.state.get_events(limit, event_type or None)
         return json.dumps({"events": events}), 200, "application/json"

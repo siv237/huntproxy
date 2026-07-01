@@ -14,4 +14,5 @@ markers = [
     "arch: architecture/quality invariants (file sizes, complexity, boundaries)",
     "router: router contract — all API endpoints must resolve",
     "executor: task executor contract — planning vs execution separation",
+    "fuzz: HTTP fuzzing with hypothesis — adversarial input security tests",
   ]

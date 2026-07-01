@@ -4,7 +4,7 @@ import asyncio
 import json
 import time
 
-from hunt.handlers import _qs
+from hunt.handlers import _qs, _int_param, _json_body
 
 
 class AdminHandlers:
@@ -39,7 +39,7 @@ class AdminHandlers:
 
     async def _handle_backup(self, raw_path, body):
         try:
-            payload = json.loads(body or b"{}")
+            payload = _json_body(body)
             groups = payload.get("groups", [])
             if not groups:
                 return json.dumps({"error": "no groups selected"}), 400, "application/json"
@@ -52,7 +52,7 @@ class AdminHandlers:
 
     async def _handle_restore(self, raw_path, body):
         try:
-            payload = json.loads(body or b"{}")
+            payload = _json_body(body)
             groups = payload.get("groups", [])
             backup_data = payload.get("data", "")
             if not groups:
@@ -78,10 +78,7 @@ class AdminHandlers:
         return json.dumps({"schedules": sched.list_schedules(), "status": sched.get_status()}), 200, "application/json"
 
     async def _handle_schedule_create(self, raw_path, body):
-        try:
-            data = json.loads(body or b"{}")
-        except Exception:
-            data = {}
+        data = _json_body(body)
         sched = getattr(self.state, "scheduler", None)
         if sched is None:
             return json.dumps({"ok": False, "error": "scheduler not initialized"}), 500, "application/json"
@@ -107,7 +104,7 @@ class AdminHandlers:
 
     async def _handle_schedules_log(self, raw_path, body):
         qs = _qs(raw_path)
-        limit = int(qs.get("limit", "50"))
+        limit = _int_param(qs, "limit", 50)
         sched = getattr(self.state, "scheduler", None)
         if sched is None:
             return json.dumps({"entries": []}), 200, "application/json"
@@ -170,10 +167,7 @@ class AdminHandlers:
             self.state._log_action("schedule.stop", sid)
             return json.dumps({"ok": True}), 200, "application/json"
         sid = path[len("/api/schedules/"):]
-        try:
-            data = json.loads(body or b"{}")
-        except Exception:
-            data = {}
+        data = _json_body(body)
         sched = getattr(self.state, "scheduler", None)
         if sched is None:
             return json.dumps({"ok": False, "error": "scheduler not initialized"}), 500, "application/json"
@@ -206,15 +200,12 @@ class AdminHandlers:
 
     async def _handle_canary_history(self, raw_path, body):
         qs = _qs(raw_path)
-        hours = int(qs.get("hours", "24"))
+        hours = _int_param(qs, "hours", 24)
         result = self.state.get_canary_history(hours)
         return json.dumps(result), 200, "application/json"
 
     async def _handle_canary_hosts(self, raw_path, body):
-        try:
-            data = json.loads(body or b"{}")
-        except Exception:
-            data = {}
+        data = _json_body(body)
         hosts = data.get("canary_hosts", [])
         if hosts:
             self.state.set_canary_hosts(hosts)

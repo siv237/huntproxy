@@ -83,7 +83,7 @@ class BackupMixin:
                 for db_attr, table in info["tables"]:
                     try:
                         conn = self._stats_db() if db_attr == "stats" else self._db()
-                        n = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+                        n = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]  # nosec B608 — table from hardcoded list
                         conn.close()
                         total += n
                         tables.append({"db": db_attr, "table": table, "count": n})
@@ -110,7 +110,7 @@ class BackupMixin:
                     conn = None
                     try:
                         conn = self._stats_db() if db_attr == "stats" else self._db()
-                        rows = conn.execute(f"SELECT * FROM {table}").fetchall()
+                        rows = conn.execute(f"SELECT * FROM {table}").fetchall()  # nosec B608 — table from hardcoded list
                         group_data[table] = [dict(r) for r in rows]
                     except Exception as e:
                         logger.warning(f"backup {gkey}.{table}: {e}")
@@ -145,7 +145,7 @@ class BackupMixin:
                     conn = None
                     try:
                         conn = self._stats_db() if db_attr == "stats" else self._db()
-                        conn.execute(f"DELETE FROM {table}")
+                        conn.execute(f"DELETE FROM {table}")  # nosec B608 — table from hardcoded list
                         if rows:
                             cols = list(rows[0].keys())
                             placeholders = ",".join("?" * len(cols))

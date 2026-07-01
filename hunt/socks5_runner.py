@@ -114,10 +114,10 @@ class Socks5Runner:
             up_r, up_w, chain, _is_raw = upstream
             bind_addr = up_w.get_extra_info("sockname")
             if bind_addr:
-                bind_ip = bind_addr[0] if isinstance(bind_addr, tuple) else "0.0.0.0"
+                bind_ip = bind_addr[0] if isinstance(bind_addr, tuple) else "0.0.0.0"  # nosec B104 — proxy bind address
                 bind_port = bind_addr[1] if isinstance(bind_addr, tuple) else 0
             else:
-                bind_ip, bind_port = "0.0.0.0", 0
+                bind_ip, bind_port = "0.0.0.0", 0  # nosec B104 — proxy bind address
             try:
                 bind_packed = socket.inet_aton(bind_ip)
             except Exception:

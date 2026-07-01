@@ -5,7 +5,7 @@ import json
 from urllib.parse import unquote
 
 from hunt.geo import country_code_from_name, country_flag, country_name_from_code
-from hunt.handlers import _qs
+from hunt.handlers import _qs, _int_param
 
 
 class ProxyHandlers:
@@ -33,7 +33,7 @@ class ProxyHandlers:
 
     async def _handle_proxy_start(self, raw_path, body):
         qs = _qs(raw_path)
-        port = int(qs.get("port", 17277))
+        port = _int_param(qs, "port", 17277)
         self.state._log_action("proxy.start", str(port))
         await self.server.proxy.start(port)
         return json.dumps(self.server.proxy.get_status()), 200, "application/json"
@@ -49,7 +49,7 @@ class ProxyHandlers:
 
     async def _handle_socks5_start(self, raw_path, body):
         qs = _qs(raw_path)
-        port = int(qs.get("port", 17278))
+        port = _int_param(qs, "port", 17278)
         self.state._socks5_port = port
         self.state._save_state()
         self.state._log_action("socks5.start", str(port))
@@ -66,7 +66,7 @@ class ProxyHandlers:
 
     async def _handle_transparent_start(self, raw_path, body):
         qs = _qs(raw_path)
-        port = int(qs.get("port", 17477))
+        port = _int_param(qs, "port", 17477)
         self.state._transparent_port = port
         self.state._save_state()
         self.state._log_action("transparent.start", str(port))
@@ -172,13 +172,13 @@ class ProxyHandlers:
         addr = path[len("/api/proxy-checks/"):]
         addr = unquote(addr)
         qs = _qs(raw_path)
-        limit = int(qs.get("limit", 30))
+        limit = _int_param(qs, "limit", 30)
         data = self.state.get_proxy_checks(addr, limit)
         return json.dumps(data), 200, "application/json"
 
     async def _handle_proxy_heatmap(self, raw_path, body):
         qs = _qs(raw_path)
-        hours = int(qs.get("hours", 72))
+        hours = _int_param(qs, "hours", 72)
         data = self.state.get_proxy_heatmap(hours)
         return json.dumps(data), 200, "application/json"
 
@@ -294,8 +294,8 @@ class ProxyHandlers:
 
     async def _proxies_list(self, qs):
         status = qs.get("status", "")
-        page = int(qs.get("page", 1))
-        limit = int(qs.get("limit", 20))
+        page = _int_param(qs, "page", 1)
+        limit = _int_param(qs, "limit", 20)
         all_proxies = list(self.state.ratings.values())
         filtered = self._filter_by_status(all_proxies, status)
         total = len(filtered)

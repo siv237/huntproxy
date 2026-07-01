@@ -13,7 +13,7 @@ class CustomProxiesMixin:
     def _mask_proxy(self, p: dict) -> dict:
             out = dict(p)
             if out.get("password"):
-                out["password"] = "****"
+                out["password"] = "****"  # nosec B105 — mask string, not a credential
             return out
 
     def get_custom_proxies(self) -> list:
@@ -119,7 +119,7 @@ class CustomProxiesMixin:
                 sets.append("updated_at=?"); vals.append(now)
                 vals.append(proxy_id)
                 conn.execute(
-                    f"UPDATE custom_proxies SET {','.join(sets)} WHERE id=?",
+                    f"UPDATE custom_proxies SET {','.join(sets)} WHERE id=?",  # nosec B608 — column names hardcoded
                     vals,
                 )
                 conn.commit()

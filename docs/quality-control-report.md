@@ -137,11 +137,14 @@ ESLint запускается перед тестами, проверяет Java
 |------------|-----------|---------|
 | **pytest** | Функциональное и контрактное тестирование | Ядро |
 | **pytest-asyncio** | Тестирование async-кода | Ядро |
-| **pytest markers** | Разделение тестов по категориям (arch, router, executor, slow) | Организация |
+| **pytest markers** | Разделение тестов по категориям (arch, router, executor, fuzz, slow) | Организация |
 | **ruff** | Линтинг Python + цикломатическая сложность (C901) + запрет silent-except (E722, BLE001) | Линтинг + метрики |
 | **pytest-cov** | Покрытие кода с контролем веток (`--cov-branch`) | Покрытие |
+| **bandit** | SAST: статический анализ безопасности Python (SQL injection, shell injection, weak crypto, hardcoded creds, unsafe deserialization) | Безопасность |
+| **pip-audit** | SCA: проверка зависимостей на известные CVE (PyPA advisory database) | Безопасность |
+| **hypothesis** | Фаззинг HTTP-эндпоинтов: path traversal, malformed input, oversized bodies, нестандартные методы | Безопасность |
 | **ESLint** | Статический анализ JavaScript | Frontend |
-| **AST-анализ (Python)** | Подсчёт обращений к атрибутам, God Object, coupling | Архитектура |
+| **AST-анализ (Python)** | Подсчёт обращений к атрибутам, God Object, coupling, silent-except detection | Архитектура |
 | **pre-commit hook** | Автоматический запуск тестов перед коммитом | Git |
 
 ### 3.1 Почему ruff, а не radon + flake8 + pylint
@@ -183,6 +186,47 @@ Ruff заменяет три инструмента одним:
 AI: агент генерирует сотни строк очевидных комментариев ("AI-slop") для
 прохождения теста. Контроль качества документации переносится на этап
 code review (Pull Request), где проверяется смысл, а не наличие текста.
+
+### 3.5 Безопасность: три уровня контроля
+
+Сетевой проект требует отдельного контроля безопасности. Три уровня
+покрывают разные векторы атак:
+
+**SAST (Static Application Security Testing) — bandit:**
+
+Статический анализ исходного кода на известные уязвимости:
+- SQL injection (B608) — string-based query construction
+- Shell injection (B602/B603) — subprocess with shell=True
+- Weak crypto (B324) — hashlib.md5, insecure random
+- Hardcoded credentials (B105) — passwords in source
+- Unsafe deserialization (B301) — pickle.loads, yaml.load
+- Binding to all interfaces (B104) — 0.0.0.0 bind
+
+False positives подавляются комментарием `# nosec <CODE> — <причина>`.
+Тест `TestBanditClean` проверяет отсутствие HIGH/MEDIUM без nosec.
+
+**SCA (Software Composition Analysis) — pip-audit:**
+
+Проверка установленных зависимостей против базы известных уязвимостей
+(PyPA advisory database, CVE). Тест `TestNoKnownCVEs` проверяет только
+runtime-зависимости (из `requirements.txt`), не dev-инструменты.
+
+**DAST/Fuzzing — hypothesis:**
+
+Динамическое тестирование HTTP-эндпоинтов с генеративным вводом:
+- **Path traversal** — `../` последовательности в статических путях
+- **Malformed query params** — нечисловые значения для `int()` параметров
+- **Malformed JSON bodies** — случайные байты как POST body
+- **Oversized bodies** — 1MB Content-Length без зависания
+- **Нестандартные HTTP-методы** — неизвестные методы получают 404, не 500
+- **Сверхдлинные пути** — до 10KB без краша
+
+Тесты помечены marker `fuzz`, запускаются через `./test.sh --security`.
+
+**Принцип: сервер никогда не должен обрывать соединение (status 0)
+или возвращать 500 на malformed input.** Корректные ответы: 200 (OK),
+400 (bad request), 404 (not found). Обрыв соединения = unhandled
+exception = баг.
 
 ---
 
@@ -254,8 +298,11 @@ pre-commit hook запускает test.sh
         │
         ├── Контракт исполнителя ── fail? ──── блокировка
         │
-        └── Архитектурные тесты ─── исключены из блокировки
-                (silent-except, complexity, coverage — backlog)
+        ├── Архитектурные тесты ─── исключены из блокировки
+        │       (silent-except, complexity, coverage — backlog)
+        │
+        └── Тесты безопасности ──── исключены из блокировки
+                (bandit, pip-audit, fuzz — run via `./test.sh --security`)
         │
         ▼
 Коммит принят
@@ -355,3 +402,13 @@ pre-commit hook запускает test.sh
 | Deleted logic | Branch coverage drop | pytest-cov |
 | Unused imports/vars | ruff F401 + F841 | ruff |
 | AI-slop docstrings | Code review (не автоматизировано) | ручная проверка |
+| SQL injection | B608 — string-based query construction | bandit |
+| Shell injection | B602/B603 — subprocess shell=True | bandit |
+| Weak crypto | B324 — insecure hash/random | bandit |
+| Hardcoded credentials | B105 — passwords in source | bandit |
+| Unsafe deserialization | B301 — pickle/yaml.load | bandit |
+| Known CVEs in deps | PyPA advisory database | pip-audit |
+| Path traversal | `../` in static file paths | hypothesis fuzz |
+| Unhandled int() on input | Malformed query params → server crash | hypothesis fuzz |
+| Non-dict JSON body | `json.loads(b'0').get()` → AttributeError | hypothesis fuzz |
+| Oversized body DoS | Large Content-Length → hang | hypothesis fuzz |

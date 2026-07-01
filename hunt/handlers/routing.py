@@ -23,29 +23,20 @@ class RoutingHandlers:
         return json.dumps({"ok": True}), 200, "application/json"
 
     async def _handle_routing_default(self, raw_path, body):
-        try:
-            data = json.loads(body or b"{}")
-        except Exception:
-            data = {}
+        data = _json_body(body)
         route = data.get("default_route", "direct")
         self.state.routing_set_default(route)
         return json.dumps({"ok": True, "default_route": route}), 200, "application/json"
 
     async def _handle_routing_reorder(self, raw_path, body):
-        try:
-            data = json.loads(body or b"{}")
-        except Exception:
-            data = {}
+        data = _json_body(body)
         order = data.get("order", [])
         if order:
             self.state.reorder_domain_lists(order)
         return json.dumps({"ok": True}), 200, "application/json"
 
     async def _handle_routing_test(self, raw_path, body):
-        try:
-            data = json.loads(body or b"{}")
-        except Exception:
-            data = {}
+        data = _json_body(body)
         domain = data.get("domain", "").strip()
         if not domain:
             return json.dumps({"error": "domain is required"}), 400, "application/json"
@@ -59,10 +50,7 @@ class RoutingHandlers:
         return json.dumps({"lists": lists}), 200, "application/json"
 
     async def _handle_domain_list_create(self, raw_path, body):
-        try:
-            data = json.loads(body or b"{}")
-        except Exception:
-            data = {}
+        data = _json_body(body)
         result = self.state.create_domain_list(data)
         if result:
             return json.dumps({"ok": True, "list": result}), 200, "application/json"
@@ -87,10 +75,7 @@ class RoutingHandlers:
                 return json.dumps({"ok": True, "list": result}), 200, "application/json"
             return json.dumps({"ok": False, "error": "not found"}), 404, "application/json"
         list_id = unquote(path[len("/api/domain-lists/"):])
-        try:
-            data = json.loads(body or b"{}")
-        except Exception:
-            data = {}
+        data = _json_body(body)
         result = self.state.update_domain_list(list_id, data)
         if result:
             return json.dumps({"ok": True, "list": result}), 200, "application/json"

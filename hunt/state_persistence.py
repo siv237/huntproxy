@@ -25,6 +25,7 @@ class StatePersistenceMixin:
             try:
                 d = json.loads(row["data"])
             except Exception:
+                logger.debug("skipped corrupt rating row", exc_info=True)
                 continue
             r = self._build_rating_from_dict(d)
             if not r.egress_country_code and r.egress_country:

@@ -161,6 +161,7 @@ _GROUPS = {
     "domain_lists": "Domain Lists / Routing",
     "favorites": "Favorites",
     "health_restore": "Health Restore",
+    "http_fuzz": "HTTP Fuzzing",
     "ip_blacklist": "IP Blacklist",
     "locales": "Locales",
     "navigation": "Navigation",
