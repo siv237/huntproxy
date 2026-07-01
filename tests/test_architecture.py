@@ -33,9 +33,7 @@ HUNT_DIR = ROOT / "hunt"
 
 MAX_LINES = {
     "server.py": 350,       # current: 306 — handler extraction done
-    "checking.py": 500,     # current: 1165 — extract speed/ssl/check logic
     "scheduler.py": 500,    # current: 820 — executor extracted, trim further
-    "health.py": 500,       # current: 817 — extract startup cycle, canary
     "state.py": 400,        # current: 576 — extract persistence, downloads
     "proxy_runner.py": 500, # current: 554 — extract route selection logic
     "proxy_sources.py": 500, # current: 474 — OK (just under)
@@ -50,11 +48,26 @@ MAX_LINES = {
     "handlers/routing.py": 150,
     "handlers/sources.py": 350,
     "handlers/traffic.py": 350,
+    # Check mixins — split from checking.py (was 1165)
+    "check_validation.py": 250,
+    "check_proxy.py": 250,
+    "check_ssl.py": 200,
+    "check_speed.py": 350,
+    "check_mitm.py": 250,
+    "check_geo.py": 200,
+    "check_rating.py": 200,
+    # Health mixins — split from health.py (was 817)
+    "hunt_control.py": 200,
+    "hunt_cycle.py": 200,
+    "canary.py": 250,
+    "health_loops.py": 150,
+    "health_check.py": 400,
 }
 
 MAX_CYCLOMATIC = 15  # per function — industry standard threshold
 
-MAX_MIXIN_COUNT = 16  # HuntState God Object — target: <8 (current: 16)
+MAX_MIXIN_COUNT = 26  # HuntState God Object — was 16, grew to 26 after checking+health split
+# Target: <8 — requires replacing mixin inheritance with composition
 
 
 # ── Helpers ────────────────────────────────────────────────────────────

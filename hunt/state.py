@@ -10,13 +10,23 @@ from hunt.actions import ActionsMixin
 from hunt.backup import BackupMixin
 from hunt.blocklists import BlocklistsMixin
 from hunt.channel import ChannelMixin
-from hunt.checking import CheckingMixin
+from hunt.check_validation import CheckValidationMixin
+from hunt.check_proxy import CheckProxyMixin
+from hunt.check_ssl import CheckSslMixin
+from hunt.check_speed import CheckSpeedMixin
+from hunt.check_mitm import CheckMitmMixin
+from hunt.check_geo import CheckGeoMixin
+from hunt.check_rating import CheckRatingMixin
 from hunt.constants import DATA_DIR, logger
 from hunt.custom_proxies import CustomProxiesMixin
 from hunt.db import DbMixin
 from hunt.events import EventsMixin
 from hunt.geo import country_code_from_name
-from hunt.health import HealthMixin
+from hunt.hunt_control import HuntControlMixin
+from hunt.hunt_cycle import HuntCycleMixin
+from hunt.canary import CanaryMixin
+from hunt.health_loops import HealthLoopsMixin
+from hunt.health_check import HealthCheckMixin
 from hunt.ip_blacklist import IPBlacklistMixin
 from hunt.ip_blacklist_sources import IPBlacklistSourcesMixin
 from hunt.models import ProxyRating
@@ -26,7 +36,7 @@ from hunt.snapshot import SnapshotMixin
 from pathlib import Path
 from typing import Optional
 
-class HuntState(DbMixin, EventsMixin, SnapshotMixin, HealthMixin, CheckingMixin, BlacklistMixin, IPBlacklistMixin, ProxySourcesMixin, IPBlacklistSourcesMixin, BlocklistsMixin, RoutingMixin, CustomProxiesMixin, ChannelMixin, ActionsMixin, BackupMixin, FavoritesMixin):
+class HuntState(DbMixin, EventsMixin, SnapshotMixin, HuntControlMixin, HuntCycleMixin, CanaryMixin, HealthLoopsMixin, HealthCheckMixin, CheckValidationMixin, CheckProxyMixin, CheckSslMixin, CheckSpeedMixin, CheckMitmMixin, CheckGeoMixin, CheckRatingMixin, BlacklistMixin, IPBlacklistMixin, ProxySourcesMixin, IPBlacklistSourcesMixin, BlocklistsMixin, RoutingMixin, CustomProxiesMixin, ChannelMixin, ActionsMixin, BackupMixin, FavoritesMixin):
     PHASE_IDLE = "idle"
 
     PHASE_DOWNLOAD = "downloading"
