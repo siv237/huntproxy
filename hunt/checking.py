@@ -601,9 +601,13 @@ class CheckingMixin:
                 await asyncio.wait_for(w.drain(), timeout=10)
                 total = 0
                 http_ok = True
+                speed_deadline = time.monotonic() + 30
                 while True:
+                    remaining = speed_deadline - time.monotonic()
+                    if remaining <= 0:
+                        break
                     try:
-                        chunk = await asyncio.wait_for(r.read(65536), timeout=30)
+                        chunk = await asyncio.wait_for(r.read(65536), timeout=min(30, remaining))
                     except (asyncio.TimeoutError, asyncio.IncompleteReadError):
                         break
                     if not chunk:
@@ -696,9 +700,13 @@ class CheckingMixin:
                 await asyncio.wait_for(tls_w.drain(), timeout=10)
                 total = 0
                 http_ok = True
+                speed_deadline = time.monotonic() + 30
                 while True:
+                    remaining = speed_deadline - time.monotonic()
+                    if remaining <= 0:
+                        break
                     try:
-                        chunk = await asyncio.wait_for(r.read(65536), timeout=30)
+                        chunk = await asyncio.wait_for(r.read(65536), timeout=min(30, remaining))
                     except (asyncio.TimeoutError, asyncio.IncompleteReadError):
                         break
                     if not chunk:
