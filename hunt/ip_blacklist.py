@@ -125,12 +125,14 @@ class IPBlacklistMixin:
                     r.ip_blacklist_reason = reason or "exit IP blacklisted"
                     r.ip_blacklist_hits = len(sources)
                     r.ip_blacklist_sources = [s.get("source_id") for s in sources]
+                    self._dirty_ratings.add(addr)
                     self._emit(f"IP blacklisted: {addr} egress {egress_ip} — {reason}", "blacklist")
             else:
                 if r.ip_blacklist_reason or r.ip_blacklist_hits:
                     r.ip_blacklist_reason = ""
                     r.ip_blacklist_hits = 0
                     r.ip_blacklist_sources = []
+                    self._dirty_ratings.add(addr)
 
     def _load_ip_blacklist(self):
             """Load downloaded IP blacklist entries from SQLite into memory."""

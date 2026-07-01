@@ -140,6 +140,45 @@ class TestWorkingFileLoading:
         assert r.latency_count == 1
 
 
+class TestDirtyRatingsSave:
+    def test_save_dirty_ratings_upserts_only_changed(self, state, tmp_data_dir):
+        r1 = hunt.ProxyRating(address="1.2.3.4:8080", last_status="ok", checks_total=2, checks_ok=2)
+        r1.latency_sum = 1.2
+        r1.latency_count = 2
+        r2 = hunt.ProxyRating(address="5.6.7.8:8080", last_status="ok", checks_total=1, checks_ok=1)
+        r2.latency_sum = 0.5
+        r2.latency_count = 1
+        state.ratings["1.2.3.4:8080"] = r1
+        state.ratings["5.6.7.8:8080"] = r2
+        state._save_state()
+        assert state._dirty_ratings == set()
+
+        # Modify only r1; r2 stays unchanged in memory.
+        r1.checks_total = 3
+        r1.latency_sum = 1.8
+        r1.latency_count = 3
+        state._dirty_ratings.add("1.2.3.4:8080")
+        state._save_dirty_ratings()
+        assert state._dirty_ratings == set()
+
+        # Reload from DB — only r1 should reflect the change, but both must exist.
+        state2 = hunt.HuntState({"ip_blacklists": {"enabled": False}})
+        state2._load_state()
+        assert state2.ratings["1.2.3.4:8080"].checks_total == 3
+        assert state2.ratings["1.2.3.4:8080"].latency_sum == 1.8
+        assert state2.ratings["5.6.7.8:8080"].checks_total == 1
+
+    def test_save_dirty_ratings_noop_on_empty(self, state, tmp_data_dir):
+        state._save_dirty_ratings()
+        assert state._dirty_ratings == set()
+
+    def test_full_save_clears_dirty_set(self, state, tmp_data_dir):
+        state.ratings["1.2.3.4:8080"] = hunt.ProxyRating(address="1.2.3.4:8080")
+        state._dirty_ratings.add("1.2.3.4:8080")
+        state._save_state()
+        assert state._dirty_ratings == set()
+
+
 class TestDbRecovery:
     def test_stats_db_recovers_after_file_deletion(self, state, tmp_data_dir):
         r = hunt.ProxyRating(address="1.2.3.4:8080", last_status="ok", checks_total=1, checks_ok=1)

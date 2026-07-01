@@ -87,6 +87,19 @@ class HuntState(DbMixin, EventsMixin, SnapshotMixin, HealthMixin, CheckingMixin,
 
             # Persistence batching counter
             self._rating_updates_since_save: int = 0
+            # Track which ratings changed since the last full save so the
+            # periodic save can upsert only those rows instead of rewriting
+            # the entire ratings table on every batch.
+            self._dirty_ratings: set[str] = set()
+
+            # Seed psutil's CPU baseline so the first dashboard snapshot
+            # reports a real value instead of 0.0 (cpu_percent needs two
+            # samples to compute a delta).
+            try:
+                import psutil
+                psutil.cpu_percent(interval=None)
+            except Exception:
+                pass
 
             # Hunt progress counters
             self.sources_total: int = 0
@@ -333,8 +346,38 @@ class HuntState(DbMixin, EventsMixin, SnapshotMixin, HealthMixin, CheckingMixin,
                     )
                 conn.commit()
                 conn.close()
+                # A full save covers every rating, so nothing is dirty afterwards.
+                self._dirty_ratings.clear()
             except Exception as e:
                 logger.warning(f"SQLite state save failed: {e}")
+
+    def _save_dirty_ratings(self):
+            """Incrementally upsert only the ratings that changed since the last
+            full save.  This avoids the O(n) DELETE+re-insert of the entire
+            ratings table on every periodic save during proxy validation.
+
+            Removals (e.g. clear_dead) always go through a full ``_save_state``,
+            so the DB never retains stale rows that were deleted from memory.
+            """
+            if not self._dirty_ratings:
+                return
+            try:
+                conn = self._db()
+                rows = []
+                for addr in self._dirty_ratings:
+                    r = self.ratings.get(addr)
+                    if r is not None:
+                        rows.append((r.address, json.dumps(r.to_dict())))
+                if rows:
+                    conn.executemany(
+                        "INSERT OR REPLACE INTO ratings (address, data) VALUES (?, ?)",
+                        rows,
+                    )
+                    conn.commit()
+                conn.close()
+                self._dirty_ratings.clear()
+            except Exception as e:
+                logger.warning(f"SQLite dirty ratings save failed: {e}")
 
     def _load_working_file(self):
             """Load working proxies from DB. One-time migration from working.txt."""

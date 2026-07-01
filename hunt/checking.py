@@ -1130,12 +1130,15 @@ class CheckingMixin:
                 r.last_status = "failed"
                 r.consecutive_fails += 1
             self.ratings[addr] = r
+            self._dirty_ratings.add(addr)
             if r.egress_ip:
                 self._apply_ip_blacklist_to_proxy(addr, r.egress_ip)
             if ok or was_working:
                 self._record_proxy_check(addr, r.last_check, latency, speed, ok)
             self._rating_updates_since_save += 1
-            if self._rating_updates_since_save >= 25:
-                self._save_state()
+            if self._rating_updates_since_save >= 200:
+                self._save_dirty_ratings()
                 self._save_working_file()
                 self._rating_updates_since_save = 0
+            elif self._rating_updates_since_save % 50 == 0:
+                self._save_dirty_ratings()

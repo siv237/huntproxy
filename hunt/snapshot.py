@@ -348,7 +348,7 @@ class SnapshotMixin:
             try:
                 import psutil
                 return {
-                    "cpu": psutil.cpu_percent(interval=0.1),
+                    "cpu": psutil.cpu_percent(interval=None),
                     "memory": psutil.virtual_memory().percent,
                     "disk": psutil.disk_usage('/').percent,
                 }
