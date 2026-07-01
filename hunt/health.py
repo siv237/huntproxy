@@ -777,31 +777,41 @@ class HealthMixin:
             self._hunt_running = True
             self._save_state()
 
-            self._emit("Startup cycle: re-validating previously-working proxies", "phase")
             try:
-                await self._revalidate_stale_proxies()
-            except Exception as e:
-                logger.error(f"Startup re-validation failed: {e}")
+                self._emit("Startup cycle: re-validating previously-working proxies", "phase")
+                try:
+                    await self._revalidate_stale_proxies()
+                except Exception as e:
+                    logger.error(f"Startup re-validation failed: {e}")
 
-            self._emit("Startup cycle: starting full hunt (read lists → validate)", "phase")
-            # Always start a fresh hunt cycle on restart.
-            if self.task is not None and not self.task.done():
-                self.stop_hunt()
-            self.phase = self.PHASE_IDLE
-            if not self.start_hunt():
-                logger.warning("Could not start startup hunt cycle")
-                self._emit("Startup cycle: could not start hunt", "error")
+                self._emit("Startup cycle: starting full hunt (read lists → validate)", "phase")
+                # Always start a fresh hunt cycle on restart.
+                if self.task is not None and not self.task.done():
+                    self.stop_hunt()
+                self.phase = self.PHASE_IDLE
+                if not self.start_hunt():
+                    logger.warning("Could not start startup hunt cycle")
+                    self._emit("Startup cycle: could not start hunt", "error")
+                    return
+
+                deadline = time.time() + 7200  # 2h safety cap
+                while self.task is not None and not self.task.done():
+                    if time.time() > deadline:
+                        logger.error("Startup hunt cycle exceeded 2 hours")
+                        self._emit("Startup cycle: hunt exceeded 2h cap", "warn")
+                        break
+                    await asyncio.sleep(2)
+                self._emit("Startup cycle complete", "ok")
+            except asyncio.CancelledError:
+                self._emit("Startup cycle cancelled", "warn")
+                raise
+            except Exception as e:
+                logger.error(f"Startup cycle error: {e}")
+                self._emit(f"Startup cycle error: {e}", "error")
+            finally:
+                # Always release the busy flag — covers normal completion,
+                # cancellation, and GC destruction (GeneratorExit). Without
+                # this, a destroyed/cancelled startup cycle would leave
+                # _hunt_running=True forever, blocking proxy_check forever.
                 self._hunt_running = False
                 self._save_state()
-                return
-
-            deadline = time.time() + 7200  # 2h safety cap
-            while self.task is not None and not self.task.done():
-                if time.time() > deadline:
-                    logger.error("Startup hunt cycle exceeded 2 hours")
-                    self._emit("Startup cycle: hunt exceeded 2h cap", "warn")
-                    break
-                await asyncio.sleep(2)
-            self._hunt_running = False
-            self._save_state()
-            self._emit("Startup cycle complete", "ok")

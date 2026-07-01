@@ -69,7 +69,9 @@ async def amain(config: dict):
     # background task so it does NOT block the scheduler or the web UI.
     # The hunt_cycle schedule is disabled by default, so the scheduler will
     # not start a second concurrent hunt.
-    asyncio.create_task(state.run_startup_cycle())
+    # Hold a reference on the state so the garbage collector does not destroy
+    # the task mid-cycle (which would leave _hunt_running stuck True).
+    state._startup_task = asyncio.create_task(state.run_startup_cycle())
 
     async def shutdown():
         await scheduler.stop()

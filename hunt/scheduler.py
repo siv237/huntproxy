@@ -406,6 +406,44 @@ class SchedulerEngine:
 
     # ── Task triggering ────────────────────────────────────────────────
 
+    def _is_busy_flag_stale(self, busy_flag: str) -> bool:
+        """Return True if a busy-flag is True but no live task backs it.
+
+        For _hunt_running the live task can be either the startup cycle
+        (self.state._startup_task) or the hunt cycle (self.state.task),
+        since both set the flag.  If neither is alive, the flag is leftover
+        from a crashed/destroyed/GC'd run and should be cleared.
+        """
+        if not getattr(self.state, busy_flag, False):
+            return False
+        if busy_flag == "_hunt_running":
+            for attr in ("_startup_task", "task"):
+                t = getattr(self.state, attr, None)
+                if t is not None and not t.done():
+                    return False
+            return True
+        return True
+
+    def _check_busy_flag(self, task_def: dict) -> bool:
+        """Clear a stale busy-flag and return True if the task may proceed.
+
+        Returns False when a genuinely active busy-flag blocks the task.
+        """
+        busy_flag = task_def.get("busy_flag")
+        if not busy_flag:
+            return True
+        if not getattr(self.state, busy_flag, False):
+            return True
+        if self._is_busy_flag_stale(busy_flag):
+            self.state._emit(
+                f"Scheduler: clearing stale busy-flag '{busy_flag}'",
+                "warn",
+            )
+            setattr(self.state, busy_flag, False)
+            self.state._save_state()
+            return True
+        return False
+
     async def _try_launch(self, sid: str) -> bool:
         """Try to launch a schedule. Returns True if launched, False if blocked.
 
@@ -424,9 +462,10 @@ class SchedulerEngine:
             return False
 
         # Check if an external fetch is already in progress (e.g. the
-        # startup hunt cycle is downloading the same lists).
-        busy_flag = task_def.get("busy_flag")
-        if busy_flag and getattr(self.state, busy_flag, False):
+        # startup hunt cycle is downloading the same lists).  A stale flag
+        # (left True by a crashed/destroyed previous run) is cleared so the
+        # task is not blocked forever.
+        if not self._check_busy_flag(task_def):
             return False
 
         # Check mutex conflicts
@@ -653,17 +692,11 @@ class SchedulerEngine:
             return False
 
         # Clear a stale busy-flag: if the flag is True but there is no live
-        # task behind it, the flag is leftover from a crash/restart.
-        # For _hunt_running the live task is self.state.task (the hunt cycle),
-        # not a scheduler task — check it specifically.
+        # task behind it, the flag is leftover from a crash/restart/GC.
+        # Uses the same logic as the automatic _try_launch path.
         busy_flag = task_def.get("busy_flag")
         if busy_flag and getattr(self.state, busy_flag, False):
-            is_stale = True
-            if busy_flag == "_hunt_running":
-                hunt_task = getattr(self.state, "task", None)
-                if hunt_task is not None and not hunt_task.done():
-                    is_stale = False
-            if is_stale:
+            if self._is_busy_flag_stale(busy_flag):
                 self.state._emit(
                     f"Scheduler: clearing stale busy-flag '{busy_flag}' for manual run of '{entry.name}'",
                     "warn",

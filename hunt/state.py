@@ -71,6 +71,9 @@ class HuntState(DbMixin, EventsMixin, SnapshotMixin, HealthMixin, CheckingMixin,
             self._health_manual: bool = False
             self._health_task: Optional[asyncio.Task] = None
 
+            # Reference to the startup-cycle background task, held so the GC
+            # does not destroy it mid-cycle (see main.py / run_startup_cycle).
+            self._startup_task: Optional[asyncio.Task] = None
             # Service state for restoration after restart
             self._hunt_running: bool = False
             self._proxy_running: bool = False
