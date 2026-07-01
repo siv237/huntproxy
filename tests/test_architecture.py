@@ -34,8 +34,8 @@ HUNT_DIR = ROOT / "hunt"
 MAX_LINES = {
     "server.py": 350,       # current: 306 — handler extraction done
     "scheduler.py": 500,    # current: 494 — persistence+API extracted
-    "state.py": 400,        # current: 582 — extract persistence, downloads
-    "proxy_runner.py": 500, # current: 554 — extract route selection logic
+    "state.py": 250,         # current: 212 — persistence+downloads extracted
+    "proxy_runner.py": 350,  # current: 309 — route selection extracted
     "proxy_sources.py": 500, # current: 474 — OK (just under)
     "snapshot.py": 500,     # current: 447 — OK
     "blocklists.py": 500,   # current: 427 — OK
@@ -66,6 +66,11 @@ MAX_LINES = {
     "schedule_entry.py": 200,
     "scheduler_persistence.py": 200,
     "scheduler_api.py": 250,
+    # State sub-modules — extracted from state.py (was 586)
+    "state_persistence.py": 350,
+    "state_download.py": 150,
+    # Proxy runner sub-module — extracted from proxy_runner.py (was 554)
+    "proxy_routing.py": 300,
 }
 
 MAX_CYCLOMATIC = 15  # per function — industry standard threshold
