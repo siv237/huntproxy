@@ -22,231 +22,90 @@ class ProxyRouteMixin:
         if chain is None:
             chain = []
         if route == "direct":
-            try:
-                if self.state._channel_is_set():
-                    reader, writer = await self.state._outbound_connect(host, port, timeout=15)
-                    chain.append(f"direct via channel")
-                else:
-                    reader, writer = await asyncio.wait_for(
-                        asyncio.open_connection(host, port), timeout=15)
-                    chain.append("direct")
-                return reader, writer, False
-            except Exception:
-                return None
-
+            return await self._connect_direct(host, port, chain)
         if route.startswith("custom:"):
-            proxy_id = route[7:]
-            proxy = self.state.get_custom_proxy_raw(proxy_id)
-            if not proxy or not proxy["enabled"]:
-                chain.append(f"custom:{proxy_id} (disabled)")
-                default = self.state._routing_get("default_route", "direct")
-                return await self._connect_by_route(default, host, port, chain, need_connect)
-            try:
-                reader, writer = await asyncio.wait_for(
-                    asyncio.open_connection(proxy["host"], proxy["port"]), timeout=10)
-            except Exception:
-                return None
-            protocol = proxy.get("protocol", "socks5")
-            uname = proxy.get("username", "")
-            passwd = proxy.get("password", "")
-            if protocol == "socks5":
-                ok = await self._socks5_cmd_auth(reader, writer, host, port, uname, passwd)
-                if not ok:
-                    try: writer.close()
-                    except: pass
-                    return None
-                chain.append(f"custom:{proxy_id}")
-                return reader, writer, False
-            else:
-                if need_connect:
-                    ok = await self._http_connect_cmd_auth(reader, writer, host, port, uname, passwd)
-                    if not ok:
-                        try: writer.close()
-                        except: pass
-                        return None
-                    chain.append(f"custom:{proxy_id}")
-                    return reader, writer, False
-                else:
-                    chain.append(f"custom:{proxy_id}")
-                    return reader, writer, True
-
+            return await self._connect_via_custom(route[7:], host, port, chain, need_connect)
         if route.startswith("proxy:"):
-            addr = route[6:]
-            r = self.state.ratings.get(addr)
-            # Manual blacklist is a hard exclusion; IP blacklist only lowers score.
-            if not r or r.in_blacklist:
-                return None
-            phost, pport_str = r.address.rsplit(":", 1)
-            try:
-                conn_kwargs = {}
-                if r.ssl_supported:
-                    ctx = self.state._make_ssl_ctx()
-                    conn_kwargs["ssl"] = ctx
-                    conn_kwargs["server_hostname"] = phost
-                reader, writer = await asyncio.wait_for(
-                    asyncio.open_connection(phost, int(pport_str), **conn_kwargs), timeout=10)
-            except Exception:
-                return None
-            if r.protocol == "socks4":
-                ok = await self._socks4_cmd(reader, writer, host, port)
-                if not ok:
-                    try: writer.close()
-                    except: pass
-                    return None
-                chain.append(f"proxy:{r.address}")
-                return reader, writer, False
-            elif r.protocol == "socks5":
-                ok = await self._socks5_cmd(reader, writer, host, port)
-                if not ok:
-                    try: writer.close()
-                    except: pass
-                    return None
-                chain.append(f"proxy:{r.address}")
-                return reader, writer, False
-            else:
-                if need_connect:
-                    ok = await self._http_connect_cmd(reader, writer, host, port)
-                    if not ok:
-                        try: writer.close()
-                        except: pass
-                        return None
-                    chain.append(f"proxy:{r.address}")
-                    return reader, writer, False
-                else:
-                    chain.append(f"proxy:{r.address}")
-                    return reader, writer, True
-
+            return await self._connect_via_addr(route[6:], host, port, chain, need_connect)
         if route == "pool" or route == "":
-            pool = [r for r in self.state.ratings.values()
-                    if (r.last_status == "ok" or r.in_grace) and not r.in_blacklist]
-            if need_connect:
-                pool = [r for r in pool if r.supports_connect or r.protocol in ("socks4", "socks5")]
-            if not pool:
-                return None
-            pool.sort(key=lambda r: r.score, reverse=True)
-            for attempt in range(min(len(pool), 8)):
-                p = pool[attempt]
-                phost, pport_str = p.address.rsplit(":", 1)
-                try:
-                    conn_kwargs = {}
-                    if p.ssl_supported:
-                        ctx = self.state._make_ssl_ctx()
-                        conn_kwargs["ssl"] = ctx
-                        conn_kwargs["server_hostname"] = phost
-                    reader, writer = await asyncio.wait_for(
-                        asyncio.open_connection(phost, int(pport_str), **conn_kwargs), timeout=10)
-                except Exception:
-                    continue
-                ok = False
-                if p.protocol == "socks4":
-                    ok = await self._socks4_cmd(reader, writer, host, port)
-                elif p.protocol == "socks5":
-                    ok = await self._socks5_cmd(reader, writer, host, port)
-                else:
-                    if need_connect:
-                        ok = await self._http_connect_cmd(reader, writer, host, port)
-                    else:
-                        ok = True
-                if not ok:
-                    try: writer.close()
-                    except: pass
-                    continue
-                self._failover_idx = (attempt + 1) % len(pool)
-                chain.append(f"pool:{p.address}")
-                is_raw = (not need_connect and p.protocol not in ("socks4", "socks5"))
-                return reader, writer, is_raw
+            return await self._connect_via_pool(host, port, chain, need_connect)
+        # Fallback: direct mode or active proxy, then pool
+        return await self._connect_fallback(host, port, chain, need_connect)
+
+    async def _connect_direct(self, host: str, port: int, chain: list) -> tuple:
+        try:
+            if self.state._channel_is_set():
+                reader, writer = await self.state._outbound_connect(host, port, timeout=15)
+                chain.append("direct via channel")
+            else:
+                reader, writer = await asyncio.wait_for(
+                    asyncio.open_connection(host, port), timeout=15)
+                chain.append("direct")
+            return reader, writer, False
+        except Exception:
             return None
 
-        if self.direct_mode:
-            try:
-                if self.state._channel_is_set():
-                    reader, writer = await self.state._outbound_connect(host, port, timeout=15)
-                    chain.append(f"direct via channel")
-                else:
-                    reader, writer = await asyncio.wait_for(
-                        asyncio.open_connection(host, port), timeout=15)
-                    chain.append("direct")
-                return reader, writer, False
-            except Exception:
+    async def _connect_via_custom(self, proxy_id: str, host: str, port: int, chain: list, need_connect: bool) -> tuple:
+        proxy = self.state.get_custom_proxy_raw(proxy_id)
+        if not proxy or not proxy["enabled"]:
+            chain.append(f"custom:{proxy_id} (disabled)")
+            default = self.state._routing_get("default_route", "direct")
+            return await self._connect_by_route(default, host, port, chain, need_connect)
+        try:
+            reader, writer = await asyncio.wait_for(
+                asyncio.open_connection(proxy["host"], proxy["port"]), timeout=10)
+        except Exception:
+            return None
+        protocol = proxy.get("protocol", "socks5")
+        uname = proxy.get("username", "")
+        passwd = proxy.get("password", "")
+        if protocol == "socks5":
+            ok = await self._socks5_cmd_auth(reader, writer, host, port, uname, passwd)
+            if not ok:
+                self._safe_close(writer)
                 return None
-
-        if self.active_proxy_addr:
-            r = self.state.ratings.get(self.active_proxy_addr)
-            if not r or r.in_blacklist:
-                return None
-            phost, pport_str = r.address.rsplit(":", 1)
-            try:
-                conn_kwargs = {}
-                if r.ssl_supported:
-                    ctx = self.state._make_ssl_ctx()
-                    conn_kwargs["ssl"] = ctx
-                    conn_kwargs["server_hostname"] = phost
-                reader, writer = await asyncio.wait_for(
-                    asyncio.open_connection(phost, int(pport_str), **conn_kwargs), timeout=10)
-            except Exception:
-                return None
-            if r.protocol == "socks4":
-                ok = await self._socks4_cmd(reader, writer, host, port)
-                if not ok:
-                    try: writer.close()
-                    except: pass
-                    return None
-                chain.append(f"proxy:{r.address}")
-                return reader, writer, False
-            elif r.protocol == "socks5":
-                ok = await self._socks5_cmd(reader, writer, host, port)
-                if not ok:
-                    try: writer.close()
-                    except: pass
-                    return None
-                chain.append(f"proxy:{r.address}")
-                return reader, writer, False
-            else:
-                if need_connect:
-                    ok = await self._http_connect_cmd(reader, writer, host, port)
-                    if not ok:
-                        try: writer.close()
-                        except: pass
-                        return None
-                    chain.append(f"proxy:{r.address}")
-                    return reader, writer, False
-                else:
-                    chain.append(f"proxy:{r.address}")
-                    return reader, writer, True
-
-        pool = [r for r in self.state.ratings.values()
-                if (r.last_status == "ok" or r.in_grace) and not r.in_blacklist]
+            chain.append(f"custom:{proxy_id}")
+            return reader, writer, False
         if need_connect:
-            pool = [r for r in pool if r.supports_connect or r.protocol in ("socks4", "socks5")]
+            ok = await self._http_connect_cmd_auth(reader, writer, host, port, uname, passwd)
+            if not ok:
+                self._safe_close(writer)
+                return None
+            chain.append(f"custom:{proxy_id}")
+            return reader, writer, False
+        chain.append(f"custom:{proxy_id}")
+        return reader, writer, True
+
+    async def _connect_via_addr(self, addr: str, host: str, port: int, chain: list, need_connect: bool) -> tuple:
+        r = self.state.ratings.get(addr)
+        if not r or r.in_blacklist:
+            return None
+        return await self._connect_via_rating(r, host, port, chain, need_connect)
+
+    async def _connect_via_rating(self, r: ProxyRating, host: str, port: int, chain: list, need_connect: bool) -> tuple:
+        reader, writer = await self._open_proxy_conn(r)
+        if reader is None:
+            return None
+        ok = await self._negotiate_proxy(r, reader, writer, host, port, need_connect)
+        if not ok:
+            self._safe_close(writer)
+            return None
+        chain.append(f"proxy:{r.address}")
+        is_raw = (not need_connect and r.protocol not in ("socks4", "socks5"))
+        return reader, writer, is_raw
+
+    async def _connect_via_pool(self, host: str, port: int, chain: list, need_connect: bool) -> tuple:
+        pool = self._build_pool(need_connect)
         if not pool:
             return None
-        pool.sort(key=lambda r: r.score, reverse=True)
         for attempt in range(min(len(pool), 8)):
             p = pool[attempt]
-            phost, pport_str = p.address.rsplit(":", 1)
-            try:
-                conn_kwargs = {}
-                if p.ssl_supported:
-                    ctx = self.state._make_ssl_ctx()
-                    conn_kwargs["ssl"] = ctx
-                    conn_kwargs["server_hostname"] = phost
-                reader, writer = await asyncio.wait_for(
-                    asyncio.open_connection(phost, int(pport_str), **conn_kwargs), timeout=10)
-            except Exception:
+            reader, writer = await self._open_proxy_conn(p)
+            if reader is None:
                 continue
-            ok = False
-            if p.protocol == "socks4":
-                ok = await self._socks4_cmd(reader, writer, host, port)
-            elif p.protocol == "socks5":
-                ok = await self._socks5_cmd(reader, writer, host, port)
-            else:
-                if need_connect:
-                    ok = await self._http_connect_cmd(reader, writer, host, port)
-                else:
-                    ok = True
+            ok = await self._negotiate_proxy(p, reader, writer, host, port, need_connect)
             if not ok:
-                try: writer.close()
-                except: pass
+                self._safe_close(writer)
                 continue
             self._failover_idx = (attempt + 1) % len(pool)
             chain.append(f"pool:{p.address}")
@@ -254,5 +113,46 @@ class ProxyRouteMixin:
             return reader, writer, is_raw
         return None
 
+    async def _connect_fallback(self, host: str, port: int, chain: list, need_connect: bool) -> tuple:
+        if self.direct_mode:
+            return await self._connect_direct(host, port, chain)
+        if self.active_proxy_addr:
+            return await self._connect_via_addr(self.active_proxy_addr, host, port, chain, need_connect)
+        return await self._connect_via_pool(host, port, chain, need_connect)
 
+    def _build_pool(self, need_connect: bool) -> list:
+        pool = [r for r in self.state.ratings.values()
+                if (r.last_status == "ok" or r.in_grace) and not r.in_blacklist]
+        if need_connect:
+            pool = [r for r in pool if r.supports_connect or r.protocol in ("socks4", "socks5")]
+        pool.sort(key=lambda r: r.score, reverse=True)
+        return pool
 
+    async def _open_proxy_conn(self, r: ProxyRating):
+        phost, pport_str = r.address.rsplit(":", 1)
+        try:
+            conn_kwargs = {}
+            if r.ssl_supported:
+                ctx = self.state._make_ssl_ctx()
+                conn_kwargs["ssl"] = ctx
+                conn_kwargs["server_hostname"] = phost
+            reader, writer = await asyncio.wait_for(
+                asyncio.open_connection(phost, int(pport_str), **conn_kwargs), timeout=10)
+            return reader, writer
+        except Exception:
+            return None, None
+
+    async def _negotiate_proxy(self, r: ProxyRating, reader, writer, host: str, port: int, need_connect: bool) -> bool:
+        if r.protocol == "socks4":
+            return await self._socks4_cmd(reader, writer, host, port)
+        if r.protocol == "socks5":
+            return await self._socks5_cmd(reader, writer, host, port)
+        if need_connect:
+            return await self._http_connect_cmd(reader, writer, host, port)
+        return True
+
+    def _safe_close(self, writer):
+        try:
+            writer.close()
+        except Exception:
+            pass

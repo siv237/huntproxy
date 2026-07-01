@@ -11,6 +11,51 @@ from hunt.models import ProxyRating
 
 class CheckValidationMixin:
     _SOCKS_PORTS = frozenset({1080, 10808, 9050, 4145})
+
+    def _detect_protocol(self, addr: str) -> str:
+        try:
+            p = int(addr.rsplit(":", 1)[1])
+            if p in (1080, 10808, 9050):
+                return "socks5"
+            if p == 4145:
+                return "socks4"
+        except Exception:
+            pass
+        return "http"
+
+    def _merge_check_results(self, results, addr: str) -> dict:
+        http_r = results[0]
+        ssl_r = results[1]
+        if isinstance(http_r, Exception):
+            ok, country, supports_connect, mitm_suspect, egress, listen, http_latency, cc, fast_fail = False, "", False, False, {}, {}, 0.0, "", False
+        else:
+            ok, country, supports_connect, mitm_suspect, egress, listen, http_latency, cc, fast_fail = http_r
+        if isinstance(ssl_r, Exception):
+            ssl_ok, ssl_country, ssl_cc, ssl_egress, ssl_latency, ssl_supports_connect = False, "", "", {}, 0.0, False
+        else:
+            ssl_ok, ssl_country, ssl_cc, ssl_egress, ssl_latency, ssl_supports_connect = ssl_r
+        if not ok and ssl_ok:
+            ok = True
+            country = ssl_country
+            cc = ssl_cc
+            egress = ssl_egress
+            http_latency = ssl_latency
+            supports_connect = ssl_supports_connect
+        elif ok and ssl_ok:
+            if not egress and ssl_egress:
+                egress = ssl_egress
+            if not supports_connect and ssl_supports_connect:
+                supports_connect = ssl_supports_connect
+        if ok and not self._is_socks_addr(addr) and not supports_connect:
+            ok = False
+        return {
+            "ok": ok, "country": country, "supports_connect": supports_connect,
+            "mitm_suspect": mitm_suspect, "egress": egress, "listen": listen,
+            "http_latency": http_latency, "cc": cc, "fast_fail": fast_fail,
+            "ssl_ok": ssl_ok, "ssl_egress": ssl_egress,
+            "ssl_supports_connect": ssl_supports_connect,
+        }
+
     async def _validate_all(self, proxies: set):
             sem = asyncio.Semaphore(self.parallel)
             lock = asyncio.Lock()
@@ -26,11 +71,7 @@ class CheckValidationMixin:
                 nonlocal ok_count, fail_count, new_count, confirmed_count
                 wid = _ctr[0]; _ctr[0] += 1
                 counted = False
-                try:
-                    _p = int(addr.rsplit(":", 1)[1])
-                    _proto = "socks5" if _p in (1080, 10808, 9050) else "socks4" if _p == 4145 else "http"
-                except Exception:
-                    _proto = "http"
+                _proto = self._detect_protocol(addr)
                 self._active_checks[wid] = {"addr": addr, "step": "queued", "started": time.time(), "protocol": _proto}
                 try:
                     while True:
@@ -50,18 +91,13 @@ class CheckValidationMixin:
                                 await self._pause_event.wait()
                                 continue
                             self._active_checks[wid] = {"addr": addr, "step": "connect", "started": time.time(), "protocol": _proto}
-                            http_task = asyncio.create_task(self._check_proxy(addr))
-                            ssl_task = asyncio.create_task(self._check_ssl(addr))
-                            results = await asyncio.gather(http_task, ssl_task, return_exceptions=True)
-                            if isinstance(results[0], Exception):
-                                ok, country, supports_connect, mitm_suspect, egress, listen, http_latency, cc, fast_fail = False, "", False, False, {}, {}, 0.0, "", False
-                            else:
-                                ok, country, supports_connect, mitm_suspect, egress, listen, http_latency, cc, fast_fail = results[0]
-                            if isinstance(results[1], Exception):
-                                ssl_ok, ssl_country, ssl_cc, ssl_egress, ssl_latency, ssl_supports_connect = False, "", "", {}, 0.0, False
-                            else:
-                                ssl_ok, ssl_country, ssl_cc, ssl_egress, ssl_latency, ssl_supports_connect = results[1]
-                            if fast_fail and not ok and not ssl_ok:
+                            results = await asyncio.gather(
+                                asyncio.create_task(self._check_proxy(addr)),
+                                asyncio.create_task(self._check_ssl(addr)),
+                                return_exceptions=True,
+                            )
+                            merged = self._merge_check_results(results, addr)
+                            if merged["fast_fail"] and not merged["ok"] and not merged["ssl_ok"]:
                                 need_auto_pause = False
                                 async with lock:
                                     if getattr(self, '_health_running', False):
@@ -81,23 +117,12 @@ class CheckValidationMixin:
                                     await self._pause_event.wait()
                                     continue
                                 return
-                            if not ok and ssl_ok:
-                                ok = True
-                                country = ssl_country
-                                cc = ssl_cc
-                                egress = ssl_egress
-                                http_latency = ssl_latency
-                                supports_connect = ssl_supports_connect
-                            elif ok and not ssl_ok:
-                                pass
-                            elif ok and ssl_ok:
-                                if not egress and ssl_egress:
-                                    egress = ssl_egress
-                                if not supports_connect and ssl_supports_connect:
-                                    supports_connect = ssl_supports_connect
-                            # Non-SOCKS proxies must support CONNECT to be useful for HTTPS.
-                            if ok and not self._is_socks_addr(addr) and not supports_connect:
-                                ok = False
+                            ok, country, supports_connect, mitm_suspect, egress, listen, http_latency, cc, ssl_ok, ssl_egress, ssl_supports_connect = (
+                                merged["ok"], merged["country"], merged["supports_connect"],
+                                merged["mitm_suspect"], merged["egress"], merged["listen"],
+                                merged["http_latency"], merged["cc"], merged["ssl_ok"],
+                                merged["ssl_egress"], merged["ssl_supports_connect"],
+                            )
                             speed = 0.0
                             if ok:
                                 self._active_checks[wid] = {"addr": addr, "step": "speed", "started": time.time(), "protocol": _proto, "country": country, "cc": cc}
@@ -113,7 +138,7 @@ class CheckValidationMixin:
                                 if getattr(self, '_health_running', False):
                                     return
                                 if self._internet_suspect:
-                                    pass  # handle outside lock
+                                    pass
                                 else:
                                     if not counted:
                                         self.checked += 1
@@ -145,7 +170,7 @@ class CheckValidationMixin:
                                             "progress"
                                         )
                                     if self._check_streak >= 10 and self._fail_streak / self._check_streak > 0.7:
-                                        pass  # handle outside lock
+                                        pass
                             if self._internet_suspect:
                                 await self._pause_event.wait()
                                 continue

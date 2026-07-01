@@ -195,119 +195,129 @@ class ProxyHandlers:
 
     async def _handle_proxies(self, raw_path, body):
         qs = _qs(raw_path)
+        mode = qs.get("mode", "")
+        if mode == "grouped":
+            return await self._proxies_grouped(qs)
+        if mode == "group-proxies":
+            return await self._proxies_group_proxies(qs)
+        return await self._proxies_list(qs)
+
+    def _proxy_alive(self, r):
+        return (r.last_status == "ok" or r.in_grace) and not r.in_blacklist
+
+    async def _proxies_grouped(self, qs):
+        all_proxies = list(self.state.ratings.values())
+        status = qs.get("status", "")
+        sources_map = {s["id"]: s.get("name", s["id"]) for s in self.state.get_proxy_sources()}
+        group_by = qs.get("group_by", "country")
+        if group_by == "source":
+            groups = self._group_by_source(all_proxies, sources_map)
+        elif group_by == "protocol":
+            groups = self._group_by_protocol(all_proxies)
+        else:
+            groups = self._group_by_country(all_proxies)
+        result = []
+        for g in groups.values():
+            g["alive_pct"] = round(g["alive"] / g["total"] * 100, 1) if g["total"] else 0
+            if status == "alive" and g["alive"] == 0:
+                continue
+            if status == "dead" and g["dead"] == 0:
+                continue
+            result.append(g)
+        result.sort(key=lambda g: g["alive"], reverse=True)
+        return json.dumps({"groups": result, "total": len(all_proxies)}), 200, "application/json"
+
+    def _group_by_source(self, proxies, sources_map):
+        groups = {}
+        for r in proxies:
+            src_ids = self.state._addr_sources.get(r.address, [])
+            if not src_ids:
+                key, label = "_unknown", "Unknown source"
+            else:
+                key, label = src_ids[0], sources_map.get(src_ids[0], src_ids[0])
+            self._add_to_group(groups, key, label, r)
+        return groups
+
+    def _group_by_protocol(self, proxies):
+        groups = {}
+        labels = {"http": "HTTP", "https": "HTTPS", "socks4": "SOCKS4", "socks5": "SOCKS5"}
+        for r in proxies:
+            proto = r.protocol or "http"
+            if proto in ("socks5", "socks4"):
+                key = proto
+            elif proto == "https" or r.ssl_supported:
+                key = "https"
+            else:
+                key = "http"
+            self._add_to_group(groups, key, labels.get(key, key.upper()), r)
+        return groups
+
+    def _group_by_country(self, proxies):
+        groups = {}
+        for r in proxies:
+            cc = r.country_code or country_code_from_name(r.country) or "??"
+            label = f"{country_flag(cc)} {country_name_from_code(cc)}"
+            self._add_to_group(groups, cc, label, r)
+        return groups
+
+    def _add_to_group(self, groups, key, label, r):
+        if key not in groups:
+            groups[key] = {"key": key, "label": label, "total": 0, "alive": 0, "dead": 0}
+        groups[key]["total"] += 1
+        if self._proxy_alive(r):
+            groups[key]["alive"] += 1
+        else:
+            groups[key]["dead"] += 1
+
+    async def _proxies_group_proxies(self, qs):
+        group_key = qs.get("group_key", "")
+        group_by = qs.get("group_by", "country")
+        group_status = qs.get("status", "")
+        all_ratings = list(self.state.ratings.values())
+        sources_map = {s["id"]: s.get("name", s["id"]) for s in self.state.get_proxy_sources()}
+        if group_by == "source":
+            filtered = [r for r in all_ratings if (
+                (self.state._addr_sources.get(r.address, []) or ["_unknown"])[0] == group_key
+            )]
+        elif group_by == "protocol":
+            filtered = [r for r in all_ratings if self._proto_key(r) == group_key]
+        else:
+            filtered = [r for r in all_ratings if (r.country_code or country_code_from_name(r.country) or "??") == group_key]
+        filtered = self._filter_by_status(filtered, group_status)
+        filtered.sort(key=lambda r: r.score, reverse=True)
+        return json.dumps({"proxies": [r.to_dict() for r in filtered]}), 200, "application/json"
+
+    def _proto_key(self, r):
+        proto = r.protocol or "http"
+        if proto in ("socks5", "socks4"):
+            return proto
+        if proto == "https" or r.ssl_supported:
+            return "https"
+        return "http"
+
+    def _filter_by_status(self, proxies, status):
+        if status == "alive":
+            return [r for r in proxies if self._proxy_alive(r)]
+        if status == "dead":
+            return [r for r in proxies if r.last_status == "failed"]
+        if status == "blacklisted":
+            return [r for r in proxies if r.is_blacklisted]
+        return proxies
+
+    async def _proxies_list(self, qs):
         status = qs.get("status", "")
         page = int(qs.get("page", 1))
         limit = int(qs.get("limit", 20))
-        mode = qs.get("mode", "")
         all_proxies = list(self.state.ratings.values())
-        if mode == "grouped":
-            sources_map = {}
-            for s in self.state.get_proxy_sources():
-                sources_map[s["id"]] = s.get("name", s["id"])
-            groups = {}
-            if qs.get("group_by") == "source":
-                for r in all_proxies:
-                    src_ids = self.state._addr_sources.get(r.address, [])
-                    if not src_ids:
-                        key = "_unknown"
-                        label = "Unknown source"
-                    else:
-                        key = src_ids[0]
-                        label = sources_map.get(key, key)
-                    if key not in groups:
-                        groups[key] = {"key": key, "label": label, "total": 0, "alive": 0, "dead": 0}
-                    groups[key]["total"] += 1
-                    if (r.last_status == "ok" or r.in_grace) and not r.in_blacklist:
-                        groups[key]["alive"] += 1
-                    else:
-                        groups[key]["dead"] += 1
-            elif qs.get("group_by") == "protocol":
-                for r in all_proxies:
-                    proto = r.protocol or "http"
-                    if proto in ("socks5", "socks4"):
-                        key = proto
-                    elif proto == "https" or r.ssl_supported:
-                        key = "https"
-                    else:
-                        key = "http"
-                    labels = {"http": "HTTP", "https": "HTTPS", "socks4": "SOCKS4", "socks5": "SOCKS5"}
-                    if key not in groups:
-                        groups[key] = {"key": key, "label": labels.get(key, key.upper()), "total": 0, "alive": 0, "dead": 0}
-                    groups[key]["total"] += 1
-                    if (r.last_status == "ok" or r.in_grace) and not r.in_blacklist:
-                        groups[key]["alive"] += 1
-                    else:
-                        groups[key]["dead"] += 1
-            else:
-                for r in all_proxies:
-                    cc = r.country_code or country_code_from_name(r.country) or "??"
-                    if cc not in groups:
-                        groups[cc] = {"key": cc, "label": f"{country_flag(cc)} {country_name_from_code(cc)}", "total": 0, "alive": 0, "dead": 0}
-                    groups[cc]["total"] += 1
-                    if (r.last_status == "ok" or r.in_grace) and not r.in_blacklist:
-                        groups[cc]["alive"] += 1
-                    else:
-                        groups[cc]["dead"] += 1
-            result = []
-            for g in groups.values():
-                g["alive_pct"] = round(g["alive"] / g["total"] * 100, 1) if g["total"] else 0
-                if status == "alive" and g["alive"] == 0:
-                    continue
-                elif status == "dead" and g["dead"] == 0:
-                    continue
-                result.append(g)
-            result.sort(key=lambda g: g["alive"], reverse=True)
-            return json.dumps({"groups": result, "total": len(all_proxies)}), 200, "application/json"
-        if mode == "group-proxies":
-            group_key = qs.get("group_key", "")
-            group_by = qs.get("group_by", "country")
-            group_status = qs.get("status", "")
-            all_ratings = list(self.state.ratings.values())
-            sources_map = {}
-            for s in self.state.get_proxy_sources():
-                sources_map[s["id"]] = s.get("name", s["id"])
-            if group_by == "source":
-                filtered = [r for r in all_ratings if (
-                    (self.state._addr_sources.get(r.address, []) or ["_unknown"])[0] == group_key
-                )]
-            elif group_by == "protocol":
-                def _proto_key(r):
-                    proto = r.protocol or "http"
-                    if proto in ("socks5", "socks4"):
-                        return proto
-                    if proto == "https" or r.ssl_supported:
-                        return "https"
-                    return "http"
-                filtered = [r for r in all_ratings if _proto_key(r) == group_key]
-            else:
-                filtered = [r for r in all_ratings if (r.country_code or country_code_from_name(r.country) or "??") == group_key]
-            if group_status == "alive":
-                filtered = [r for r in filtered if (r.last_status == "ok" or r.in_grace) and not r.in_blacklist]
-            elif group_status == "dead":
-                filtered = [r for r in filtered if r.last_status == "failed"]
-            elif group_status == "blacklisted":
-                filtered = [r for r in filtered if r.is_blacklisted]
-            filtered.sort(key=lambda r: r.score, reverse=True)
-            return json.dumps({"proxies": [r.to_dict() for r in filtered]}), 200, "application/json"
-        filtered_proxies = all_proxies
-        if status == "alive":
-            filtered_proxies = [r for r in filtered_proxies if (r.last_status == "ok" or r.in_grace) and not r.in_blacklist]
-        elif status == "dead":
-            filtered_proxies = [r for r in filtered_proxies if r.last_status == "failed"]
-        elif status == "blacklisted":
-            filtered_proxies = [r for r in filtered_proxies if r.is_blacklisted]
-        total = len(filtered_proxies)
+        filtered = self._filter_by_status(all_proxies, status)
+        total = len(filtered)
         start = (page - 1) * limit
-        end = start + limit
-        page_data = filtered_proxies[start:end]
+        page_data = filtered[start:start + limit]
         proxy_list = []
         for r in page_data:
             d = r.to_dict()
             d["source_ids"] = self.state._addr_sources.get(r.address, [])
             proxy_list.append(d)
         return json.dumps({
-            "total": total,
-            "page": page,
-            "limit": limit,
-            "proxies": proxy_list,
+            "total": total, "page": page, "limit": limit, "proxies": proxy_list,
         }), 200, "application/json"
