@@ -653,15 +653,30 @@ class SchedulerEngine:
             return False
 
         # Clear a stale busy-flag: if the flag is True but there is no live
-        # asyncio task of this type, the flag is leftover from a crash/restart.
+        # task behind it, the flag is leftover from a crash/restart.
+        # For _hunt_running the live task is self.state.task (the hunt cycle),
+        # not a scheduler task — check it specifically.
         busy_flag = task_def.get("busy_flag")
         if busy_flag and getattr(self.state, busy_flag, False):
-            self.state._emit(
-                f"Scheduler: clearing stale busy-flag '{busy_flag}' for manual run of '{entry.name}'",
-                "warn",
-            )
-            setattr(self.state, busy_flag, False)
-            self.state._save_state()
+            is_stale = True
+            if busy_flag == "_hunt_running":
+                hunt_task = getattr(self.state, "task", None)
+                if hunt_task is not None and not hunt_task.done():
+                    is_stale = False
+            if is_stale:
+                self.state._emit(
+                    f"Scheduler: clearing stale busy-flag '{busy_flag}' for manual run of '{entry.name}'",
+                    "warn",
+                )
+                setattr(self.state, busy_flag, False)
+                self.state._save_state()
+            else:
+                self.state._emit(
+                    f"Scheduler: '{entry.name}' queued — busy-flag '{busy_flag}' is active (hunt running)",
+                    "warn",
+                )
+                self._enqueue(sid)
+                return True
 
         # Remove from queue if present — we're launching directly.
         self._queue.pop(sid, None)
