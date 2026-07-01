@@ -33,8 +33,8 @@ HUNT_DIR = ROOT / "hunt"
 
 MAX_LINES = {
     "server.py": 350,       # current: 306 — handler extraction done
-    "scheduler.py": 500,    # current: 820 — executor extracted, trim further
-    "state.py": 400,        # current: 576 — extract persistence, downloads
+    "scheduler.py": 500,    # current: 494 — persistence+API extracted
+    "state.py": 400,        # current: 582 — extract persistence, downloads
     "proxy_runner.py": 500, # current: 554 — extract route selection logic
     "proxy_sources.py": 500, # current: 474 — OK (just under)
     "snapshot.py": 500,     # current: 447 — OK
@@ -62,6 +62,10 @@ MAX_LINES = {
     "canary.py": 250,
     "health_loops.py": 150,
     "health_check.py": 400,
+    # Scheduler sub-modules — extracted from scheduler.py (was 820)
+    "schedule_entry.py": 200,
+    "scheduler_persistence.py": 200,
+    "scheduler_api.py": 250,
 }
 
 MAX_CYCLOMATIC = 15  # per function — industry standard threshold
