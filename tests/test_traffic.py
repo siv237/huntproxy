@@ -226,11 +226,12 @@ class TestTrafficMemFallback:
 
     @pytest.mark.asyncio
     async def test_route_type_classification(self, state):
-        server = self._server(state)
-        assert server._route_type("direct") == "direct"
-        assert server._route_type("proxy:1.2.3.4:8080") == "proxy"
-        assert server._route_type("pool:9.9.9.9:1080") == "pool"
-        assert server._route_type("custom:myproxy") == "custom"
-        assert server._route_type("") == "other"
-        assert server._route_type("?") == "other"
-        assert server._route_type("unknown") == "other"
+        from hunt.handlers.traffic import TrafficHandlers
+        th = TrafficHandlers(state, None)
+        assert th._route_type("direct") == "direct"
+        assert th._route_type("proxy:1.2.3.4:8080") == "proxy"
+        assert th._route_type("pool:9.9.9.9:1080") == "pool"
+        assert th._route_type("custom:myproxy") == "custom"
+        assert th._route_type("") == "other"
+        assert th._route_type("?") == "other"
+        assert th._route_type("unknown") == "other"

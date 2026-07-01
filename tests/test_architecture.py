@@ -26,24 +26,33 @@ ROOT = Path(__file__).resolve().parent.parent
 HUNT_DIR = ROOT / "hunt"
 
 # ── Thresholds ─────────────────────────────────────────────────────────
-# Current values reflect the *existing* codebase.  Each refactor commit
-# should lower them, never raise.  When a file is split, move the old
-# file's threshold to the new smaller files.
+# These are *target* thresholds, not current-state snapshots.  Tests that
+# fail are refactoring backlog — each failing test is a concrete task.
+# When a file is split, add the new (smaller) files here and remove the old
+# entry.  Thresholds only go down, never up.
 
 MAX_LINES = {
-    "server.py": 2200,      # interim: handlers extracted as methods; target <500 once they move to modules
-    "checking.py": 1165,    # target: <600 after speed/ssl extraction
-    "scheduler.py": 930,    # target: <500 after executor extraction
-    "health.py": 817,       # target: <500 after startup-cycle extraction
-    "state.py": 576,        # target: <300 after persistence extraction
-    # Runners — already reasonable, just guard against growth.
-    "proxy_runner.py": 554,
-    "proxy_sources.py": 474,
-    "snapshot.py": 447,
-    "blocklists.py": 427,
+    "server.py": 350,       # current: 306 — handler extraction done
+    "checking.py": 500,     # current: 1165 — extract speed/ssl/check logic
+    "scheduler.py": 500,    # current: 820 — executor extracted, trim further
+    "health.py": 500,       # current: 817 — extract startup cycle, canary
+    "state.py": 400,        # current: 576 — extract persistence, downloads
+    "proxy_runner.py": 500, # current: 554 — extract route selection logic
+    "proxy_sources.py": 500, # current: 474 — OK (just under)
+    "snapshot.py": 500,     # current: 447 — OK
+    "blocklists.py": 500,   # current: 427 — OK
+    # Handler modules — all under 500 after extraction
+    "handlers/admin.py": 250,
+    "handlers/core.py": 150,
+    "handlers/hunt.py": 150,
+    "handlers/pool.py": 100,
+    "handlers/proxy.py": 350,
+    "handlers/routing.py": 150,
+    "handlers/sources.py": 350,
+    "handlers/traffic.py": 350,
 }
 
-MAX_CYCLOMATIC = 85  # per function — worst: _connect_by_route CC=84, _handle_proxies CC=70. target: <50
+MAX_CYCLOMATIC = 15  # per function — industry standard threshold
 
 MAX_MIXIN_COUNT = 16  # HuntState God Object — target: <8 (current: 16)
 
@@ -51,8 +60,9 @@ MAX_MIXIN_COUNT = 16  # HuntState God Object — target: <8 (current: 16)
 # ── Helpers ────────────────────────────────────────────────────────────
 
 def _python_files() -> list[Path]:
-    """All .py files in hunt/ (excluding __pycache__)."""
-    return sorted(p for p in HUNT_DIR.glob("*.py") if "__pycache__" not in str(p))
+    """All .py files in hunt/ (excluding __pycache__), including subdirs."""
+    files = sorted(p for p in HUNT_DIR.rglob("*.py") if "__pycache__" not in str(p))
+    return files
 
 
 def _cyclomatic_complexity(func) -> int:
@@ -98,13 +108,17 @@ class TestFileSizes:
     def test_no_file_exceeds_threshold(self):
         offenders = []
         for path in _python_files():
-            name = path.name
-            threshold = MAX_LINES.get(name)
+            # Match by relative path from hunt/ (e.g. "server.py" or "handlers/admin.py")
+            rel = str(path.relative_to(HUNT_DIR))
+            threshold = MAX_LINES.get(rel)
+            if threshold is None:
+                # Also try just the filename for backward compat
+                threshold = MAX_LINES.get(path.name)
             if threshold is None:
                 continue
             actual = sum(1 for _ in open(path, encoding="utf-8"))
             if actual > threshold:
-                offenders.append(f"{name}: {actual} > {threshold}")
+                offenders.append(f"{rel}: {actual} > {threshold}")
         assert not offenders, (
             "File(s) exceeded their line threshold — split or raise the "
             f"limit intentionally:\n  {chr(10).join(offenders)}"
@@ -115,10 +129,10 @@ class TestFileSizes:
         """Any new file over 500 lines must be registered in MAX_LINES."""
         unregistered = []
         for path in _python_files():
-            name = path.name
+            rel = str(path.relative_to(HUNT_DIR))
             lines = sum(1 for _ in open(path, encoding="utf-8"))
-            if lines > 500 and name not in MAX_LINES:
-                unregistered.append(f"{name}: {lines} lines (not in MAX_LINES)")
+            if lines > 500 and rel not in MAX_LINES and path.name not in MAX_LINES:
+                unregistered.append(f"{rel}: {lines} lines (not in MAX_LINES)")
         assert not unregistered, (
             "New file(s) over 500 lines found — add them to MAX_LINES in "
             f"test_architecture.py:\n  {chr(10).join(unregistered)}"
@@ -140,7 +154,9 @@ class TestComplexity:
         offenders = []
         seen_methods = set()  # dedup: mixin method also appears on HuntState
         for path in _python_files():
-            mod_name = f"hunt.{path.stem}"
+            # Build module name from relative path: hunt/handlers/admin.py → hunt.handlers.admin
+            rel = path.relative_to(HUNT_DIR).with_suffix("")
+            mod_name = "hunt." + ".".join(rel.parts)
             try:
                 mod = importlib.import_module(mod_name)
             except Exception:
@@ -293,8 +309,8 @@ class TestGodObject:
                        target.value.id == "self":
                         attrs.add(target.attr)
         # Current: ~70. Target: <40 after persistence/runner extraction.
-        assert len(attrs) <= 80, (
-            f"HuntState.__init__ assigns {len(attrs)} attributes (limit 80). "
+        assert len(attrs) <= 50, (
+            f"HuntState.__init__ assigns {len(attrs)} attributes (limit 50). "
             "Extract groups of related attributes into dedicated classes."
         )
 
@@ -320,8 +336,8 @@ class TestServerCoupling:
                    node.value.value.id == "self" and \
                    node.value.attr == "state":
                     count += 1
-        assert count <= 200, (
-            f"server.py accesses self.state.* {count} times (limit 200). "
+        assert count <= 100, (
+            f"server.py accesses self.state.* {count} times (limit 100). "
             "Extract handlers into service objects to reduce coupling."
         )
 

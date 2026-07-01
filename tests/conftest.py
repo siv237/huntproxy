@@ -22,8 +22,19 @@ def tmp_data_dir(monkeypatch):
         tmp_path = Path(tmp)
         # DATA_DIR is re-bound in several modules by the split; patch all of them.
         _main_module = importlib.import_module("hunt.main")
-        for module in (hunt, hunt.constants, hunt.state, hunt.server, _main_module):
-            monkeypatch.setattr(module, "DATA_DIR", tmp_path)
+        # Also patch handler modules that import DATA_DIR directly.
+        handler_modules = []
+        for hm in ("core", "hunt", "proxy", "pool", "traffic", "sources", "routing", "admin"):
+            try:
+                handler_modules.append(importlib.import_module(f"hunt.handlers.{hm}"))
+            except Exception:
+                pass
+        for module in (hunt, hunt.constants, hunt.state, _main_module) + tuple(handler_modules):
+            if hasattr(module, "DATA_DIR"):
+                monkeypatch.setattr(module, "DATA_DIR", tmp_path)
+        # hunt.server may or may not have DATA_DIR after handler extraction.
+        if hasattr(hunt.server, "DATA_DIR"):
+            monkeypatch.setattr(hunt.server, "DATA_DIR", tmp_path)
         yield tmp_path
 
 
