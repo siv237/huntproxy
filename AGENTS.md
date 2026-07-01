@@ -15,6 +15,18 @@ This script ensures the local `.venv` exists, installs `pytest` and `pytest-asyn
 ./test.sh -k rating   # run tests matching "rating"
 ```
 
+**Never pipe test output through `head`/`tail`/`grep`** — run `./test.sh` raw
+so the full output (every test group, every failure, ESLint warnings) is
+visible.
+
+The script also runs **ESLint** on `web/js/` before pytest (when Node.js is
+available) to catch runtime JS bugs — undefined variables, typos — that the
+Python test suite cannot see. To run it standalone:
+
+```bash
+npx eslint web/js/     # lint only; 0 errors expected
+```
+
 ## Project structure
 
 - `hunt.py` — thin backward-compatible entry point; it re-exports the public API from the `hunt` package and runs `main()`.

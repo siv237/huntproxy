@@ -3,6 +3,18 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
+# --- Static lint of the vanilla-JS frontend -------------------------------
+# Catches runtime bugs (undefined variables, typos) that pytest can't see
+# because the test suite is Python-only.  Requires Node.js + eslint; skipped
+# silently if unavailable so CI without Node isn't blocked.
+if command -v npx >/dev/null 2>&1 && [[ -f eslint.config.js ]]; then
+    if ! npx --no-install eslint web/js/ > /tmp/kilo_jslint.log 2>&1; then
+        cat /tmp/kilo_jslint.log
+        echo "✗ ESLint found errors in web/js/ — fix them before committing."
+        exit 1
+    fi
+fi
+
 # Ensure a virtual environment exists and test dependencies are installed.
 if [[ ! -d .venv ]]; then
     python3 -m venv .venv

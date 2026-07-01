@@ -10,4 +10,6 @@ data/
 
 .sixth/
 .kilo/
+node_modules/
+package-lock.json
 
