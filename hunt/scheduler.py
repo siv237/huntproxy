@@ -186,6 +186,10 @@ class SchedulerEngine:
         self._stopped: bool = False
         self._lock = asyncio.Lock()
         self._schedules: dict[str, ScheduleEntry] = {}
+        # Task executor — decoupled from planning logic.  Tests can stub
+        # individual executors via self.executor.register(tt, fn).
+        from hunt.task_executor import TaskExecutor
+        self.executor = TaskExecutor(state)
 
     # ── Lifecycle ─────────────────────────────────────────────────────
 
@@ -546,128 +550,14 @@ class SchedulerEngine:
     # ── Task executors ─────────────────────────────────────────────────
 
     async def _execute_task(self, entry: ScheduleEntry):
-        """Dispatch to the appropriate executor based on task_type."""
-        tt = entry.task_type
-        if tt == "proxy_check":
-            await self._execute_proxy_check(entry)
-        elif tt == "ip_blacklist":
-            await self._execute_ip_blacklist(entry)
-        elif tt == "blocklist":
-            await self._execute_blocklist(entry)
-        elif tt == "health_check":
-            await self._execute_health_check(entry)
-        elif tt == "history":
-            await self._execute_history(entry)
-        elif tt == "clear_dead":
-            await self._execute_clear_dead(entry)
-        elif tt == "backup":
-            await self._execute_backup(entry)
-        else:
-            raise ValueError(f"Unknown task type: {tt}")
+        """Dispatch to the TaskExecutor registry based on task_type.
 
-    async def _execute_proxy_check(self, entry: ScheduleEntry):
-        """Re-validate ALL existing proxies in the pool without collecting new ones.
-
-        This is the scheduled equivalent of a manual "check" — it re-validates
-        every proxy currently in ratings.  Unlike a full hunt, it never
-        downloads proxy source lists or blocklists (those are refreshed by
-        their own separate schedules).
+        Planning and execution are decoupled: the scheduler decides *when*
+        to run a task, the TaskExecutor decides *how*.  Executors live in
+        ``hunt.task_executor`` and are registered in a dict, so adding a
+        new task type does not require editing this if/elif chain.
         """
-        state = self.state
-
-        # Re-validate every non-blacklisted proxy in the pool.
-        candidates = [r for r in state.ratings.values() if not r.in_blacklist]
-        if not candidates:
-            state._emit("Scheduler: proxy_check — no proxies to validate", "info")
-            return
-
-        # Sort by first_seen descending — check newest proxies first so
-        # fresh candidates are validated before stale dead entries.
-        candidates.sort(key=lambda r: r.first_seen, reverse=True)
-        addrs = [r.address for r in candidates]
-        state._emit(f"Scheduler: proxy_check — re-validating {len(addrs)} proxies", "info")
-        state.checking_total = len(addrs)
-        state.checked = 0
-        state.working = 0
-        state.failed = 0
-        await state._validate_all(addrs)
-        state._save_state()
-        state._save_working_file()
-        state._emit(
-            f"Scheduler: proxy_check — done "
-            f"({state.working} ok, {state.failed} failed)",
-            "ok",
-        )
-
-    async def _execute_ip_blacklist(self, entry: ScheduleEntry):
-        """Download IP blacklist sources."""
-        if getattr(self.state, "_fetching_ip_blacklists", False):
-            raise RuntimeError("IP blacklist fetch already in progress")
-        self.state._emit("Scheduler: refreshing IP blacklists...", "info")
-        results = await self.state._download_ip_blacklists()
-        total = sum(results.values())
-        self.state._emit(f"Scheduler: refreshed {total} IP blacklist entries", "info")
-
-    async def _execute_blocklist(self, entry: ScheduleEntry):
-        """Download country blocklists."""
-        if getattr(self.state, "_fetching_blocklists", False):
-            raise RuntimeError("Blocklist fetch already in progress")
-        self.state._emit("Scheduler: refreshing country blocklists...", "info")
-        results = await self.state._download_blocklists()
-        total = sum(results.values())
-        self.state._emit(f"Scheduler: refreshed {total} blocklist entries", "info")
-
-    async def _execute_health_check(self, entry: ScheduleEntry):
-        """Re-validate alive proxies."""
-        if self.state._health_running:
-            raise RuntimeError("Health check already running")
-        await self.state._health_check(manual=False)
-
-    async def _execute_history(self, entry: ScheduleEntry):
-        """Record history snapshot and run retention cleanup."""
-        self.state._push_history()
-        try:
-            conn = self.state._stats_db()
-            now = time.time()
-            conn.execute("DELETE FROM traffic_log WHERE ts < ?", (now - 7 * 86400,))
-            conn.execute("DELETE FROM events WHERE ts < ?", (now - 30 * 86400,))
-            conn.execute("DELETE FROM actions WHERE ts < ?", (now - 30 * 86400,))
-            conn.commit()
-            conn.close()
-        except Exception as e:
-            logger.warning(f"Scheduler history cleanup: {e}")
-
-    async def _execute_clear_dead(self, entry: ScheduleEntry):
-        """Remove dead proxies from the pool."""
-        dead_addrs = [
-            a for a, r in self.state.ratings.items()
-            if r.last_status == "failed" and not r.is_favorite and not r.in_grace
-        ]
-        for a in dead_addrs:
-            del self.state.ratings[a]
-        self.state._emit(f"Scheduler: cleared {len(dead_addrs)} dead proxies", "warn")
-        self.state._save_state()
-        self.state._save_working_file()
-        self.state._log_action("scheduler.clear_dead", f"{len(dead_addrs)} proxies")
-
-    async def _execute_backup(self, entry: ScheduleEntry):
-        """Create a database backup to the data directory."""
-        import os
-        from hunt.constants import DATA_DIR
-        groups = entry.config.get("groups", "all")
-        if groups == "all":
-            groups = list(self.state.get_backup_groups())
-            groups = [g["key"] for g in groups]
-        elif isinstance(groups, str):
-            groups = [groups]
-        data = self.state.create_backup(groups)
-        backup_dir = DATA_DIR / "backups"
-        backup_dir.mkdir(parents=True, exist_ok=True)
-        filename = f"backup_{int(time.time())}.json"
-        with open(backup_dir / filename, "wb") as f:
-            f.write(data)
-        self.state._emit(f"Scheduler: backup saved as {filename}", "ok")
-        self.state._log_action("scheduler.backup", filename)
+        await self.executor.run(entry)
 
     # ── Manual trigger ─────────────────────────────────────────────────
 

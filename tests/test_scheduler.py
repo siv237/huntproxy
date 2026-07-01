@@ -30,11 +30,17 @@ class TestSchedulerIntegrity:
             )
 
     def test_every_task_type_has_executor(self):
-        """Every TASK_TYPES key must be handled in _execute_task."""
-        src = inspect.getsource(SchedulerEngine._execute_task)
+        """Every TASK_TYPES key must have a registered executor in TaskExecutor."""
+        from hunt.task_executor import TaskExecutor
         for tt in TASK_TYPES:
-            assert f'"{tt}"' in src, (
-                f"Task type '{tt}' has no executor branch in _execute_task"
+            # TaskExecutor registers defaults in __init__; check the registry
+            # has a handler for each task type.  We use a dummy state since
+            # executors are registered at construction time.
+            class _DummyState:
+                pass
+            executor = TaskExecutor(_DummyState())
+            assert executor.get(tt) is not None, (
+                f"Task type '{tt}' has no executor in TaskExecutor registry"
             )
 
     def test_task_types_have_required_keys(self):
@@ -61,20 +67,11 @@ class TestSchedulerIntegrity:
                 return True
             state.is_internet_alive = internet_up
 
-            # Stub every executor so no real work happens.
-            executors = {
-                "proxy_check": "_execute_proxy_check",
-                "ip_blacklist": "_execute_ip_blacklist",
-                "blocklist": "_execute_blocklist",
-                "health_check": "_execute_health_check",
-                "history": "_execute_history",
-                "clear_dead": "_execute_clear_dead",
-                "backup": "_execute_backup",
-            }
-            for tt, method_name in executors.items():
-                async def _noop(entry):
+            # Stub every executor via the registry so no real work happens.
+            for tt in TASK_TYPES:
+                async def _noop(s, entry):
                     await asyncio.sleep(0.05)
-                setattr(sched, method_name, _noop)
+                sched.executor.register(tt, _noop)
 
             for d in DEFAULT_SCHEDULES:
                 sid = d["id"]
@@ -480,10 +477,10 @@ class TestSchedulerTriggering:
 
             called = []
 
-            async def fake_history(entry):
+            async def fake_history(s, entry):
                 called.append(entry.id)
 
-            sched._execute_history = fake_history
+            sched.executor.register("history", fake_history)
 
             ok = await sched.trigger_now("history")
             assert ok is True
@@ -516,9 +513,9 @@ class TestSchedulerTriggering:
             state.phase = state.PHASE_IDLE
 
             started = []
-            async def fake_proxy_check(e):
+            async def fake_proxy_check(s, e):
                 started.append(True)
-            sched._execute_proxy_check = fake_proxy_check
+            sched.executor.register("proxy_check", fake_proxy_check)
 
             ok = await sched.trigger_now("proxy_check")
             assert ok is True
@@ -700,7 +697,7 @@ class TestSchedulerExecutorHistory:
                 called.append("push")
             state._push_history = fake_push
             entry = ScheduleEntry(id="history", name="History", task_type="history")
-            await sched._execute_history(entry)
+            await sched.executor.run(entry)
             assert "push" in called
             await sched.stop()
 
@@ -729,9 +726,9 @@ class TestSchedulerIntervalFromCompletion:
 
             run_duration = 0.3
 
-            async def slow_hunt(e):
+            async def slow_hunt(s, e):
                 await asyncio.sleep(run_duration)
-            sched._execute_proxy_check = slow_hunt
+            sched.executor.register("proxy_check", slow_hunt)
 
             before = time.time()
             await sched._trigger("proxy_check")
@@ -769,9 +766,9 @@ class TestSchedulerIntervalFromCompletion:
 
             releases = asyncio.Event()
 
-            async def slow_hunt(e):
+            async def slow_hunt(s, e):
                 await releases.wait()
-            sched._execute_proxy_check = slow_hunt
+            sched.executor.register("proxy_check", slow_hunt)
 
             await sched._trigger("proxy_check")
             assert "proxy_check" in sched._running_tasks
@@ -817,15 +814,15 @@ class TestSchedulerIntervalFromCompletion:
             releases = asyncio.Event()
             started = asyncio.Event()
 
-            async def slow_hunt(e):
+            async def slow_hunt(s, e):
                 started.set()
                 await releases.wait()
-            sched._execute_proxy_check = slow_hunt
+            sched.executor.register("proxy_check", slow_hunt)
 
             ran = []
-            async def real_health(e):
+            async def real_health(s, e):
                 ran.append("health")
-            sched._execute_health_check = real_health
+            sched.executor.register("health_check", real_health)
 
             hc = sched._schedules["proxy_check"]
             hc.enabled = True
