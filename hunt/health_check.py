@@ -70,11 +70,7 @@ class HealthCheckMixin:
                     async def check(r: ProxyRating):
                         nonlocal ok_count, fail_count
                         wid = _hctr[0]; _hctr[0] += 1
-                        try:
-                            _p = int(r.address.rsplit(":", 1)[1])
-                            _proto = "socks5" if _p in (1080, 10808, 9050) else "socks4" if _p == 4145 else "http"
-                        except Exception:
-                            _proto = "http"
+                        _proto = self._detect_protocol(r.address)
                         self._active_checks[wid] = {"addr": r.address, "step": "queued", "started": time.time(), "protocol": _proto}
                         try:
                             async with sem:
@@ -93,30 +89,13 @@ class HealthCheckMixin:
                                     ssl_task.cancel()
                                     results = [asyncio.TimeoutError(), asyncio.TimeoutError()]
 
-                                if isinstance(results[0], Exception):
-                                    ok, country, supports_connect, mitm_suspect, egress, listen, http_latency, cc, fast_fail = False, "", False, False, {}, {}, 0.0, "", False
-                                else:
-                                    ok, country, supports_connect, mitm_suspect, egress, listen, http_latency, cc, fast_fail = results[0]
-                                if isinstance(results[1], Exception):
-                                    ssl_ok, ssl_country, ssl_cc, ssl_egress, ssl_latency, ssl_supports_connect = False, "", "", {}, 0.0, False
-                                else:
-                                    ssl_ok, ssl_country, ssl_cc, ssl_egress, ssl_latency, ssl_supports_connect = results[1]
-
-                                if not ok and ssl_ok:
-                                    ok = True
-                                    country = ssl_country
-                                    cc = ssl_cc
-                                    egress = ssl_egress
-                                    http_latency = ssl_latency
-                                    supports_connect = ssl_supports_connect
-                                elif ok and ssl_ok:
-                                    if not egress and ssl_egress:
-                                        egress = ssl_egress
-                                    if not supports_connect and ssl_supports_connect:
-                                        supports_connect = ssl_supports_connect
-
-                                if ok and not self._is_socks_addr(r.address) and not supports_connect:
-                                    ok = False
+                                merged = self._merge_check_results(results, r.address)
+                                ok, country, supports_connect, mitm_suspect, egress, listen, http_latency, cc, ssl_ok, ssl_egress, ssl_supports_connect = (
+                                    merged["ok"], merged["country"], merged["supports_connect"],
+                                    merged["mitm_suspect"], merged["egress"], merged["listen"],
+                                    merged["http_latency"], merged["cc"], merged["ssl_ok"],
+                                    merged["ssl_egress"], merged["ssl_supports_connect"],
+                                )
 
                                 speed = 0.0
                                 if ok:
