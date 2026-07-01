@@ -185,3 +185,41 @@ class ProxyRating:
             "listen_isp": self.listen_isp,
             "ssl_supported": self.ssl_supported,
         }
+
+    def to_pool_dict(self) -> dict:
+        """Lightweight dict for the proxy-pool table endpoint.
+
+        Contains only the fields the pool table actually renders, cutting
+        response size ~3x vs to_dict (critical when the alive pool is large
+        — 12k+ proxies — so the browser fetch doesn't time out).
+        """
+        return {
+            "address": self.address,
+            "country": self.country,
+            "country_code": self.country_code,
+            "protocol": self.protocol,
+            "latency_avg": round(self.latency_avg, 3),
+            "last_latency": round(self.last_latency, 3),
+            "checks_total": self.checks_total,
+            "checks_ok": self.checks_ok,
+            "success_rate": round(self.success_rate, 3),
+            "score": round(self.score, 2),
+            "speed_avg": round(self.speed_avg, 1),
+            "in_grace": self.in_grace,
+            "in_blacklist": self.in_blacklist,
+            "is_favorite": self.is_favorite,
+            "ip_blacklist_hits": self.ip_blacklist_hits,
+            "supports_connect": self.supports_connect,
+            "mitm_suspect": self.mitm_suspect,
+            "last_ok": self.last_ok,
+            "egress_ip": self.egress_ip,
+            "egress_city": self.egress_city,
+            "egress_isp": self.egress_isp,
+            "egress_country": self.egress_country,
+            "egress_country_code": self.egress_country_code,
+            "listen_country": self.listen_country,
+            "listen_country_code": self.listen_country_code,
+            "listen_city": self.listen_city,
+            "listen_isp": self.listen_isp,
+            "ssl_supported": self.ssl_supported,
+        }
