@@ -2,7 +2,6 @@
 
 import asyncio
 import ipaddress
-import json
 import time
 from hunt.blacklist import BlacklistMixin
 from hunt.favorites import FavoritesMixin
@@ -26,7 +25,6 @@ from hunt.constants import DATA_DIR, logger
 from hunt.custom_proxies import CustomProxiesMixin
 from hunt.db import DbMixin
 from hunt.events import EventsMixin
-from hunt.geo import country_code_from_name
 from hunt.hunt_control import HuntControlMixin
 from hunt.hunt_cycle import HuntCycleMixin
 from hunt.canary import CanaryMixin

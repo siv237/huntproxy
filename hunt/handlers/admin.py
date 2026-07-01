@@ -2,7 +2,6 @@
 
 import asyncio
 import json
-import time
 
 from hunt.handlers import _qs, _int_param, _json_body
 
@@ -45,7 +44,6 @@ class AdminHandlers:
                 return json.dumps({"error": "no groups selected"}), 400, "application/json"
             data = self.state.create_backup(groups)
             self.state._log_action("backup", f"groups: {','.join(groups)}")
-            ts = time.strftime("%Y%m%d_%H%M%S")
             return data, 200, "application/json"
         except Exception as e:
             return json.dumps({"error": str(e)}), 500, "application/json"

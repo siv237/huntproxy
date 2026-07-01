@@ -1,6 +1,5 @@
 """State download/export methods — extracted from state.py."""
 import json
-import time
 
 class StateDownloadMixin:
     def get_download_counts(self) -> dict:

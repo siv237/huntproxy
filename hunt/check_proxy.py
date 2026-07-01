@@ -2,12 +2,9 @@
 
 import asyncio
 import json
-import ssl as _ssl
 import time
 from hunt.constants import logger
-from hunt.conn import socks5_connect, socks4_connect, http_connect
 from hunt.geo import country_code_from_name
-from hunt.models import ProxyRating
 
 class CheckProxyMixin:
     _SOCKS_PORTS = frozenset({1080, 10808, 9050, 4145})
@@ -42,7 +39,6 @@ class CheckProxyMixin:
                 return False, country, False, False, egress, listen, 0.0, country_code, False
 
             connect_ok, mitm_suspect = await self._check_proxy_connect(host, port, is_socks)
-            supports_connect = connect_ok
 
             if not connect_ok:
                 return False, country, False, mitm_suspect, egress, listen, http_latency, country_code, False

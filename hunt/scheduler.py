@@ -8,7 +8,6 @@ configurable, DB-persisted, runtime-editable scheduler.
 import asyncio
 import json
 import time
-from typing import Any
 
 from hunt.constants import logger
 from hunt.schedule_entry import ScheduleEntry, TASK_TYPES, DEFAULT_SCHEDULES

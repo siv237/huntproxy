@@ -1,5 +1,4 @@
 """Scheduler API methods — extracted from scheduler.py."""
-import json
 import time
 from hunt.schedule_entry import ScheduleEntry, TASK_TYPES
 

@@ -2,12 +2,8 @@
 
 import asyncio
 import json
-import ssl as _ssl
 import time
 from hunt.constants import logger
-from hunt.conn import socks5_connect, socks4_connect, http_connect
-from hunt.geo import country_code_from_name
-from hunt.models import ProxyRating
 
 class CheckSslMixin:
     _SOCKS_PORTS = frozenset({1080, 10808, 9050, 4145})
@@ -17,7 +13,6 @@ class CheckSslMixin:
                 port = int(port_str)
             except ValueError:
                 return False, "", "", {}, 0.0, False
-            ctx = self._make_ssl_ctx()
             t0 = time.monotonic()
             try:
                 reader, writer = await self._outbound_connect(

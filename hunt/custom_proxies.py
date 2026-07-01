@@ -1,9 +1,6 @@
 """Functional split of the huntproxy backend."""
 
 import asyncio
-import base64
-import socket
-import struct
 import time
 from hunt.conn import socks5_connect, http_connect
 from hunt.constants import logger

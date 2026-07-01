@@ -1,10 +1,8 @@
 """Functional split of the huntproxy backend."""
 
 import asyncio
-import json
 import time
 from hunt.constants import logger
-from hunt.models import ProxyRating
 
 class HuntControlMixin:
     def start_hunt(self) -> bool:

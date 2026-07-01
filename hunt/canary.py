@@ -4,14 +4,12 @@ import asyncio
 import json
 import time
 from hunt.constants import logger
-from hunt.models import ProxyRating
 
 class CanaryMixin:
     async def _canary_loop(self):
             while True:
                 await asyncio.sleep(15)
                 try:
-                    was_paused = self._paused
                     result = await self._check_canary()
                     if not result["alive"] and not self._paused:
                         self.pause_hunt(manual=False)

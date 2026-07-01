@@ -268,40 +268,42 @@ class TestBranchCoverage:
     Run ``./test.sh --coverage`` to see the current value.
     """
 
-    COVERAGE_BASELINE = 57  # current branch coverage % — only goes up
+    COVERAGE_BASELINE = 58  # current branch coverage % — only goes up
 
     @pytest.mark.arch
     def test_branch_coverage_above_baseline(self):
         """Check branch coverage via pytest-cov.
 
-        This test is skipped if pytest-cov is not installed or if the
-        subprocess coverage run fails (e.g. timeout in nested pytest).
-        Run ``./test.sh --coverage`` manually for a full report.
+        Runs the functional test suite in a subprocess with coverage
+        collection, parses the JSON report, and asserts the branch
+        coverage is at or above the baseline.
+
+        Run ``./test.sh --coverage`` manually for a full human-readable report.
         """
-        import subprocess
+        import subprocess, json, re, tempfile, os
         try:
             import pytest_cov  # noqa: F401
         except ImportError:
             pytest.skip("pytest-cov not installed — run: pip install pytest-cov")
+        cov_file = tempfile.mktemp(suffix=".json")
         try:
             result = subprocess.run(
                 [".venv/bin/python", "-m", "pytest", "tests/",
                  "-p", "no:terminal", "-p", "no:capture",
                  "-m", "not slow and not arch",
-                 "--cov=hunt", "--cov-branch", "--cov-report=term",
-                 "--cov-fail-under=0", "--tb=no", "-q"],
+                 "--cov=hunt", "--cov-branch",
+                 f"--cov-report=json:{cov_file}",
+                 "--cov-fail-under=0"],
                 capture_output=True, text=True, cwd=ROOT,
-                timeout=300,
+                timeout=180,
             )
-        except (subprocess.TimeoutExpired, Exception):
+        except subprocess.TimeoutExpired:
             pytest.skip("coverage subprocess timed out — run ./test.sh --coverage manually")
-        output = result.stdout + result.stderr
-        # Parse TOTAL line: "TOTAL  7633  3073  1954  293    57%"
-        import re
-        m = re.search(r"TOTAL\s+\d+\s+\d+\s+\d+\s+\d+\s+(\d+)%", output)
-        if not m:
-            pytest.skip("Could not parse coverage from pytest-cov output")
-        actual = int(m.group(1))
+        if not os.path.exists(cov_file):
+            pytest.skip("coverage JSON not generated — run ./test.sh --coverage manually")
+        with open(cov_file) as f:
+            report = json.load(f)
+        actual = int(round(report["totals"]["percent_covered"]))
         assert actual >= self.COVERAGE_BASELINE, (
             f"Branch coverage dropped to {actual}% (baseline {self.COVERAGE_BASELINE}%). "
             "Deleted logic or removed tests caused coverage to fall. "

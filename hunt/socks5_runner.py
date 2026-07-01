@@ -78,7 +78,7 @@ class Socks5Runner:
             if ver[0] != 5:
                 writer.close(); return
             nmethods = await asyncio.wait_for(reader.readexactly(1), timeout=15)
-            methods = await asyncio.wait_for(reader.readexactly(nmethods[0]), timeout=15)
+            await asyncio.wait_for(reader.readexactly(nmethods[0]), timeout=15)
             writer.write(bytes([5, 0]))
             await writer.drain()
 

@@ -1,12 +1,6 @@
 """Proxy route selection — extracted from proxy_runner.py."""
 import asyncio
-import base64
-import socket
-import struct
-import time
-from hunt.conn import socks5_connect, socks4_connect, http_connect
 from hunt.models import ProxyRating
-from typing import Optional
 import logging
 
 logger = logging.getLogger(__name__)

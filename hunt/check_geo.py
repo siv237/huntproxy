@@ -2,12 +2,7 @@
 
 import asyncio
 import json
-import ssl as _ssl
-import time
 from hunt.constants import logger
-from hunt.conn import socks5_connect, socks4_connect, http_connect
-from hunt.geo import country_code_from_name
-from hunt.models import ProxyRating
 
 class CheckGeoMixin:
     _SOCKS_PORTS = frozenset({1080, 10808, 9050, 4145})

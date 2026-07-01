@@ -1,13 +1,8 @@
 """Functional split of the huntproxy backend."""
 
 import asyncio
-import json
-import ssl as _ssl
 import time
 from hunt.constants import logger
-from hunt.conn import socks5_connect, socks4_connect, http_connect
-from hunt.geo import country_code_from_name
-from hunt.models import ProxyRating
 
 
 class _ValidationContext:
@@ -139,7 +134,7 @@ class CheckValidationMixin:
                             await self._pause_event.wait()
                             continue
                         return
-                    ok, country, supports_connect, mitm_suspect, egress, listen, http_latency, cc, ssl_ok, ssl_egress, ssl_supports_connect = (
+                    ok, country, supports_connect, mitm_suspect, egress, listen, http_latency, cc, ssl_ok, _, _ = (
                         merged["ok"], merged["country"], merged["supports_connect"],
                         merged["mitm_suspect"], merged["egress"], merged["listen"],
                         merged["http_latency"], merged["cc"], merged["ssl_ok"],
