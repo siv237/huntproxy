@@ -1,0 +1,20 @@
+target-version = "py312"
+line-length = 120
+
+[lint]
+select = [
+    "E722",    # bare except (do not use bare 'except')
+    "BLE001",  # blind-except (catch-all without re-raise)
+    "C901",    # cyclomatic complexity (max-complexity enforced below)
+    "F401",    # unused import
+    "F841",    # unused variable (catches silent except assignments)
+]
+ignore = [
+    "E501",    # line too long (handled by formatter, not linter)
+]
+
+[lint.mccabe]
+max-complexity = 15
+
+[lint.per-file-ignores]
+"tests/*" = ["E722", "BLE001"]

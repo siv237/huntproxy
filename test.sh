@@ -24,21 +24,41 @@ if ! .venv/bin/python -c "import pytest, pytest_asyncio" 2>/dev/null; then
     .venv/bin/pip install pytest pytest-asyncio
 fi
 
+# Install ruff if missing — used for lint + complexity checks.
+if ! .venv/bin/python -c "import ruff" 2>/dev/null; then
+    .venv/bin/pip install ruff 2>/dev/null || true
+fi
+
+# Install pytest-cov if missing — used for branch coverage guard.
+if ! .venv/bin/python -c "import pytest_cov" 2>/dev/null; then
+    .venv/bin/pip install pytest-cov 2>/dev/null || true
+fi
+
+# ── Ruff lint (Python) ──────────────────────────────────────────────────
+# Pre-commit: ruff is installed and config is valid.  Specific rule
+# violations (E722/BLE001 silent-except, C901 complexity, F401/F841
+# unused) are checked in architecture tests as backlog — they don't
+# block the default run.  This block only ensures ruff is available.
+if [[ -x .venv/bin/ruff ]] && [[ -f ruff.toml ]]; then
+    .venv/bin/ruff check hunt/ --config ruff.toml > /dev/null 2>&1 || true
+fi
+
 # ── Run modes ────────────────────────────────────────────────────────────
 #
-#   ./test.sh                # default: all tests except slow
+#   ./test.sh                # default: functional + contract (excl slow+arch)
 #   ./test.sh --all          # everything including slow + arch
 #   ./test.sh --arch         # architecture/quality invariants only
 #   ./test.sh --router       # router contract (API endpoints) only
 #   ./test.sh --executor     # task executor contract only
 #   ./test.sh --quality      # arch + router + executor (all guardrails)
+#   ./test.sh --coverage     # functional + branch coverage report
 #   ./test.sh -k rating      # pass-through to pytest -k
 #
 # Architecture tests (arch marker) are excluded from the default run
-# because they represent the refactoring backlog — they FAIL until the
-# code is improved.  Run them explicitly with --arch or --quality.
-# The --arch / --router / --executor / --quality modes skip ESLint and
-# the slow-test filter so they run as fast as possible.
+# because they represent the refactoring backlog — they may FAIL until
+# the code is improved.  Run them explicitly with --arch or --quality.
+# The --arch / --router / --executor / --quality / --coverage modes skip
+# the ruff pre-check and slow-test filter so they run as fast as possible.
 
 QUALITY_MARKERS='arch or router or executor'
 
@@ -63,6 +83,11 @@ if [[ "$#" -gt 0 ]]; then
         --quality)
             shift
             MARKER="-m \"$QUALITY_MARKERS\""
+            ;;
+        --coverage)
+            shift
+            eval ".venv/bin/python -m pytest tests/ -p no:terminal -p no:capture -m \"not slow and not arch\" --cov=hunt --cov-branch --cov-report=term-missing \"\$@\"" 2>/dev/null
+            exit $?
             ;;
         *)
             # Unknown flag or pytest argument (e.g. -k, -x) — pass through.

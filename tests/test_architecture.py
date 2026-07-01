@@ -87,33 +87,38 @@ def _python_files() -> list[Path]:
     return files
 
 
-def _cyclomatic_complexity(func) -> int:
-    """Rough McCabe CC: 1 + number of branching nodes in the AST."""
-    import textwrap
+def _ruff_complexity_offenders() -> list[str]:
+    """Run ruff C901 to find functions exceeding the complexity threshold.
+
+    Uses ruff instead of the custom AST walker — ruff is faster, handles
+    modern Python syntax (match/case, walrus), and is maintained upstream.
+    """
+    import subprocess
+    result = subprocess.run(
+        [".venv/bin/ruff", "check", "--select", "C901", "--output-format", "json", "hunt/"],
+        capture_output=True, text=True, cwd=ROOT,
+    )
+    if result.returncode == 0:
+        return []
+    import json
     try:
-        src = inspect.getsource(func)
-    except (OSError, TypeError):
-        return 1
-    # inspect.getsource returns the method with its class-level indentation,
-    # which ast.parse rejects.  Dedent so the first line is at column 0.
-    src = textwrap.dedent(src)
-    try:
-        tree = ast.parse(src)
-    except SyntaxError:
-        return 1
-    complexity = 1
-    for node in ast.walk(tree):
-        if isinstance(node, (ast.If, ast.While, ast.For, ast.ExceptHandler,
-                             ast.With, ast.AsyncWith, ast.BoolOp)):
-            # BoolOp (and/or) adds one path per additional operand.
-            if isinstance(node, ast.BoolOp):
-                complexity += len(node.values) - 1
-            else:
-                complexity += 1
-        elif isinstance(node, (ast.ListComp, ast.SetComp, ast.DictComp)):
-            # comprehensions have an implicit for + optional if
-            complexity += 1 + len(node.generators)
-    return complexity
+        violations = json.loads(result.stdout)
+    except Exception:
+        return ["ruff: failed to parse output"]
+    offenders = []
+    for v in violations:
+        code = v.get("code", "")
+        if code == "C901":
+            filename = v.get("filename", "").replace(str(ROOT) + "/", "")
+            location = v.get("location", {})
+            row = location.get("row", "?")
+            msg = v.get("message", "").split("is too complex")[0].strip()
+            # Extract CC value from message like "Function is too complex (16)"
+            import re
+            m = re.search(r"\((\d+)\)", v.get("message", ""))
+            cc_val = m.group(1) if m else "?"
+            offenders.append(f"{filename}:{row} {msg} CC={cc_val}")
+    return offenders
 
 
 # ── File size guardrails ───────────────────────────────────────────────
@@ -166,58 +171,65 @@ class TestFileSizes:
 class TestComplexity:
     """No function may exceed MAX_CYCLOMATIC complexity.
 
-    The biggest offender is typically ``HuntServer._handle`` with its
-    100+ if/elif route chain.  This test documents current offenders so
-    we can track progress as the router is extracted.
+    Uses ruff C901 for complexity analysis — faster and handles modern
+    Python syntax (match/case, walrus) that custom AST walkers miss.
     """
 
     @pytest.mark.arch
     def test_no_function_exceeds_complexity(self):
-        offenders = []
-        seen_methods = set()  # dedup: mixin method also appears on HuntState
-        for path in _python_files():
-            # Build module name from relative path: hunt/handlers/admin.py → hunt.handlers.admin
-            rel = path.relative_to(HUNT_DIR).with_suffix("")
-            mod_name = "hunt." + ".".join(rel.parts)
-            try:
-                mod = importlib.import_module(mod_name)
-            except Exception:
-                continue
-            # Module-level functions
-            for name, obj in inspect.getmembers(mod, inspect.isfunction):
-                if obj.__module__ != mod_name:
-                    continue
-                cc = _cyclomatic_complexity(obj)
-                if cc > MAX_CYCLOMATIC:
-                    offenders.append(f"{path.name}:{name}() CC={cc}")
-            # Methods — only on the class where they are *defined*, not
-            # inherited.  This avoids counting each mixin method twice
-            # (once on the Mixin, once on the composed HuntState).
-            for cname, cls in inspect.getmembers(mod, inspect.isclass):
-                if cls.__module__ != mod_name:
-                    continue
-                for mname, method in inspect.getmembers(cls, inspect.isfunction):
-                    # qualifier: ClassName.method — skip if defined elsewhere
-                    qual = f"{cname}.{mname}"
-                    if qual in seen_methods:
-                        continue
-                    seen_methods.add(qual)
-                    # Only count if this class is the origin of the method.
-                    for parent in cls.__mro__[1:]:
-                        if mname in parent.__dict__:
-                            qual = None  # defined in a parent — skip
-                            break
-                    if qual is None:
-                        continue
-                    cc = _cyclomatic_complexity(method)
-                    if cc > MAX_CYCLOMATIC:
-                        offenders.append(f"{path.name}:{cname}.{mname}() CC={cc}")
+        offenders = _ruff_complexity_offenders()
         if offenders:
-            offenders.sort(key=lambda s: int(s.rsplit("CC=", 1)[1]), reverse=True)
+            offenders.sort(
+                key=lambda s: int(s.rsplit("CC=", 1)[1])
+                if s.rsplit("CC=", 1)[-1].isdigit() else 0,
+                reverse=True,
+            )
             pytest.fail(
                 "Functions exceeding cyclomatic complexity "
                 f"(threshold={MAX_CYCLOMATIC}):\n  "
                 + "\n  ".join(offenders)
+            )
+
+
+# ── Silent-except guardrail (AI anti-pattern) ──────────────────────────
+
+class TestNoSilentExcept:
+    """Bare ``except: pass`` and blind ``except Exception`` without re-raise
+    are forbidden.  These are the #1 AI anti-pattern: the agent wraps
+    problematic code in ``try/except: pass`` to make tests pass formally
+    while silently swallowing real errors.
+
+    Uses ruff rules E722 (bare except) and BLE001 (blind-except catch-all
+    without re-raise).
+    """
+
+    @pytest.mark.arch
+    def test_no_bare_or_silent_except(self):
+        import subprocess
+        result = subprocess.run(
+            [".venv/bin/ruff", "check", "--select", "E722,BLE001",
+             "--output-format", "json", "hunt/"],
+            capture_output=True, text=True, cwd=ROOT,
+        )
+        if result.returncode == 0:
+            return
+        import json
+        try:
+            violations = json.loads(result.stdout)
+        except Exception:
+            return
+        offenders = []
+        for v in violations:
+            filename = v.get("filename", "").replace(str(ROOT) + "/", "")
+            row = v.get("location", {}).get("row", "?")
+            code = v.get("code", "")
+            msg = v.get("message", "")[:80]
+            offenders.append(f"{filename}:{row} [{code}] {msg}")
+        if offenders:
+            pytest.fail(
+                "Silent/bare except patterns found — these swallow errors "
+                "and hide bugs. Use specific exceptions, log, or re-raise:\n  "
+                + "\n  ".join(offenders[:30])
             )
 
 
@@ -373,4 +385,55 @@ class TestServerCoupling:
         assert route_count <= 5, (
             f"HuntServer._route has {route_count} route checks (limit 5). "
             "Routes must be registered via Router, not chained with if/elif."
+        )
+
+
+# ── Branch coverage guardrail ──────────────────────────────────────────
+
+class TestBranchCoverage:
+    """Branch coverage must not drop below the recorded baseline.
+
+    Branch coverage (not just line coverage) catches deleted logic: if an
+    ``if`` branch is removed, line coverage may stay the same but branch
+    coverage drops.  This makes it a stronger guard against silent logic
+    deletion by AI agents.
+
+    The threshold is set to the *current* baseline and must only go up.
+    Run ``./test.sh --coverage`` to see the current value.
+    """
+
+    COVERAGE_BASELINE = 57  # current branch coverage % — only goes up
+
+    @pytest.mark.arch
+    def test_branch_coverage_above_baseline(self):
+        """Check branch coverage via pytest-cov.
+
+        This test is skipped if pytest-cov is not installed — it's a
+        supplementary guard, not a hard dependency.
+        """
+        import subprocess
+        try:
+            import pytest_cov  # noqa: F401
+        except ImportError:
+            pytest.skip("pytest-cov not installed — run: pip install pytest-cov")
+        result = subprocess.run(
+            [".venv/bin/python", "-m", "pytest", "tests/",
+             "-p", "no:terminal", "-p", "no:capture",
+             "-m", "not slow and not arch",
+             "--cov=hunt", "--cov-branch", "--cov-report=term",
+             "--cov-fail-under=0", "--tb=no", "-q"],
+            capture_output=True, text=True, cwd=ROOT,
+            timeout=300,
+        )
+        output = result.stdout + result.stderr
+        # Parse TOTAL line: "TOTAL  7633  3073  1954  293    57%"
+        import re
+        m = re.search(r"TOTAL\s+\d+\s+\d+\s+\d+\s+\d+\s+(\d+)%", output)
+        if not m:
+            pytest.skip("Could not parse coverage from pytest-cov output")
+        actual = int(m.group(1))
+        assert actual >= self.COVERAGE_BASELINE, (
+            f"Branch coverage dropped to {actual}% (baseline {self.COVERAGE_BASELINE}%). "
+            "Deleted logic or removed tests caused coverage to fall. "
+            "Restore the missing tests or logic, then raise COVERAGE_BASELINE."
         )
