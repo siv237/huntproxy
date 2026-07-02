@@ -22,7 +22,7 @@ class ActionsMixin:
             "phase": self.phase,
             "paused": self._paused,
             "manual_pause": self._manual_pause,
-            "hunt_running": bool(self.task and not self.task.done()),
+            "hunt_running": getattr(self, '_hunt_running', False),
             "health_running": getattr(self, "_health_running", False),
             "checked": self.checked,
             "checking_total": self.checking_total,

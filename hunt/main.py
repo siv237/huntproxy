@@ -23,11 +23,10 @@ async def amain(config: dict):
     server = HuntServer(state, host, port)
     state.proxy_runner = server.proxy
 
-    # Start the web UI immediately so startup-cycle progress is visible.
+    # Start the web UI immediately so scheduler progress is visible.
     server_task = asyncio.create_task(server.start())
 
     # Restore proxy/SOCKS services that were running before restart.
-    # (The hunt itself is (re)started as part of the startup cycle below.)
     restored = []
     if getattr(state, '_proxy_running', False):
         proxy_port = getattr(state, '_proxy_port', 17277)
@@ -54,27 +53,17 @@ async def amain(config: dict):
     print("  Ctrl+C to stop")
     print("=" * 56)
 
-    # Start the unified scheduler (replaces individual _history_loop,
-    # _ip_blacklist_loop, _blocklist_loop, and _health_loop tasks).
-    #
-    # The scheduler is created, seeded, and its run loop started BEFORE the
-    # startup cycle so that periodic tasks (history, IP blacklist refresh,
-    # blocklist refresh) are active from the very first moment — matching
-    # the pre-scheduler behaviour where the periodic loops started
-    # immediately. The scheduler's mutex/fetch-in-progress guards prevent
-    # conflicts with the startup hunt cycle's own downloads.
+    # Start the unified scheduler. It drives ALL periodic maintenance
+    # (health_check, proxy_check, IP blacklist / blocklist refresh, history)
+    # based on each schedule's real last_ok completion time, so after a cold
+    # restart every due task launches immediately — no special startup cycle
+    # is needed. A leftover _hunt_running flag (e.g. from a previous crashed
+    # run) is cleared by the scheduler's stale-flag guard, so proxy_check is
+    # never blocked forever after a restart.
     scheduler = SchedulerEngine(state)
     state.scheduler = scheduler
     await scheduler.prepare()
     await scheduler.start_loop()
-
-    # Run the startup cycle (re-validate stale proxies + fresh hunt) as a
-    # background task so it does NOT block the scheduler or the web UI.
-    # The hunt_cycle schedule is disabled by default, so the scheduler will
-    # not start a second concurrent hunt.
-    # Hold a reference on the state so the garbage collector does not destroy
-    # the task mid-cycle (which would leave _hunt_running stuck True).
-    state._startup_task = asyncio.create_task(state.run_startup_cycle())
 
     async def shutdown():
         await scheduler.stop()

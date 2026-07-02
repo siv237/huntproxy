@@ -236,7 +236,27 @@ class HealthCheckMixin:
         ctx = _HealthContext()
 
         tasks = [asyncio.create_task(self._revalidate_one(r, sem, lock, ctx)) for r in candidates]
-        await asyncio.gather(*tasks, return_exceptions=True)
+        overall_timeout = len(candidates) * (self.effective_timeout + 10) // max(1, self.health_parallel) + 30
+        try:
+            await asyncio.wait_for(
+                asyncio.gather(*tasks, return_exceptions=True),
+                timeout=overall_timeout,
+            )
+        except asyncio.TimeoutError:
+            for t in tasks:
+                if not t.done():
+                    t.cancel()
+            self._emit("Startup re-validation timed out, cancelling stuck tasks", "warn")
+        except asyncio.CancelledError:
+            for t in tasks:
+                if not t.done():
+                    t.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            self._save_state()
+            self._save_working_file()
+            self._emit("Startup re-validation aborted", "warn")
+            raise
+
         self._save_state()
         self._save_working_file()
         self._rating_updates_since_save = 0

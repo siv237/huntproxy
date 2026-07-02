@@ -800,6 +800,48 @@ class TestSchedulerIntervalFromCompletion:
 
         asyncio.run(run())
 
+    def test_due_proxy_check_launches_despite_stale_hunt_running(self, state):
+        """After a cold restart the scheduler must launch an overdue
+        proxy_check even if a stale _hunt_running flag was persisted by a
+        previous crashed run — the stale-flag guard clears it because no
+        live task (_startup_task / self.task) backs the flag."""
+        async def run():
+            sched = SchedulerEngine(state)
+            await sched.prepare()
+
+            async def internet_up():
+                return True
+            state.is_internet_alive = internet_up
+
+            # Simulate a restart: no live tasks, but the flag is stuck True.
+            state._startup_task = None
+            state.task = None
+            state._hunt_running = True
+
+            started = []
+            async def fake_proxy_check(s, e):
+                started.append(True)
+            sched.executor.register("proxy_check", fake_proxy_check)
+
+            entry = sched._schedules["proxy_check"]
+            entry.enabled = True
+            entry.interval_sec = 60
+            entry.last_ok = time.time() - 3600  # overdue → due
+            entry.next_run = 0
+            sched._persist(entry)
+
+            # Simulate one scheduler tick: enqueue due task, then drain.
+            assert entry.is_due(time.time()) is True
+            sched._enqueue("proxy_check")
+            await sched._drain_queue()
+            await asyncio.sleep(0.2)
+            # Stale flag must have been cleared so the task could launch.
+            assert state._hunt_running is False
+            assert started == [True]
+            await sched.stop()
+
+        asyncio.run(run())
+
     def test_queued_task_runs_after_blocker_finishes(self, state):
         """A task queued behind a mutex blocker must launch once the blocker
         completes — it is never silently dropped."""
