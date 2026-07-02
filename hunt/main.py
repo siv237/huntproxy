@@ -43,7 +43,7 @@ async def amain(config: dict):
     if getattr(state, '_proxy_direct_mode', False):
         server.proxy.direct_mode = True
     if getattr(state, '_proxy_active_addr', None):
-        server.proxy.select(state._proxy_active_addr)
+        server.proxy.select(state._proxy_active_addr, record=False)
     if restored:
         state._emit(f"Restored services after restart: {', '.join(restored)}", "info")
 

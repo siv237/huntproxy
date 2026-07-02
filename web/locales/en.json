@@ -385,7 +385,13 @@
       "switchHistory": "Switch History",
       "switchHistoryHint": "Recent upstream changes",
       "noSwitches": "No switches yet",
-      "switchBack": "back"
+      "colAddress": "Address",
+      "colCountry": "Exit",
+      "colEgress": "Egress (city · ISP)",
+      "colEgressIp": "Egress IP",
+      "colTraffic": "Traffic",
+      "colActive": "Active",
+      "colWhen": "When"
     },
     "server": {
       "title": "Server",

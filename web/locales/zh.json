@@ -385,7 +385,13 @@
       "switchHistory": "切换历史",
       "switchHistoryHint": "最近的上游变更",
       "noSwitches": "尚无切换",
-      "switchBack": "返回"
+      "colAddress": "地址",
+      "colCountry": "出口",
+      "colEgress": "出口 (城市 · ISP)",
+      "colEgressIp": "出口 IP",
+      "colTraffic": "流量",
+      "colActive": "活跃",
+      "colWhen": "时间"
     },
     "server": {
       "title": "服务器",

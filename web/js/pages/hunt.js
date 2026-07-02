@@ -547,7 +547,7 @@ router.register('hunt', (container) => {
       else flags.push('<span style="color:var(--text-muted)">HTTP</span>');
       if (p.mitm_suspect) flags.push('<span style="color:var(--danger);font-weight:600">MITM!</span>');
       const proto = p.protocol || 'http';
-      const favStar = p.is_favorite ? '<svg width="11" height="11" style="vertical-align:-2px;color:var(--warning);margin-right:2px"><use href="#icon-star"/></svg>' : '';
+      const favStar = p.is_favorite ? '<svg width="11" height="11" style="vertical-align:-2px;color:var(--warning);flex-shrink:0;width:11px;height:11px;margin-right:2px"><use href="#icon-star"/></svg>' : '<span style="width:13px;flex-shrink:0;display:inline-block"></span>';
       return [
         `<span style="color:var(--text-muted)">${i+1}</span>`,
         `<span class="addr proxy-address-link" data-card-addr="${ui.escHtml(p.address)}" style="font-size:10px;cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px">${favStar}${p.address}</span>`,

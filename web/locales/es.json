@@ -385,7 +385,13 @@
       "switchHistory": "Historial de cambios",
       "switchHistoryHint": "Cambios recientes de upstream",
       "noSwitches": "Sin cambios aún",
-      "switchBack": "volver"
+      "colAddress": "Dirección",
+      "colCountry": "Salida",
+      "colEgress": "Salida (ciudad · ISP)",
+      "colEgressIp": "IP de salida",
+      "colTraffic": "Tráfico",
+      "colActive": "Activo",
+      "colWhen": "Cuándo"
     },
     "server": {
       "title": "Servidor",

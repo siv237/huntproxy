@@ -2682,3 +2682,30 @@
   border-radius: 2px;
   display: inline-block;
 }
+
+/* Switch history table — compact, fits inside card */
+.switch-history-table {
+  border: none;
+}
+.switch-history-table .table {
+  width: 100%;
+  min-width: 0;
+  table-layout: auto;
+}
+.switch-history-table th,
+.switch-history-table td {
+  padding: 3px 4px;
+  font-size: 10px;
+  white-space: nowrap;
+}
+.switch-history-table td:nth-child(3),
+.switch-history-table th:nth-child(3) {
+  white-space: normal;
+  word-break: break-word;
+  line-height: 1.2;
+  max-width: 0;
+  width: 100%;
+}
+.switch-history-table .table th {
+  font-size: 9px;
+}

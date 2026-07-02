@@ -493,7 +493,7 @@ router.register('overview', (container) => {
     };
     const rows = (proxies || []).map((p, i) => {
       const isSel = activeAddr === p.address;
-      const favStar = p.is_favorite ? '<svg width="11" height="11" style="vertical-align:-2px;color:var(--warning);margin-right:2px"><use href="#icon-star"/></svg>' : '';
+      const favStar = p.is_favorite ? '<svg width="11" height="11" style="vertical-align:-2px;color:var(--warning);flex-shrink:0;width:11px;height:11px;margin-right:2px"><use href="#icon-star"/></svg>' : '<span style="width:13px;flex-shrink:0;display:inline-block"></span>';
       return [
         `<span style="color:var(--text-muted);font-size:11px">${i + 1}</span>`,
         `<span class="flag">${ui.flag(p.country_code)}</span> <span style="font-size:11px">${ui.escHtml(p.country || '')}</span>`,

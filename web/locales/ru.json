@@ -385,7 +385,13 @@
       "switchHistory": "История переключений",
       "switchHistoryHint": "Недавние смены апстрима",
       "noSwitches": "Переключений пока нет",
-      "switchBack": "назад"
+      "colAddress": "Адрес",
+      "colCountry": "Выход",
+      "colEgress": "Выход (город · ISP)",
+      "colEgressIp": "IP выхода",
+      "colTraffic": "Трафик",
+      "colActive": "Активен",
+      "colWhen": "Когда"
     },
     "server": {
       "title": "Сервер",

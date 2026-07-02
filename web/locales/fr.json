@@ -385,7 +385,13 @@
       "switchHistory": "Historique des commutations",
       "switchHistoryHint": "Changements récents d'amont",
       "noSwitches": "Aucune commutation",
-      "switchBack": "retour"
+      "colAddress": "Adresse",
+      "colCountry": "Sortie",
+      "colEgress": "Sortie (ville · ISP)",
+      "colEgressIp": "IP de sortie",
+      "colTraffic": "Trafic",
+      "colActive": "Actif",
+      "colWhen": "Quand"
     },
     "server": {
       "title": "Serveur",

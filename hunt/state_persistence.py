@@ -167,7 +167,7 @@ class StatePersistenceMixin:
                         "transparent_port": getattr(self, '_transparent_port', 17477),
                     })),
                     ("country_filter", self.country_filter or ""),
-                    ("switch_history", json.dumps(self._proxy_switch_history[-100:])),
+                    ("switch_history", json.dumps(self._proxy_switch_history[-500:])),
                 ]
                 for key, value in runtime:
                     conn.execute(

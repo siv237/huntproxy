@@ -17,6 +17,49 @@ router.register('proxy-pool', (container) => {
     load();
   }
 
+  function fmtDuration(sec) {
+    if (!sec || sec <= 0) return '—';
+    const s = Math.round(sec % 60);
+    const m = Math.floor((sec % 3600) / 60);
+    const hh = Math.floor(sec / 3600);
+    const dd = Math.floor(sec / 86400);
+    const mo = Math.floor(dd / 30);
+    const y = Math.floor(dd / 365);
+    if (sec >= 94608000) return y + 'г';
+    if (sec >= 7776000) return mo + 'мес';
+    if (sec >= 259200) return dd + 'д';
+    if (sec >= 10800) return hh + 'ч';
+    if (sec >= 180) return (hh ? hh + 'ч ' : '') + m + 'м';
+    if (m) return m + 'м ' + s + 'с';
+    return s + 'с';
+  }
+
+  function fmtFullTime(ts) {
+    if (!ts) return '—';
+    const d = new Date(ts * 1000);
+    const pad = (n) => String(n).padStart(2, '0');
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+  }
+
+  function fmtAgo(ts) {
+    if (!ts) return '—';
+    const d = Math.floor(Date.now() / 1000 - ts);
+    if (d < 0) return t('ago.now');
+    const s = Math.round(d % 60);
+    const m = Math.floor((d % 3600) / 60);
+    const hh = Math.floor(d / 3600);
+    const days = Math.floor(d / 86400);
+    const mo = Math.floor(days / 30);
+    const y = Math.floor(days / 365);
+    if (d >= 94608000) return y + 'г назад';
+    if (d >= 7776000) return mo + 'мес назад';
+    if (d >= 259200) return days + 'д назад';
+    if (d >= 10800) return hh + 'ч назад';
+    if (d >= 180) return (hh ? hh + 'ч ' : '') + m + 'м назад';
+    if (m) return m + 'м ' + s + 'с назад';
+    return s + 'с назад';
+  }
+
   function build() {
     container.innerHTML = '';
     container.style.display = 'flex';
@@ -239,42 +282,46 @@ router.register('proxy-pool', (container) => {
       body.innerHTML = `<div class="empty" style="padding:8px">${t('page.proxyPool.noSwitches')}</div>`;
       return;
     }
+    const headers = [
+      t('page.proxyPool.colAddress'),
+      t('page.proxyPool.colCountry'),
+      t('page.proxyPool.colEgress'),
+      t('page.proxyPool.colEgressIp'),
+      'SSL',
+      t('page.proxyPool.colTraffic'),
+      t('page.proxyPool.colActive'),
+      t('page.proxyPool.colWhen'),
+    ];
+    const rows = history.map((e) => {
+      if (!e.address) {
+        const label = e.action === 'direct' ? t('page.proxyPool.directModeOn') : t('page.proxyPool.cleared');
+        return [label, '', '', '', '', '', '', `<span style="color:var(--text-muted)" title="${ui.escHtml(fmtFullTime(e.ts))}">${fmtAgo(e.ts)}</span>`];
+      }
+      const flag = e.egress_country_code ? (ui.flag(e.egress_country_code) || '') + ' ' + ui.escHtml(e.egress_country_code) : '—';
+      const exitLoc = [e.egress_city, e.egress_isp].filter(Boolean).map(ui.escHtml).join(' · ') || '—';
+      const egressIp = e.egress_ip ? `<span style="font-family:monospace;color:var(--text-muted)">${e.egress_country_code ? (ui.flag(e.egress_country_code) || '') + ' ' : ''}${ui.escHtml(e.egress_ip)}</span>` : '—';
+      const ssl = e.ssl_supported
+        ? '<span style="color:#06b6d4;font-weight:600">✓</span>'
+        : '<span style="color:var(--text-muted)">✗</span>';
+      const bytes = e.bytes || 0;
+      const traffic = `<span class="badge badge-blue" style="font-size:9px">↓↑ ${ui.fmtBytes(bytes)}</span>`;
+      const active = `<span class="badge badge-gray" style="font-size:9px">${fmtDuration(e.duration_sec)}</span>`;
+      const when = `<span style="color:var(--text-muted)" title="${ui.escHtml(fmtFullTime(e.ts))}">${fmtAgo(e.ts)}</span>`;
+      const favStar = e.is_favorite ? '<svg width="10" height="10" style="vertical-align:-1px;color:var(--warning);flex-shrink:0;width:10px;height:10px;margin-right:2px"><use href="#icon-star"/></svg>' : '<span style="width:12px;flex-shrink:0;display:inline-block"></span>';
+      const addr = `<span class="addr proxy-address-link" data-card-addr="${ui.escHtml(e.address)}" style="font-family:monospace;font-size:10px;cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px">${favStar}${ui.escHtml(e.address)}</span>`;
+      return [addr, flag, exitLoc, egressIp, ssl, traffic, active, when];
+    });
     body.innerHTML = '';
-    history.forEach((e, i) => {
-      const row = ui.el('div', '', { style: `display:flex;align-items:center;gap:6px;padding:4px 6px;border-radius:var(--radius-xs);${i === 0 ? 'background:var(--surface-raised)' : ''}` });
-      const icon = ui.el('span', '', { style: 'font-size:13px;flex-shrink:0;width:16px;text-align:center' });
-      if (e.action === 'select') icon.textContent = '→';
-      else if (e.action === 'clear') { icon.textContent = '×'; icon.style.color = 'var(--text-muted)'; }
-      else if (e.action === 'direct') { icon.textContent = '⇄'; icon.style.color = 'var(--warning)'; }
-      else icon.textContent = '•';
-      row.appendChild(icon);
-
-      if (e.address) {
-        const addr = ui.el('span', 'addr proxy-address-link', { 'data-card-addr': ui.escHtml(e.address), style: 'font-family:monospace;font-size:10px;cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap' });
-        addr.textContent = e.address;
-        addr.addEventListener('click', (ev) => { ev.stopPropagation(); if (window.proxyCard) window.proxyCard.show(e.address); });
-        row.appendChild(addr);
-      } else {
-        const label = ui.el('span', '', { style: 'color:var(--text-secondary);font-size:10px;flex:1' });
-        label.textContent = e.action === 'direct' ? t('page.proxyPool.directModeOn') : t('page.proxyPool.cleared');
-        row.appendChild(label);
-      }
-
-      const ago = ui.el('span', '', { style: 'color:var(--text-muted);font-size:10px;white-space:nowrap;flex-shrink:0' });
-      ago.textContent = ui.ago(e.ts);
-      row.appendChild(ago);
-
-      const backBtn = ui.el('button', 'btn btn-xs btn-ghost', { text: t('page.proxyPool.switchBack'), style: 'padding:1px 5px;font-size:9px;flex-shrink:0' });
-      if (e.action === 'select' && e.address) {
-        backBtn.addEventListener('click', (ev) => { ev.stopPropagation(); window.selectProxy(e.address); });
-      } else if (e.action === 'direct') {
-        backBtn.addEventListener('click', (ev) => { ev.stopPropagation(); api.toggleDirect(false).then(() => { app.toast(t('page.proxyPool.directModeOff')); load(); }).catch(err => app.toast(t('common.error', {message: err.message}), 'error')); });
-      } else {
-        backBtn.style.display = 'none';
-      }
-      row.appendChild(backBtn);
-
-      body.appendChild(row);
+    const tbl = ui.table(headers, rows);
+    tbl.classList.add('switch-history-table');
+    const tbody = tbl.querySelector('tbody');
+    if (tbody && history.length && history[0].address) {
+      const firstTr = tbody.querySelector('tr');
+      if (firstTr) firstTr.style.background = 'var(--accent-light)';
+    }
+    body.appendChild(tbl);
+    body.querySelectorAll('.proxy-address-link').forEach(el => {
+      el.addEventListener('click', (ev) => { ev.stopPropagation(); if (window.proxyCard) window.proxyCard.show(el.getAttribute('data-card-addr')); });
     });
   }
 
@@ -383,7 +430,7 @@ router.register('proxy-pool', (container) => {
           const hasDiff = p.listen_country && p.egress_country && p.listen_country !== p.egress_country;
           const srvFlag = ui.flag(p.listen_country_code || p.country_code) || '—';
           const exitFlag = hasDiff ? (ui.flag(p.egress_country_code || p.country_code) || '') : '';
-          const favStar = p.is_favorite ? '<svg width="11" height="11" style="vertical-align:-2px;color:var(--warning);margin-right:2px"><use href="#icon-star"/></svg>' : '';
+          const favStar = p.is_favorite ? '<svg width="11" height="11" style="vertical-align:-2px;color:var(--warning);flex-shrink:0;width:11px;height:11px;margin-right:2px"><use href="#icon-star"/></svg>' : '<span style="width:13px;flex-shrink:0;display:inline-block"></span>';
           return [
             `<span style="color:var(--text-muted)">${i+1}</span>`,
             `<span class="addr proxy-address-link" data-card-addr="${ui.escHtml(p.address)}" style="font-size:10px;cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px">${favStar}${proxyUrl(p)}</span>`,
@@ -438,7 +485,7 @@ router.register('proxy-pool', (container) => {
         const hasDiff = p.listen_country && p.egress_country && p.listen_country !== p.egress_country;
         const srvFlag = ui.flag(p.listen_country_code || p.country_code) || '—';
         const exitFlag = hasDiff ? (ui.flag(p.egress_country_code || p.country_code) || '') : '';
-        const favStar = p.is_favorite ? '<svg width="11" height="11" style="vertical-align:-2px;color:var(--warning);margin-right:2px"><use href="#icon-star"/></svg>' : '';
+        const favStar = p.is_favorite ? '<svg width="11" height="11" style="vertical-align:-2px;color:var(--warning);flex-shrink:0;width:11px;height:11px;margin-right:2px"><use href="#icon-star"/></svg>' : '<span style="width:13px;flex-shrink:0;display:inline-block"></span>';
         return [
           `<span style="color:var(--text-muted)">${i+1}</span>`,
           `<span class="addr proxy-address-link" data-card-addr="${ui.escHtml(p.address)}" style="font-size:10px;cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px">${favStar}${proxyUrl(p)}</span>`,
