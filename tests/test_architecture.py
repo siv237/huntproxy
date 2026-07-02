@@ -35,10 +35,12 @@ MAX_LINES = {
     "server.py": 350,       # current: 306 — handler extraction done
     "scheduler.py": 500,    # current: 494 — persistence+API extracted
     "state.py": 250,         # current: 212 — persistence+downloads extracted
-    "proxy_runner.py": 350,  # current: 309 — route selection extracted
+    "proxy_runner.py": 350,  # current: 307 — switch history extracted
     "proxy_sources.py": 500, # current: 474 — OK (just under)
     "snapshot.py": 500,     # current: 447 — OK
     "blocklists.py": 500,   # current: 427 — OK
+    # Switch history enrichment — extracted from proxy_runner.py
+    "switch_history.py": 150,
     # Handler modules — all under 500 after extraction
     "handlers/admin.py": 250,
     "handlers/core.py": 150,

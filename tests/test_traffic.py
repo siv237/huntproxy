@@ -235,3 +235,80 @@ class TestTrafficMemFallback:
         assert th._route_type("") == "other"
         assert th._route_type("?") == "other"
         assert th._route_type("unknown") == "other"
+
+
+class TestSwitchHistoryEnrichment:
+    """enrich_switch_history must aggregate real traffic_log upstream
+    format (proxy:ADDR / pool:ADDR) and collapse consecutive duplicates."""
+
+    def _seed_traffic(self, state, upstream, bytes_in, bytes_out, ts):
+        conn = state._stats_db()
+        conn.execute(
+            "INSERT INTO traffic_log (ts, client, target, status, upstream, "
+            "bytes_in, bytes_out, duration) VALUES (?,?,?,?,?,?,?,?)",
+            (ts, "1.2.3.4:0", "example.com", "ok", upstream, bytes_in, bytes_out, 0.1),
+        )
+        conn.commit()
+        conn.close()
+
+    def test_enrich_aggregates_traffic_for_period(self, state):
+        from hunt.switch_history import enrich_switch_history
+        now = time.time()
+        addr = "5.5.5.5:8080"
+        state._proxy_switch_history.append({"ts": now - 100, "action": "select", "address": addr})
+        self._seed_traffic(state, "proxy:" + addr, 100, 200, now - 50)
+        self._seed_traffic(state, "pool:" + addr, 50, 70, now - 10)
+        rows = enrich_switch_history(state)
+        assert len(rows) == 1
+        assert rows[0]["address"] == addr
+        assert rows[0]["bytes"] == 420  # 100+200+50+70
+        assert rows[0]["duration_sec"] >= 99
+
+    def test_enrich_separates_addresses_no_substring_collision(self, state):
+        from hunt.switch_history import enrich_switch_history
+        now = time.time()
+        a1, a2 = "1.2.3.4:80", "11.2.3.4:80"
+        state._proxy_switch_history.append({"ts": now - 200, "action": "select", "address": a1})
+        state._proxy_switch_history.append({"ts": now - 100, "action": "select", "address": a2})
+        self._seed_traffic(state, "proxy:" + a1, 10, 20, now - 150)
+        self._seed_traffic(state, "proxy:" + a2, 5, 7, now - 50)
+        rows = enrich_switch_history(state)
+        assert len(rows) == 2
+        by_addr = {r["address"]: r for r in rows}
+        assert by_addr[a1]["bytes"] == 30
+        assert by_addr[a2]["bytes"] == 12
+
+    def test_enrich_collapses_consecutive_duplicates(self, state):
+        from hunt.switch_history import enrich_switch_history
+        now = time.time()
+        addr = "9.9.9.9:1080"
+        state._proxy_switch_history.append({"ts": now - 300, "action": "select", "address": addr})
+        state._proxy_switch_history.append({"ts": now - 200, "action": "select", "address": addr})
+        state._proxy_switch_history.append({"ts": now - 100, "action": "select", "address": addr})
+        rows = enrich_switch_history(state)
+        assert len(rows) == 1
+        assert rows[0]["address"] == addr
+
+    def test_enrich_empty_history(self, state):
+        from hunt.switch_history import enrich_switch_history
+        assert enrich_switch_history(state) == []
+
+    def test_enrich_zero_traffic_when_no_log_rows(self, state):
+        from hunt.switch_history import enrich_switch_history
+        now = time.time()
+        state._proxy_switch_history.append({"ts": now - 100, "action": "select", "address": "7.7.7.7:3128"})
+        rows = enrich_switch_history(state)
+        assert len(rows) == 1
+        assert rows[0]["bytes"] == 0
+
+    def test_get_status_switch_history_enriched(self, state):
+        runner = hunt.ProxyRunner(state)
+        now = time.time()
+        addr = "5.5.5.5:8080"
+        state._proxy_switch_history.append({"ts": now - 100, "action": "select", "address": addr})
+        self._seed_traffic(state, "proxy:" + addr, 100, 200, now - 50)
+        status = runner.get_status()
+        assert isinstance(status["switch_history"], list)
+        assert len(status["switch_history"]) == 1
+        assert status["switch_history"][0]["bytes"] == 300
+

@@ -1,7 +1,7 @@
 # Карта модулей
 Автоматически сгенерировано из исходного кода. Не редактировать руками.
 Запуск: `python scripts/module_map.py`
-Всего модулей: 58 | Всего строк: 10071
+Всего модулей: 59 | Всего строк: 10199
 ---
 ## Сводка
 | Модуль | Строк | Публичные классы/функции | Импортирует из hunt |
@@ -37,17 +37,17 @@
 | `hunt/handlers/routing.py` | 74 | `RoutingHandlers` | — |
 | `hunt/handlers/sources.py` | 260 | `SourceHandlers` | hunt.constants, hunt.handlers |
 | `hunt/handlers/traffic.py` | 291 | `TrafficHandlers` | hunt.constants |
-| `hunt/health_check.py` | 302 | `HealthCheckMixin` | hunt.constants, hunt.models |
+| `hunt/health_check.py` | 321 | `HealthCheckMixin` | hunt.constants, hunt.models |
 | `hunt/health_loops.py` | 62 | `HealthLoopsMixin` | hunt.constants |
 | `hunt/hunt_control.py` | 123 | `HuntControlMixin` | hunt.constants |
 | `hunt/hunt_cycle.py` | 93 | `HuntCycleMixin` | hunt.constants |
 | `hunt/ip_blacklist.py` | 195 | `IPBlacklistMixin` | hunt.constants |
 | `hunt/ip_blacklist_sources.py` | 291 | `IPBlacklistSourcesMixin` | hunt.constants, hunt.download |
 | `hunt/logging_config.py` | 38 | `setup_logging` | — |
-| `hunt/main.py` | 111 | `amain`, `main` | hunt.constants, hunt.logging_config, hunt.scheduler, hunt.server +1 |
+| `hunt/main.py` | 110 | `amain`, `main` | hunt.constants, hunt.logging_config, hunt.scheduler, hunt.server +1 |
 | `hunt/models.py` | 190 | `ProxyRating` | — |
 | `hunt/proxy_routing.py` | 141 | `ProxyRouteMixin` | hunt.models |
-| `hunt/proxy_runner.py` | 284 | `ProxyRunner` | hunt.conn, hunt.models, hunt.proxy_routing |
+| `hunt/proxy_runner.py` | 282 | `ProxyRunner` | hunt.conn, hunt.models, hunt.proxy_routing, hunt.switch_history |
 | `hunt/proxy_sources.py` | 415 | `ProxySourcesMixin` | hunt.constants, hunt.download |
 | `hunt/router.py` | 53 | `Router` | — |
 | `hunt/routing.py` | 242 | `RoutingMixin` | hunt.constants |
@@ -61,6 +61,7 @@
 | `hunt/state.py` | 168 | `HuntState` | hunt.actions, hunt.backup, hunt.blacklist, hunt.blocklists +26 |
 | `hunt/state_download.py` | 84 | `StateDownloadMixin` | hunt.constants |
 | `hunt/state_persistence.py` | 286 | `StatePersistenceMixin` | hunt.constants, hunt.geo, hunt.models |
+| `hunt/switch_history.py` | 112 | `record_switch`, `enrich_switch_history` | — |
 | `hunt/task_executor.py` | 133 | `TaskExecutor` | hunt.constants, hunt.scheduler |
 | `hunt/transparent_runner.py` | 157 | `TransparentRunner` | — |
 | `hunt/web_legacy.py` | 348 | — | — |
@@ -214,7 +215,7 @@
 - `country_name_from_code` (def)
 
 
-### `hunt/health_check.py` (302 строк)
+### `hunt/health_check.py` (321 строк)
 *Functional split of the huntproxy backend.*
 **Публичные:**
 - `HealthCheckMixin` (class)
@@ -262,7 +263,7 @@
 - `setup_logging` (def)
 
 
-### `hunt/main.py` (111 строк)
+### `hunt/main.py` (110 строк)
 *Functional split of the huntproxy backend.*
 **Публичные:**
 - `amain` (async)
@@ -283,12 +284,12 @@
 
 **Зависимости:** `hunt.models`
 
-### `hunt/proxy_runner.py` (284 строк)
+### `hunt/proxy_runner.py` (282 строк)
 *Functional split of the huntproxy backend.*
 **Публичные:**
 - `ProxyRunner` (class)
 
-**Зависимости:** `hunt.conn`, `hunt.models`, `hunt.proxy_routing`
+**Зависимости:** `hunt.conn`, `hunt.models`, `hunt.proxy_routing`, `hunt.switch_history`
 
 ### `hunt/proxy_sources.py` (415 строк)
 *Functional split of the huntproxy backend.*
@@ -378,6 +379,13 @@
 - `StatePersistenceMixin` (class)
 
 **Зависимости:** `hunt.constants`, `hunt.geo`, `hunt.models`
+
+### `hunt/switch_history.py` (112 строк)
+*Proxy switch history enrichment — extracted from proxy_runner.py.*
+**Публичные:**
+- `record_switch` (def)
+- `enrich_switch_history` (def)
+
 
 ### `hunt/task_executor.py` (133 строк)
 *Task executor — runs scheduled tasks, decoupled from the scheduler's*
@@ -489,7 +497,7 @@
 | `hunt/ip_blacklist_sources.py` | `hunt.constants`, `hunt.download` |
 | `hunt/main.py` | `hunt.constants`, `hunt.logging_config`, `hunt.scheduler`, `hunt.server`, `hunt.state` |
 | `hunt/proxy_routing.py` | `hunt.models` |
-| `hunt/proxy_runner.py` | `hunt.conn`, `hunt.models`, `hunt.proxy_routing` |
+| `hunt/proxy_runner.py` | `hunt.conn`, `hunt.models`, `hunt.proxy_routing`, `hunt.switch_history` |
 | `hunt/proxy_sources.py` | `hunt.constants`, `hunt.download` |
 | `hunt/routing.py` | `hunt.constants` |
 | `hunt/scheduler.py` | `hunt.constants`, `hunt.schedule_entry`, `hunt.scheduler_api`, `hunt.scheduler_persistence`, `hunt.task_executor` |
