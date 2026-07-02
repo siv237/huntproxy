@@ -823,11 +823,18 @@ router.register('overview', (container) => {
     header.appendChild(poolBtn);
     card.appendChild(header);
 
-    const body = ui.el('div', '', { id: 'current-proxy-body', style: 'flex:1;min-width:0;overflow:hidden' });
-    body.innerHTML = `<div class="empty" style="font-size:12px;padding:16px">${t('page.overview.noUpstreamSelected')}</div>`;
-    card.appendChild(body);
+    const main = ui.el('div', '', { id: 'current-proxy-main', style: 'flex:1;min-width:0;overflow:hidden;display:grid;grid-template-columns:1fr 1fr;gap:8px' });
 
-    const statsRow = ui.el('div', '', { id: 'proxy-stats-row', style: 'display:grid;grid-template-columns:repeat(auto-fit, minmax(0, 1fr));gap:0.3em;margin-top:auto;min-width:0' });
+    const body = ui.el('div', '', { id: 'current-proxy-body', style: 'min-width:0;overflow-y:auto;display:flex;flex-direction:column' });
+    body.innerHTML = `<div class="empty" style="font-size:12px;padding:16px">${t('page.overview.noUpstreamSelected')}</div>`;
+    main.appendChild(body);
+
+    const history = ui.el('div', '', { id: 'proxy-switch-history-mini', style: 'min-width:0;overflow-y:auto;font-size:11px;display:flex;flex-direction:column' });
+    main.appendChild(history);
+
+    card.appendChild(main);
+
+    const statsRow = ui.el('div', '', { id: 'proxy-stats-row', style: 'display:grid;grid-template-columns:repeat(auto-fit, minmax(0, 1fr));gap:0.3em;margin-top:8px;min-width:0;flex-shrink:0' });
     card.appendChild(statsRow);
 
     return card;
@@ -1007,6 +1014,61 @@ router.register('overview', (container) => {
       });
     }
 
+    renderSwitchHistoryMini(ps);
+  }
+
+  function renderSwitchHistoryMini(ps) {
+    const wrap = document.getElementById('proxy-switch-history-mini');
+    if (!wrap) return;
+    const history = (ps && ps.switch_history) || [];
+    wrap.innerHTML = '';
+
+    const header = ui.el('div', '', { style: 'display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;flex-shrink:0' });
+    header.appendChild(ui.el('div', '', { style: 'font-size:10px;font-weight:600;color:var(--text-secondary);text-transform:uppercase', text: t('page.overview.recentSwitches') }));
+    header.appendChild(ui.el('div', '', { style: 'font-size:9px;color:var(--text-muted)', text: t('page.overview.switchHistoryHint') }));
+    wrap.appendChild(header);
+
+    if (!history.length) {
+      wrap.appendChild(ui.el('div', '', { style: 'font-size:11px;color:var(--text-muted);padding:8px 0', text: t('page.overview.noSwitches') }));
+      return;
+    }
+
+    const fmtDuration = (sec) => {
+      if (!sec || sec <= 0) return '0s';
+      if (sec < 60) return Math.round(sec) + 's';
+      if (sec < 3600) return Math.floor(sec / 60) + 'm' + Math.round(sec % 60) + 's';
+      return Math.floor(sec / 3600) + 'h' + Math.floor((sec % 3600) / 60) + 'm';
+    };
+
+    const list = ui.el('div', 'switch-history-mini');
+    history.slice(0, 6).forEach((e, i) => {
+      const row = ui.el('div', 'sh-item' + (i === 0 ? ' current' : ''));
+
+      const top = ui.el('div', 'sh-top');
+      if (!e.address) {
+        top.appendChild(ui.el('span', '', { style: 'font-size:10px;color:var(--text-muted)', text: e.action === 'direct' ? t('page.proxyPool.directModeOn') : t('page.proxyPool.cleared') }));
+      } else {
+        const flag = e.egress_country_code ? ui.flag(e.egress_country_code) : '';
+        top.appendChild(ui.el('span', 'flag', { text: flag }));
+        const addr = ui.el('span', 'sh-addr', { text: e.address, title: e.address });
+        addr.addEventListener('click', () => { if (window.proxyCard) window.proxyCard.show(e.address); });
+        top.appendChild(addr);
+        if (e.is_favorite) {
+          top.appendChild(ui.el('span', 'sh-fav', { html: '<svg width="10" height="10"><use href="#icon-star"/></svg>' }));
+        }
+      }
+      row.appendChild(top);
+
+      const meta = ui.el('div', 'sh-meta');
+      const bytes = e.bytes || 0;
+      meta.appendChild(ui.el('span', 'traffic', { text: '↓↑ ' + ui.fmtBytes(bytes) }));
+      meta.appendChild(ui.el('span', 'duration', { text: '●' + fmtDuration(e.duration_sec) }));
+      meta.appendChild(ui.el('span', 'when', { text: ui.ago(e.ts) }));
+      row.appendChild(meta);
+
+      list.appendChild(row);
+    });
+    wrap.appendChild(list);
   }
 
   build();

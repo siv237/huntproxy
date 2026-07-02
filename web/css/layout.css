@@ -481,6 +481,27 @@
   }
 }
 
+.current-proxy-card #current-proxy-main {
+  gap: 8px;
+}
+
+.current-proxy-card #proxy-switch-history-mini {
+  border-left: 1px solid var(--border);
+  padding-left: 8px;
+}
+
+@container currentProxy (max-width: 280px) {
+  .current-proxy-card #current-proxy-main {
+    grid-template-columns: 1fr !important;
+  }
+  .current-proxy-card #proxy-switch-history-mini {
+    border-left: none;
+    border-top: 1px solid var(--border);
+    padding-left: 0;
+    padding-top: 6px;
+  }
+}
+
 .content .card .table-wrap,
 .content .card > div[id$="-log"],
 .content .card > div[id$="-tbl-wrap"],

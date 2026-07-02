@@ -2709,3 +2709,75 @@
 .switch-history-table .table th {
   font-size: 9px;
 }
+
+/* Switch history mini widget inside current-proxy card */
+.switch-history-mini {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.switch-history-mini .sh-item {
+  display: flex;
+  flex-direction: column;
+  padding: 5px 6px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xs);
+  background: var(--surface-raised);
+  min-width: 0;
+}
+.switch-history-mini .sh-item.current {
+  background: var(--accent-light);
+  border-color: var(--accent);
+}
+.switch-history-mini .sh-top {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.switch-history-mini .sh-top .flag {
+  flex-shrink: 0;
+  font-size: 12px;
+  line-height: 1;
+}
+.switch-history-mini .sh-addr {
+  font-family: monospace;
+  font-size: 10px;
+  color: var(--accent);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+  flex: 1;
+  min-width: 0;
+}
+.switch-history-mini .sh-fav {
+  color: var(--warning);
+  flex-shrink: 0;
+  margin-left: 2px;
+  line-height: 1;
+}
+.switch-history-mini .sh-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+  font-size: 9px;
+  color: var(--text-muted);
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.switch-history-mini .sh-meta .traffic {
+  color: var(--info);
+  font-weight: 600;
+}
+.switch-history-mini .sh-meta .duration {
+  color: var(--text-muted);
+}
+.switch-history-mini .sh-meta .when {
+  color: var(--text-muted);
+  margin-left: auto;
+}
