@@ -1,6 +1,7 @@
 import asyncio
 import pytest
 import hunt
+from hunt import proxy_routing
 
 
 class TestProxyServer:
@@ -163,5 +164,209 @@ class TestProxyServer:
 
             proxy_server.close()
             await proxy_server.wait_closed()
+
+        asyncio.run(run())
+
+    def test_http_connect_retries_on_503(self, state, monkeypatch):
+        """http_connect retries on transient 503 and succeeds on second attempt."""
+        async def run():
+            from hunt.conn import http_connect, _HTTP_CONNECT_RETRY_DELAY
+            monkeypatch.setattr("hunt.conn._HTTP_CONNECT_RETRY_DELAY", 0.0)
+            attempt_count = [0]
+
+            async def proxy_handler(reader, writer):
+                for i in range(3):
+                    line = await reader.readline()
+                    if not line:
+                        break
+                    while True:
+                        hdr = await reader.readline()
+                        if hdr in (b"\r\n", b"\n", b""):
+                            break
+                    if i == 0:
+                        writer.write(b"HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\n\r\n")
+                    else:
+                        writer.write(b"HTTP/1.1 200 Connection Established\r\n\r\n")
+                    await writer.drain()
+                    if i > 0:
+                        await asyncio.sleep(5)
+                        break
+                writer.close()
+
+            server = await asyncio.start_server(proxy_handler, "127.0.0.1", 0)
+            port = server.sockets[0].getsockname()[1]
+            try:
+                reader, writer = await asyncio.open_connection("127.0.0.1", port)
+                ok = await asyncio.wait_for(http_connect(reader, writer, "example.com", 443), timeout=10)
+                assert ok is True
+                writer.close()
+                await writer.wait_closed()
+            finally:
+                server.close()
+                await server.wait_closed()
+
+        asyncio.run(run())
+
+    def test_http_connect_no_retry_on_403(self, state, monkeypatch):
+        """http_connect does not retry on permanent 403."""
+        async def run():
+            from hunt.conn import http_connect
+            monkeypatch.setattr("hunt.conn._HTTP_CONNECT_RETRY_DELAY", 0.0)
+            attempt_count = [0]
+
+            async def proxy_handler(reader, writer):
+                attempt_count[0] += 1
+                line = await reader.readline()
+                while True:
+                    hdr = await reader.readline()
+                    if hdr in (b"\r\n", b"\n", b""):
+                        break
+                writer.write(b"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\n")
+                await writer.drain()
+                await asyncio.sleep(5)
+                writer.close()
+
+            server = await asyncio.start_server(proxy_handler, "127.0.0.1", 0)
+            port = server.sockets[0].getsockname()[1]
+            try:
+                reader, writer = await asyncio.open_connection("127.0.0.1", port)
+                ok = await asyncio.wait_for(http_connect(reader, writer, "example.com", 443), timeout=10)
+                assert ok is False
+                assert attempt_count[0] == 1
+                writer.close()
+                await writer.wait_closed()
+            finally:
+                server.close()
+                await server.wait_closed()
+
+        asyncio.run(run())
+
+    def test_connect_via_rating_retries_on_failure(self, state, monkeypatch):
+        """_connect_via_rating retries: first attempt fails, second succeeds."""
+        async def run():
+            monkeypatch.setattr(proxy_routing, "_RETRY_DELAY", 0.0)
+            attempt_count = [0]
+
+            async def proxy_handler(reader, writer):
+                attempt_count[0] += 1
+                if attempt_count[0] == 1:
+                    writer.close()
+                    return
+                line = await reader.readline()
+                while True:
+                    hdr = await reader.readline()
+                    if hdr in (b"\r\n", b"\n", b""):
+                        break
+                writer.write(b"HTTP/1.1 200 Connection Established\r\n\r\n")
+                await writer.drain()
+                await asyncio.sleep(5)
+                writer.close()
+
+            server = await asyncio.start_server(proxy_handler, "127.0.0.1", 0)
+            port = server.sockets[0].getsockname()[1]
+            addr = f"127.0.0.1:{port}"
+            state.ratings[addr] = hunt.ProxyRating(
+                address=addr, protocol="http", last_status="ok",
+                checks_total=1, checks_ok=1, supports_connect=True)
+
+            runner = hunt.ProxyRunner(state, "127.0.0.1")
+            chain = []
+            result = await runner._connect_by_route(f"proxy:{addr}", "example.com", 443, chain)
+            assert result is not None
+            assert attempt_count[0] == 2
+            assert "retry:1" in chain[0]
+
+            up_r, up_w, _ = result
+            up_w.close()
+            await up_w.wait_closed()
+            server.close()
+            await server.wait_closed()
+
+        asyncio.run(run())
+
+    def test_proxy_route_falls_back_to_pool(self, state, monkeypatch):
+        """Selected proxy fails after retries → falls back to pool."""
+        async def run():
+            monkeypatch.setattr(proxy_routing, "_RETRY_DELAY", 0.0)
+
+            async def good_proxy_handler(reader, writer):
+                line = await reader.readline()
+                while True:
+                    hdr = await reader.readline()
+                    if hdr in (b"\r\n", b"\n", b""):
+                        break
+                writer.write(b"HTTP/1.1 200 Connection Established\r\n\r\n")
+                await writer.drain()
+                await asyncio.sleep(5)
+                writer.close()
+
+            good_server = await asyncio.start_server(good_proxy_handler, "127.0.0.1", 0)
+            good_port = good_server.sockets[0].getsockname()[1]
+            good_addr = f"127.0.0.1:{good_port}"
+
+            bad_addr = "127.0.0.1:1"
+            state.ratings[bad_addr] = hunt.ProxyRating(
+                address=bad_addr, protocol="http", last_status="ok",
+                checks_total=1, checks_ok=1, supports_connect=True)
+            state.ratings[good_addr] = hunt.ProxyRating(
+                address=good_addr, protocol="http", last_status="ok",
+                checks_total=1, checks_ok=1, supports_connect=True)
+
+            runner = hunt.ProxyRunner(state, "127.0.0.1")
+            chain = []
+            result = await runner._connect_by_route(f"proxy:{bad_addr}", "example.com", 443, chain)
+            assert result is not None
+            assert any("fallback" in c for c in chain)
+            assert any("pool:" in c for c in chain)
+
+            up_r, up_w, _ = result
+            up_w.close()
+            await up_w.wait_closed()
+            good_server.close()
+            await good_server.wait_closed()
+
+        asyncio.run(run())
+
+    def test_connect_fallback_active_proxy_to_pool(self, state, monkeypatch):
+        """_connect_fallback: active_proxy fails → pool fallback."""
+        async def run():
+            monkeypatch.setattr(proxy_routing, "_RETRY_DELAY", 0.0)
+
+            async def good_proxy_handler(reader, writer):
+                line = await reader.readline()
+                while True:
+                    hdr = await reader.readline()
+                    if hdr in (b"\r\n", b"\n", b""):
+                        break
+                writer.write(b"HTTP/1.1 200 Connection Established\r\n\r\n")
+                await writer.drain()
+                await asyncio.sleep(5)
+                writer.close()
+
+            good_server = await asyncio.start_server(good_proxy_handler, "127.0.0.1", 0)
+            good_port = good_server.sockets[0].getsockname()[1]
+            good_addr = f"127.0.0.1:{good_port}"
+
+            bad_addr = "127.0.0.1:1"
+            state.ratings[bad_addr] = hunt.ProxyRating(
+                address=bad_addr, protocol="http", last_status="ok",
+                checks_total=1, checks_ok=1, supports_connect=True)
+            state.ratings[good_addr] = hunt.ProxyRating(
+                address=good_addr, protocol="http", last_status="ok",
+                checks_total=1, checks_ok=1, supports_connect=True)
+
+            runner = hunt.ProxyRunner(state, "127.0.0.1")
+            runner.active_proxy_addr = bad_addr
+            chain = []
+            result = await runner._connect_fallback("example.com", 443, chain, need_connect=True)
+            assert result is not None
+            assert any("fallback" in c for c in chain)
+            assert any("pool:" in c for c in chain)
+
+            up_r, up_w, _ = result
+            up_w.close()
+            await up_w.wait_closed()
+            good_server.close()
+            await good_server.wait_closed()
 
         asyncio.run(run())

@@ -5,6 +5,9 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+_CONNECT_RETRIES = 3
+_RETRY_DELAY = 0.3
+
 class ProxyRouteMixin:
     async def _connect_upstream(self, host: str, port: int, need_connect: bool = True):
         route = self.state._resolve_route(host)
@@ -23,7 +26,12 @@ class ProxyRouteMixin:
         if route.startswith("custom:"):
             return await self._connect_via_custom(route[7:], host, port, chain, need_connect)
         if route.startswith("proxy:"):
-            return await self._connect_via_addr(route[6:], host, port, chain, need_connect)
+            addr = route[6:]
+            result = await self._connect_via_addr(addr, host, port, chain, need_connect)
+            if result is not None:
+                return result
+            chain.append(f"proxy:{addr} (fallback→pool)")
+            return await self._connect_via_pool(host, port, chain, need_connect)
         if route == "pool" or route == "":
             return await self._connect_via_pool(host, port, chain, need_connect)
         # Fallback: direct mode or active proxy, then pool
@@ -48,30 +56,32 @@ class ProxyRouteMixin:
             chain.append(f"custom:{proxy_id} (disabled)")
             default = self.state._routing_get("default_route", "direct")
             return await self._connect_by_route(default, host, port, chain, need_connect)
-        try:
-            reader, writer = await asyncio.wait_for(
-                asyncio.open_connection(proxy["host"], proxy["port"]), timeout=10)
-        except Exception:
-            return None
         protocol = proxy.get("protocol", "socks5")
         uname = proxy.get("username", "")
         passwd = proxy.get("password", "")
-        if protocol == "socks5":
-            ok = await self._socks5_cmd_auth(reader, writer, host, port, uname, passwd)
-            if not ok:
-                self._safe_close(writer)
-                return None
-            chain.append(f"custom:{proxy_id}")
-            return reader, writer, False
-        if need_connect:
-            ok = await self._http_connect_cmd_auth(reader, writer, host, port, uname, passwd)
-            if not ok:
-                self._safe_close(writer)
-                return None
-            chain.append(f"custom:{proxy_id}")
-            return reader, writer, False
-        chain.append(f"custom:{proxy_id}")
-        return reader, writer, True
+        for attempt in range(_CONNECT_RETRIES):
+            try:
+                reader, writer = await asyncio.wait_for(
+                    asyncio.open_connection(proxy["host"], proxy["port"]), timeout=10)
+            except Exception:
+                if attempt < _CONNECT_RETRIES - 1:
+                    await asyncio.sleep(_RETRY_DELAY)
+                continue
+            if protocol == "socks5":
+                ok = await self._socks5_cmd_auth(reader, writer, host, port, uname, passwd)
+            elif need_connect:
+                ok = await self._http_connect_cmd_auth(reader, writer, host, port, uname, passwd)
+            else:
+                chain.append(f"custom:{proxy_id}")
+                return reader, writer, True
+            if ok:
+                tag = f" (retry:{attempt})" if attempt else ""
+                chain.append(f"custom:{proxy_id}{tag}")
+                return reader, writer, False
+            self._safe_close(writer)
+            if attempt < _CONNECT_RETRIES - 1:
+                await asyncio.sleep(_RETRY_DELAY)
+        return None
 
     async def _connect_via_addr(self, addr: str, host: str, port: int, chain: list, need_connect: bool) -> tuple:
         r = self.state.ratings.get(addr)
@@ -80,16 +90,22 @@ class ProxyRouteMixin:
         return await self._connect_via_rating(r, host, port, chain, need_connect)
 
     async def _connect_via_rating(self, r: ProxyRating, host: str, port: int, chain: list, need_connect: bool) -> tuple:
-        reader, writer = await self._open_proxy_conn(r)
-        if reader is None:
-            return None
-        ok = await self._negotiate_proxy(r, reader, writer, host, port, need_connect)
-        if not ok:
+        for attempt in range(_CONNECT_RETRIES):
+            reader, writer = await self._open_proxy_conn(r)
+            if reader is None:
+                if attempt < _CONNECT_RETRIES - 1:
+                    await asyncio.sleep(_RETRY_DELAY)
+                continue
+            ok = await self._negotiate_proxy(r, reader, writer, host, port, need_connect)
+            if ok:
+                tag = f" (retry:{attempt})" if attempt else ""
+                chain.append(f"proxy:{r.address}{tag}")
+                is_raw = (not need_connect and r.protocol not in ("socks4", "socks5"))
+                return reader, writer, is_raw
             self._safe_close(writer)
-            return None
-        chain.append(f"proxy:{r.address}")
-        is_raw = (not need_connect and r.protocol not in ("socks4", "socks5"))
-        return reader, writer, is_raw
+            if attempt < _CONNECT_RETRIES - 1:
+                await asyncio.sleep(_RETRY_DELAY)
+        return None
 
     async def _connect_via_pool(self, host: str, port: int, chain: list, need_connect: bool) -> tuple:
         pool = self._build_pool(need_connect)
@@ -114,7 +130,10 @@ class ProxyRouteMixin:
         if self.direct_mode:
             return await self._connect_direct(host, port, chain)
         if self.active_proxy_addr:
-            return await self._connect_via_addr(self.active_proxy_addr, host, port, chain, need_connect)
+            result = await self._connect_via_addr(self.active_proxy_addr, host, port, chain, need_connect)
+            if result is not None:
+                return result
+            chain.append(f"proxy:{self.active_proxy_addr} (fallback→pool)")
         return await self._connect_via_pool(host, port, chain, need_connect)
 
     def _build_pool(self, need_connect: bool) -> list:

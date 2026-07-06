@@ -18,6 +18,17 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+_TRANSIENT_STATUSES = frozenset({429, 502, 503, 504})
+_HTTP_CONNECT_RETRIES = 2
+_HTTP_CONNECT_RETRY_DELAY = 0.3
+
+
+def _status_code_from_line(line: bytes) -> int:
+    try:
+        return int(line.split()[1])
+    except (IndexError, ValueError):
+        return 0
+
 
 async def socks5_connect(reader, writer, host: str, port: int,
                          username: str = "", password: str = "",
@@ -82,33 +93,31 @@ async def socks4_connect(reader, writer, host: str, port: int,
 
 async def http_connect(reader, writer, host: str, port: int,
                        username: str = "", password: str = "") -> bool:
-    req = f"CONNECT {host}:{port} HTTP/1.1\r\nHost: {host}:{port}\r\n"
+    base_req = f"CONNECT {host}:{port} HTTP/1.1\r\nHost: {host}:{port}\r\n"
     if username:
         cred = base64.b64encode(f"{username}:{password}".encode()).decode()
-        req += f"Proxy-Authorization: Basic {cred}\r\n"
-    req += "\r\n"
-    writer.write(req.encode())
-    await writer.drain()
-    try:
-        resp = await asyncio.wait_for(reader.readuntil(b"\r\n\r\n"), timeout=15)
+        base_req += f"Proxy-Authorization: Basic {cred}\r\n"
+    base_req += "\r\n"
+    for attempt in range(_HTTP_CONNECT_RETRIES):
+        writer.write(base_req.encode())
+        await writer.drain()
+        try:
+            resp = await asyncio.wait_for(reader.readuntil(b"\r\n\r\n"), timeout=15)
+        except Exception:
+            return False
         status_line = resp.split(b"\r\n")[0]
         if b"200" in status_line:
             return True
-        if b"407" in status_line and username:
+        code = _status_code_from_line(status_line)
+        if code == 407 and username:
             await _drain_response_body(reader, resp)
-            cred = base64.b64encode(f"{username}:{password}".encode()).decode()
-            retry = (f"CONNECT {host}:{port} HTTP/1.1\r\nHost: {host}:{port}\r\n"
-                     f"Proxy-Authorization: Basic {cred}\r\n\r\n")
-            writer.write(retry.encode())
-            await writer.drain()
-            resp2 = await asyncio.wait_for(reader.readuntil(b"\r\n\r\n"), timeout=15)
-            status_line2 = resp2.split(b"\r\n")[0]
-            return b"200" in status_line2
+            continue
+        if code in _TRANSIENT_STATUSES and attempt < _HTTP_CONNECT_RETRIES - 1:
+            await _drain_response_body(reader, resp)
+            await asyncio.sleep(_HTTP_CONNECT_RETRY_DELAY)
+            continue
         return False
-    except asyncio.TimeoutError:
-        return False
-    except Exception:
-        return False
+    return False
 
 
 async def _drain_response_body(reader, header: bytes):

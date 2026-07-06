@@ -1,7 +1,7 @@
 # Карта модулей
 Автоматически сгенерировано из исходного кода. Не редактировать руками.
 Запуск: `python scripts/module_map.py`
-Всего модулей: 59 | Всего строк: 10199
+Всего модулей: 59 | Всего строк: 10220
 ---
 ## Сводка
 | Модуль | Строк | Публичные классы/функции | Импортирует из hunt |
@@ -20,7 +20,7 @@
 | `hunt/check_speed.py` | 215 | `CheckSpeedMixin` | hunt.constants |
 | `hunt/check_ssl.py` | 133 | `CheckSslMixin` | hunt.constants |
 | `hunt/check_validation.py` | 222 | `CheckValidationMixin` | hunt.constants |
-| `hunt/conn.py` | 120 | `socks5_connect`, `socks4_connect`, `http_connect` | — |
+| `hunt/conn.py` | 126 | `socks5_connect`, `socks4_connect`, `http_connect` | — |
 | `hunt/constants.py` | 109 | — | — |
 | `hunt/custom_proxies.py` | 311 | `CustomProxiesMixin` | hunt.conn, hunt.constants |
 | `hunt/db.py` | 338 | `DbMixin` | — |
@@ -46,7 +46,7 @@
 | `hunt/logging_config.py` | 38 | `setup_logging` | — |
 | `hunt/main.py` | 110 | `amain`, `main` | hunt.constants, hunt.logging_config, hunt.scheduler, hunt.server +1 |
 | `hunt/models.py` | 190 | `ProxyRating` | — |
-| `hunt/proxy_routing.py` | 141 | `ProxyRouteMixin` | hunt.models |
+| `hunt/proxy_routing.py` | 159 | `ProxyRouteMixin` | hunt.models |
 | `hunt/proxy_runner.py` | 282 | `ProxyRunner` | hunt.conn, hunt.models, hunt.proxy_routing, hunt.switch_history |
 | `hunt/proxy_sources.py` | 415 | `ProxySourcesMixin` | hunt.constants, hunt.download |
 | `hunt/router.py` | 53 | `Router` | — |
@@ -61,7 +61,7 @@
 | `hunt/state.py` | 168 | `HuntState` | hunt.actions, hunt.backup, hunt.blacklist, hunt.blocklists +26 |
 | `hunt/state_download.py` | 84 | `StateDownloadMixin` | hunt.constants |
 | `hunt/state_persistence.py` | 286 | `StatePersistenceMixin` | hunt.constants, hunt.geo, hunt.models |
-| `hunt/switch_history.py` | 112 | `record_switch`, `enrich_switch_history` | — |
+| `hunt/switch_history.py` | 109 | `record_switch`, `enrich_switch_history` | — |
 | `hunt/task_executor.py` | 133 | `TaskExecutor` | hunt.constants, hunt.scheduler |
 | `hunt/transparent_runner.py` | 157 | `TransparentRunner` | — |
 | `hunt/web_legacy.py` | 348 | — | — |
@@ -163,7 +163,7 @@
 
 **Зависимости:** `hunt.constants`
 
-### `hunt/conn.py` (120 строк)
+### `hunt/conn.py` (126 строк)
 *Shared upstream-proxy protocol helpers.*
 **Публичные:**
 - `socks5_connect` (async)
@@ -277,7 +277,7 @@
 - `ProxyRating` (class)
 
 
-### `hunt/proxy_routing.py` (141 строк)
+### `hunt/proxy_routing.py` (159 строк)
 *Proxy route selection — extracted from proxy_runner.py.*
 **Публичные:**
 - `ProxyRouteMixin` (class)
@@ -380,7 +380,7 @@
 
 **Зависимости:** `hunt.constants`, `hunt.geo`, `hunt.models`
 
-### `hunt/switch_history.py` (112 строк)
+### `hunt/switch_history.py` (109 строк)
 *Proxy switch history enrichment — extracted from proxy_runner.py.*
 **Публичные:**
 - `record_switch` (def)
