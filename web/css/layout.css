@@ -485,6 +485,12 @@
   gap: 8px;
 }
 
+.current-proxy-card #current-proxy-body,
+.current-proxy-card #proxy-switch-history-mini {
+  min-height: 0;
+  align-self: stretch;
+}
+
 .current-proxy-card #proxy-switch-history-mini {
   border-left: 1px solid var(--border);
   padding-left: 8px;

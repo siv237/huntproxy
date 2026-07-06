@@ -813,14 +813,12 @@ router.register('overview', (container) => {
     card.style.minWidth = '0';
 
     const header = ui.el('div', 'card-header');
-    const titleRow = ui.el('div', '', { style: 'display:flex;align-items:center;gap:8px' });
+    const titleRow = ui.el('div', '', { style: 'display:flex;align-items:center;gap:8px;min-width:0;flex:1' });
     titleRow.appendChild(ui.el('div', 'card-title', { id: 'proxy-card-title', text: t('page.overview.localProxy') }));
-    const upstreamBtns = ui.el('div', '', { id: 'upstream-btns', style: 'display:flex;gap:4px' });
-    titleRow.appendChild(upstreamBtns);
-    header.appendChild(titleRow);
     const poolBtn = ui.el('button', 'card-action', { text: t('page.overview.proxyPool') });
     poolBtn.addEventListener('click', () => router.navigate('proxy-pool'));
-    header.appendChild(poolBtn);
+    titleRow.appendChild(poolBtn);
+    header.appendChild(titleRow);
     card.appendChild(header);
 
     const main = ui.el('div', '', { id: 'current-proxy-main', style: 'flex:1;min-width:0;overflow:hidden;display:grid;grid-template-columns:1fr 1fr;gap:8px' });
@@ -829,7 +827,7 @@ router.register('overview', (container) => {
     body.innerHTML = `<div class="empty" style="font-size:12px;padding:16px">${t('page.overview.noUpstreamSelected')}</div>`;
     main.appendChild(body);
 
-    const history = ui.el('div', '', { id: 'proxy-switch-history-mini', style: 'min-width:0;overflow-y:auto;font-size:11px;display:flex;flex-direction:column' });
+    const history = ui.el('div', '', { id: 'proxy-switch-history-mini', style: 'min-width:0;font-size:11px;display:flex;flex-direction:column' });
     main.appendChild(history);
 
     card.appendChild(main);
@@ -845,7 +843,6 @@ router.register('overview', (container) => {
     const statsWrap = document.getElementById('proxy-stats-row');
     const card = document.getElementById('current-proxy-card');
     const titleEl = document.getElementById('proxy-card-title');
-    const btnsEl = document.getElementById('upstream-btns');
     if (!body) return;
 
     const running = ps && ps.running;
@@ -863,6 +860,7 @@ router.register('overview', (container) => {
 
     body.innerHTML = '';
     if (statsWrap) statsWrap.innerHTML = '';
+    renderSwitchHistoryMini(ps);
 
     const port = ps ? (ps.port || 17277) : 17277;
     const s5port = ss ? (ss.port || 17278) : 17278;
@@ -904,41 +902,6 @@ router.register('overview', (container) => {
     }
     body.appendChild(s5Row);
 
-    // Upstream buttons in header
-    if (btnsEl) {
-      btnsEl.innerHTML = '';
-      if (ap) {
-        btnsEl.appendChild(mkBtn('»', t('page.overview.nextProxy'), 'var(--accent)', () => api.proxyNext().then(() => app.toast(t('page.overview.switchedToNext'))).catch(e => app.toast(t('common.error', { message: e.message }), 'error'))));
-        const recheckBtn = mkBtn('↻', t('page.overview.recheck'), 'var(--info)', () => {
-          recheckBtn.disabled = true;
-          recheckBtn.style.color = 'var(--text-muted)';
-          const icon = recheckBtn.querySelector('span');
-          if (icon) icon.style.animation = 'recheckSpin 0.8s linear infinite';
-          api.proxyRecheck(ap.address).then(() => poll()).then(() => {
-            recheckBtn.disabled = false;
-            recheckBtn.style.color = 'var(--info)';
-            if (icon) icon.style.animation = '';
-          }).catch(e => {
-            recheckBtn.disabled = false;
-            recheckBtn.style.color = 'var(--info)';
-            if (icon) icon.style.animation = '';
-            app.toast(t('common.error', { message: e.message }), 'error');
-          });
-        });
-        const recheckIcon = ui.el('span', '', { style: 'display:inline-block' });
-        recheckIcon.textContent = '↻';
-        recheckBtn.textContent = '';
-        recheckBtn.appendChild(recheckIcon);
-        btnsEl.appendChild(recheckBtn);
-        if (!document.getElementById('recheck-spin-style')) {
-          const s = document.createElement('style');
-          s.id = 'recheck-spin-style';
-          s.textContent = '@keyframes recheckSpin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}';
-          document.head.appendChild(s);
-        }
-      }
-    }
-
     if (!ap) {
       const nextBtn = ui.el('button', '', { style: 'padding:0.4em 1em;border:1px solid var(--border);border-radius:0.3em;background:var(--surface-raised);color:var(--accent);cursor:pointer', text: t('page.overview.selectBestProxy') });
       nextBtn.addEventListener('click', () => api.proxyNext().then(() => app.toast(t('page.overview.proxySelected'))).catch(e => app.toast(t('common.error', { message: e.message }), 'error')));
@@ -952,6 +915,36 @@ router.register('overview', (container) => {
     metaRow.appendChild(ui.el('span', '', { style: 'color:var(--accent);font-weight:600;font-size:11px', text: mode }));
     if (ap.ssl_supported) metaRow.appendChild(ui.el('span', '', { style: 'color:#06b6d4;font-weight:600;font-size:10px;border:1px solid #06b6d4;border-radius:3px;padding:0 3px', text: 'SSL' }));
     metaRow.appendChild(ui.el('span', '', { style: `color:${ok ? 'var(--success)' : 'var(--danger)'};font-size:14px`, text: ok ? '●' : '○' }));
+    const actionBtns = ui.el('div', '', { style: 'display:flex;gap:4px;margin-left:auto' });
+    actionBtns.appendChild(mkBtn('»', t('page.overview.nextProxy'), 'var(--accent)', () => api.proxyNext().then(() => app.toast(t('page.overview.switchedToNext'))).catch(e => app.toast(t('common.error', { message: e.message }), 'error'))));
+    const recheckBtn = mkBtn('↻', t('page.overview.recheck'), 'var(--info)', () => {
+      recheckBtn.disabled = true;
+      recheckBtn.style.color = 'var(--text-muted)';
+      const icon = recheckBtn.querySelector('span');
+      if (icon) icon.style.animation = 'recheckSpin 0.8s linear infinite';
+      api.proxyRecheck(ap.address).then(() => poll()).then(() => {
+        recheckBtn.disabled = false;
+        recheckBtn.style.color = 'var(--info)';
+        if (icon) icon.style.animation = '';
+      }).catch(e => {
+        recheckBtn.disabled = false;
+        recheckBtn.style.color = 'var(--info)';
+        if (icon) icon.style.animation = '';
+        app.toast(t('common.error', { message: e.message }), 'error');
+      });
+    });
+    const recheckIcon = ui.el('span', '', { style: 'display:inline-block' });
+    recheckIcon.textContent = '↻';
+    recheckBtn.textContent = '';
+    recheckBtn.appendChild(recheckIcon);
+    actionBtns.appendChild(recheckBtn);
+    metaRow.appendChild(actionBtns);
+    if (!document.getElementById('recheck-spin-style')) {
+      const s = document.createElement('style');
+      s.id = 'recheck-spin-style';
+      s.textContent = '@keyframes recheckSpin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}';
+      document.head.appendChild(s);
+    }
     body.appendChild(metaRow);
 
     const hasListen = !!(ap.listen_country || ap.listen_city);
@@ -1014,7 +1007,6 @@ router.register('overview', (container) => {
       });
     }
 
-    renderSwitchHistoryMini(ps);
   }
 
   function renderSwitchHistoryMini(ps) {
