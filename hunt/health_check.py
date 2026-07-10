@@ -206,17 +206,18 @@ class HealthCheckMixin:
                 wid = k
                 break
         if wid is not None:
-            self._active_checks[wid] = {"addr": r.address, "step": "speed", "started": time.time(), "protocol": _proto, "country": country, "cc": cc}
+            self._active_checks[wid] = {"addr": r.address, "step": "speed_wait", "started": time.time(), "protocol": _proto, "country": country, "cc": cc}
         host, port_str = r.address.rsplit(":", 1)
         is_socks = port_str.isdigit() and int(port_str) in (1080, 10808, 9050, 4145)
         use_ssl = ssl_ok and not is_socks
+        def _on_active():
+            if wid is not None:
+                self._active_checks[wid] = {"addr": r.address, "step": "speed", "started": time.time(), "protocol": _proto, "country": country, "cc": cc}
         try:
-            return await asyncio.wait_for(
-                self._measure_speed(host, int(port_str), is_socks,
-                                    use_ssl=use_ssl, supports_connect=supports_connect),
-                timeout=self.effective_timeout + 5,
-            )
-        except (asyncio.TimeoutError, Exception):
+            return await self._measure_speed(host, int(port_str), is_socks,
+                                    use_ssl=use_ssl, supports_connect=supports_connect,
+                                    on_active=_on_active)
+        except Exception:
             return 0.0
 
     async def _revalidate_stale_proxies(self):

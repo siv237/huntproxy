@@ -318,6 +318,8 @@ class TestProxyServer:
             assert result is not None
             assert any("fallback" in c for c in chain)
             assert any("pool:" in c for c in chain)
+            assert state.ratings[bad_addr].consecutive_fails == 1
+            assert state.ratings[bad_addr].last_status == "failed"
 
             up_r, up_w, _ = result
             up_w.close()
@@ -362,6 +364,8 @@ class TestProxyServer:
             assert result is not None
             assert any("fallback" in c for c in chain)
             assert any("pool:" in c for c in chain)
+            assert state.ratings[bad_addr].consecutive_fails == 1
+            assert state.ratings[bad_addr].last_status == "failed"
 
             up_r, up_w, _ = result
             up_w.close()

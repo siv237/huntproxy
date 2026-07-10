@@ -1926,6 +1926,12 @@
   box-shadow: 0 0 0 1px var(--accent-light);
 }
 
+.conveyor-vcard-speed_wait {
+  border-color: var(--accent);
+  border-style: dashed;
+  opacity: 0.7;
+}
+
 .conveyor-vcard-queued {
   opacity: 0.6;
   border-style: dashed;

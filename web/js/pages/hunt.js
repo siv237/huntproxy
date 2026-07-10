@@ -65,9 +65,9 @@ router.register('hunt', (container) => {
     return card;
   }
 
-  const CONVEYOR_PHASES = ['queued', 'connect', 'speed'];
-  const CONVEYOR_PHASE_I18N = { queued: 'page.hunt.conv_queued', connect: 'page.hunt.conv_connect', speed: 'page.hunt.conv_speed' };
-  const CONVEYOR_PHASE_ICON = { queued: '⏳', connect: '🔗', speed: '⚡' };
+  const CONVEYOR_PHASES = ['queued', 'connect', 'speed_wait', 'speed'];
+  const CONVEYOR_PHASE_I18N = { queued: 'page.hunt.conv_queued', connect: 'page.hunt.conv_connect', speed_wait: 'page.hunt.conv_speed_wait', speed: 'page.hunt.conv_speed' };
+  const CONVEYOR_PHASE_ICON = { queued: '⏳', connect: '🔗', speed_wait: '⏱', speed: '⚡' };
 
   function buildConveyorCard() {
     const card = ui.el('div', 'card conveyor-board');

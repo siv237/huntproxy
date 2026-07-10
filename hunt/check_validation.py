@@ -169,13 +169,16 @@ class CheckValidationMixin:
         return False
 
     async def _measure_check_speed(self, addr, ok, wid, _proto, country, cc, ssl_ok, supports_connect) -> float:
-        self._active_checks[wid] = {"addr": addr, "step": "speed", "started": time.time(), "protocol": _proto, "country": country, "cc": cc}
+        self._active_checks[wid] = {"addr": addr, "step": "speed_wait", "started": time.time(), "protocol": _proto, "country": country, "cc": cc}
         host, port_str = addr.rsplit(":", 1)
         is_socks = port_str.isdigit() and int(port_str) in (1080, 10808, 9050, 4145)
         use_ssl = ssl_ok and not is_socks
+        def _on_active():
+            self._active_checks[wid] = {"addr": addr, "step": "speed", "started": time.time(), "protocol": _proto, "country": country, "cc": cc}
         try:
             return await self._measure_speed(host, int(port_str), is_socks,
-                                              use_ssl=use_ssl, supports_connect=supports_connect)
+                                              use_ssl=use_ssl, supports_connect=supports_connect,
+                                              on_active=_on_active)
         except Exception:
             return 0.0
 

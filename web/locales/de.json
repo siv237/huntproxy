@@ -235,6 +235,7 @@
       "conv_queued": "Warteschlange",
       "conv_connect": "Verbinden+Testen",
       "conv_speed": "Geschwindigkeitstest",
+      "conv_speed_wait": "Warteschlange Geschw.",
       "conv_workers": "Arbeiter",
       "conv_active": "aktiv",
       "conv_idle_workers": "Arbeiter im Leerlauf — warten auf Proxies...",

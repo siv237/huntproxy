@@ -235,6 +235,7 @@
       "conv_queued": "Очередь",
       "conv_connect": "Подключение+Тест",
       "conv_speed": "Тест скорости",
+      "conv_speed_wait": "Очередь скорости",
       "conv_workers": "Воркер",
       "conv_active": "активно",
       "conv_idle_workers": "Воркеры простаивают — ждут прокси...",

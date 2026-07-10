@@ -235,6 +235,7 @@
       "conv_queued": "File d'attente",
       "conv_connect": "Connexion+Test",
       "conv_speed": "Test de vitesse",
+      "conv_speed_wait": "File vitesse",
       "conv_workers": "Ouvrier",
       "conv_active": "actif",
       "conv_idle_workers": "Ouvriers inactifs — en attente de proxies...",

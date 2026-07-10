@@ -122,6 +122,55 @@ class TestSpeedMeasurement:
 
         asyncio.run(run())
 
+    def test_measure_speed_semaphore_limits_concurrency(self, state):
+        """Only speed_parallel measurements run at once."""
+        state.SPEED_SERVERS = [("example.com", "/file", 1024)]
+        state.speed_parallel = 2
+        state._speed_sem = asyncio.Semaphore(2)
+        current = 0
+        peak = 0
+
+        async def fake_speed_single(host, port, is_socks, srv_host, srv_path, expected_size, use_ssl, supports_connect):
+            nonlocal current, peak
+            current += 1
+            peak = max(peak, current)
+            await asyncio.sleep(0.05)
+            current -= 1
+            return 1.0
+
+        state._speed_single = fake_speed_single
+
+        async def run():
+            tasks = [asyncio.create_task(state._measure_speed("127.0.0.1", 8080, False, False))
+                     for _ in range(6)]
+            results = await asyncio.gather(*tasks)
+            assert all(r > 0 for r in results)
+            assert peak <= 2
+
+        asyncio.run(run())
+
+    def test_measure_speed_rotates_servers(self, state):
+        """Each call starts from a different server (round-robin)."""
+        state.SPEED_SERVERS = [
+            ("s1.example", "/a", 1024),
+            ("s2.example", "/b", 1024),
+            ("s3.example", "/c", 1024),
+        ]
+        first_servers = []
+
+        async def fake_speed_single(host, port, is_socks, srv_host, srv_path, expected_size, use_ssl, supports_connect):
+            first_servers.append(srv_host)
+            return 50.0
+
+        state._speed_single = fake_speed_single
+
+        async def run():
+            for _ in range(3):
+                await state._measure_speed("127.0.0.1", 8080, False, False)
+
+        asyncio.run(run())
+        assert first_servers == ["s1.example", "s2.example", "s3.example"]
+
     def test_speed_single_returns_zero_for_non_200(self, state):
         server = LocalSpeedServer(b"")
 

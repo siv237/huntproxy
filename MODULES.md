@@ -1,7 +1,7 @@
 # Карта модулей
 Автоматически сгенерировано из исходного кода. Не редактировать руками.
 Запуск: `python scripts/module_map.py`
-Всего модулей: 59 | Всего строк: 10220
+Всего модулей: 59 | Всего строк: 10240
 ---
 ## Сводка
 | Модуль | Строк | Публичные классы/функции | Импортирует из hunt |
@@ -17,9 +17,9 @@
 | `hunt/check_mitm.py` | 190 | `CheckMitmMixin` | hunt.conn, hunt.constants |
 | `hunt/check_proxy.py` | 163 | `CheckProxyMixin` | hunt.constants, hunt.geo |
 | `hunt/check_rating.py` | 118 | `CheckRatingMixin` | hunt.constants, hunt.geo, hunt.models |
-| `hunt/check_speed.py` | 215 | `CheckSpeedMixin` | hunt.constants |
+| `hunt/check_speed.py` | 225 | `CheckSpeedMixin` | hunt.constants |
 | `hunt/check_ssl.py` | 133 | `CheckSslMixin` | hunt.constants |
-| `hunt/check_validation.py` | 222 | `CheckValidationMixin` | hunt.constants |
+| `hunt/check_validation.py` | 225 | `CheckValidationMixin` | hunt.constants |
 | `hunt/conn.py` | 126 | `socks5_connect`, `socks4_connect`, `http_connect` | — |
 | `hunt/constants.py` | 109 | — | — |
 | `hunt/custom_proxies.py` | 311 | `CustomProxiesMixin` | hunt.conn, hunt.constants |
@@ -37,7 +37,7 @@
 | `hunt/handlers/routing.py` | 74 | `RoutingHandlers` | — |
 | `hunt/handlers/sources.py` | 260 | `SourceHandlers` | hunt.constants, hunt.handlers |
 | `hunt/handlers/traffic.py` | 291 | `TrafficHandlers` | hunt.constants |
-| `hunt/health_check.py` | 321 | `HealthCheckMixin` | hunt.constants, hunt.models |
+| `hunt/health_check.py` | 325 | `HealthCheckMixin` | hunt.constants, hunt.models |
 | `hunt/health_loops.py` | 62 | `HealthLoopsMixin` | hunt.constants |
 | `hunt/hunt_control.py` | 123 | `HuntControlMixin` | hunt.constants |
 | `hunt/hunt_cycle.py` | 93 | `HuntCycleMixin` | hunt.constants |
@@ -58,7 +58,7 @@
 | `hunt/server.py` | 268 | `HuntServer` | hunt.constants, hunt.handlers, hunt.handlers.admin, hunt.handlers.core +12 |
 | `hunt/snapshot.py` | 421 | `SnapshotMixin` | hunt.constants, hunt.models |
 | `hunt/socks5_runner.py` | 162 | `Socks5Runner` | hunt.models |
-| `hunt/state.py` | 168 | `HuntState` | hunt.actions, hunt.backup, hunt.blacklist, hunt.blocklists +26 |
+| `hunt/state.py` | 171 | `HuntState` | hunt.actions, hunt.backup, hunt.blacklist, hunt.blocklists +26 |
 | `hunt/state_download.py` | 84 | `StateDownloadMixin` | hunt.constants |
 | `hunt/state_persistence.py` | 286 | `StatePersistenceMixin` | hunt.constants, hunt.geo, hunt.models |
 | `hunt/switch_history.py` | 109 | `record_switch`, `enrich_switch_history` | — |
@@ -142,7 +142,7 @@
 
 **Зависимости:** `hunt.constants`, `hunt.geo`, `hunt.models`
 
-### `hunt/check_speed.py` (215 строк)
+### `hunt/check_speed.py` (225 строк)
 *Functional split of the huntproxy backend.*
 **Публичные:**
 - `CheckSpeedMixin` (class)
@@ -156,7 +156,7 @@
 
 **Зависимости:** `hunt.constants`
 
-### `hunt/check_validation.py` (222 строк)
+### `hunt/check_validation.py` (225 строк)
 *Functional split of the huntproxy backend.*
 **Публичные:**
 - `CheckValidationMixin` (class)
@@ -215,7 +215,7 @@
 - `country_name_from_code` (def)
 
 
-### `hunt/health_check.py` (321 строк)
+### `hunt/health_check.py` (325 строк)
 *Functional split of the huntproxy backend.*
 **Публичные:**
 - `HealthCheckMixin` (class)
@@ -359,7 +359,7 @@
 
 **Зависимости:** `hunt.models`
 
-### `hunt/state.py` (168 строк)
+### `hunt/state.py` (171 строк)
 *Functional split of the huntproxy backend.*
 **Публичные:**
 - `HuntState` (class)

@@ -158,6 +158,9 @@ class HuntState(DbMixin, EventsMixin, SnapshotMixin, HuntControlMixin, HuntCycle
             self.country_filter = cfg.get("country_filter", "")
             self.health_interval = cfg.get("health_interval", 180)
             self.health_parallel = cfg.get("health_parallel", 20)
+            self.speed_parallel = cfg.get("speed_parallel", 8)
+            self._speed_sem: asyncio.Semaphore = asyncio.Semaphore(self.speed_parallel)
+            self._speed_server_idx: int = 0
 
             self.canary_hosts = cfg.get("canary_hosts", ["ya.ru", "google.com", "2ip.ru"])
             self._canary_last_check: float = 0

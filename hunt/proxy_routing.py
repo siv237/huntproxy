@@ -30,6 +30,7 @@ class ProxyRouteMixin:
             result = await self._connect_via_addr(addr, host, port, chain, need_connect)
             if result is not None:
                 return result
+            self.state._record_traffic_fail(addr)
             chain.append(f"proxy:{addr} (fallback→pool)")
             return await self._connect_via_pool(host, port, chain, need_connect)
         if route == "pool" or route == "":
@@ -133,6 +134,7 @@ class ProxyRouteMixin:
             result = await self._connect_via_addr(self.active_proxy_addr, host, port, chain, need_connect)
             if result is not None:
                 return result
+            self.state._record_traffic_fail(self.active_proxy_addr)
             chain.append(f"proxy:{self.active_proxy_addr} (fallback→pool)")
         return await self._connect_via_pool(host, port, chain, need_connect)
 

@@ -235,6 +235,7 @@
       "conv_queued": "排队",
       "conv_connect": "连接+测试",
       "conv_speed": "速度测试",
+      "conv_speed_wait": "速度队列",
       "conv_workers": "工人",
       "conv_active": "活跃",
       "conv_idle_workers": "工人空闲 — 等待代理...",

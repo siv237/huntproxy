@@ -35,6 +35,10 @@ proxies:
   health_parallel: 30
   health_timeout: 10
 
+  # Speed measurement — bounds concurrent downloads so speed servers are not
+  # hammered by the whole check wave at once (keeps measurements accurate).
+  speed_parallel: 8
+
   # Blacklist policy
   max_failures: 3             # failures before blacklisting
   cooldown: 300               # seconds before retrying a failed proxy

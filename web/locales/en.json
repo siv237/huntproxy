@@ -235,6 +235,7 @@
       "conv_queued": "Queued",
       "conv_connect": "Connect+Test",
       "conv_speed": "Speed test",
+      "conv_speed_wait": "Speed queue",
       "conv_workers": "Worker",
       "conv_active": "active",
       "conv_idle_workers": "Workers idle — waiting for proxies...",

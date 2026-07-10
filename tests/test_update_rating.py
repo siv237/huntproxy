@@ -140,3 +140,26 @@ class TestUpdateRating:
         r = state.ratings["1.2.3.4:443"]
         assert r.protocol == "https"
         assert r.ssl_supported is True
+
+    def test_record_traffic_fail_increments_fails_and_drops_score(self, tmp_data_dir):
+        state = hunt.HuntState({"ip_blacklists": {"enabled": False}})
+        state._update_rating(
+            "1.2.3.4:8080",
+            ok=True,
+            country="US",
+            latency=0.5,
+            speed=100.0,
+        )
+        r = state.ratings["1.2.3.4:8080"]
+        assert r.last_status == "ok"
+        assert r.consecutive_fails == 0
+        score_before = r.score
+        state._record_traffic_fail("1.2.3.4:8080")
+        assert r.last_status == "failed"
+        assert r.consecutive_fails == 1
+        assert r.score < score_before
+
+    def test_record_traffic_fail_unknown_proxy_noop(self, tmp_data_dir):
+        state = hunt.HuntState({"ip_blacklists": {"enabled": False}})
+        state._record_traffic_fail("9.9.9.9:9999")
+        assert "9.9.9.9:9999" not in state.ratings

@@ -54,6 +54,29 @@ class CheckRatingMixin:
             elif self._rating_updates_since_save % 50 == 0:
                 self._save_dirty_ratings()
 
+    def _record_traffic_fail(self, addr: str):
+        """Lightweight rating hit from a real traffic failure (502/no-upstream).
+
+        Unlike _update_rating, this does NOT run a full check (geo/mitm/speed)
+        — it only nudges consecutive_fails and last_status so the proxy sinks
+        in the score ranking as it fails real user requests, without waiting
+        for the next health-check cycle. Batching/saving mirrors _update_rating.
+        """
+        r = self.ratings.get(addr)
+        if not r:
+            return
+        r.last_status = "failed"
+        r.consecutive_fails += 1
+        r.last_check = time.time()
+        self._dirty_ratings.add(addr)
+        self._rating_updates_since_save += 1
+        if self._rating_updates_since_save >= 200:
+            self._save_dirty_ratings()
+            self._save_working_file()
+            self._rating_updates_since_save = 0
+        elif self._rating_updates_since_save % 50 == 0:
+            self._save_dirty_ratings()
+
     def _create_rating(self, addr: str, country: str, country_code: str) -> ProxyRating:
         r = ProxyRating(
             address=addr,
