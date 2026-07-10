@@ -18,6 +18,7 @@
     "domainLists": "Listas de Dominios",
     "customProxies": "Proxis Personalizados",
     "connectivity": "Control de Enlace",
+    "interception": "Intercepción",
     "downloads": "Descargas",
     "api": "API",
     "about": "Acerca de",
@@ -737,6 +738,22 @@
       "viaChannel": "vía canal",
       "okFail": "{up} ok / {down} fail",
       "uptime24h": "24h uptime: {pct}%"
+    },
+    "interception": {
+      "title": "Intercepción",
+      "subtitle": "Control de la intercepción transparente de tráfico",
+      "localTitle": "Intercepción transparente de toda la máquina",
+      "wholeMachineDesc": "Redirigir todo el tráfico de la máquina (excepto redes locales) a través del proxy transparente.",
+      "detectedIp": "IP de máquina detectada",
+      "proxyPid": "PID del proceso del servidor (prevención de bucle)",
+      "active": "Activo",
+      "inactive": "Inactivo",
+      "appliedAt": "aplicado a las",
+      "applyCmd": "Aplicar (ejecutar en terminal root)",
+      "revertCmd": "Revertir (ejecutar en terminal root)",
+      "copy": "Copiar",
+      "localNetNote": "Las redes locales (10/8, 172.16/12, 192.168/16, loopback, link-local, multicast) se excluyen por defecto.",
+      "runHint": "Copie el comando y ejecútelo en una terminal como root (sudo). El administrador aplica las reglas manualmente — no se otorgan privilegios al backend web."
     },
     "downloads": {
       "title": "Descargas",

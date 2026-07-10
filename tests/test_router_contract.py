@@ -32,6 +32,7 @@ GET_ENDPOINTS = [
     "/api/proxy/alive",
     "/api/socks5/status",
     "/api/transparent/status",
+    "/api/interception",
     "/api/settings",
     "/api/proxy-sources",
     "/api/ip-blacklists",

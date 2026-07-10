@@ -202,6 +202,7 @@ class HuntServer:
         for m in ("GET", "POST"):
             self._router.add_prefix(m, "/api/transparent/start", p._handle_transparent_start)
             self._router.add(m, "/api/transparent/stop", p._handle_transparent_stop)
+        self._router.add("GET", "/api/interception", p._handle_interception)
         self._router.add_prefix("GET", "/api/proxy/", p._handle_proxy_detail)
 
         self._router.add("GET", "/api/channel/status", a._handle_channel_status)

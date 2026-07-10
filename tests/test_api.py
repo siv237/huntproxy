@@ -154,6 +154,21 @@ class TestApiProxy:
         assert "running" in data
         assert "port" in data
 
+    @pytest.mark.asyncio
+    async def test_interception(self, http_client):
+        resp = await http_client("GET", "/api/interception")
+        status, data = json_body(resp)
+        assert status == 200
+        assert "own_ips" in data
+        assert isinstance(data["own_ips"], list)
+        assert "proxy_pid" in data
+        assert "proxy_uid" in data
+        assert "apply_command" in data and "revert_command" in data
+        assert "--exclude-cgroup" in data["apply_command"]
+        assert "--cgroup-pid" in data["apply_command"]
+        assert data["revert_command"] == "sudo ./setup_iptables.sh stop"
+        assert "status" in data and isinstance(data["status"], dict)
+
 
 class TestApiSettings:
     @pytest.mark.asyncio

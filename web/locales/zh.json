@@ -19,6 +19,7 @@
     "domainLists": "域名列表",
     "customProxies": "自定义代理",
     "connectivity": "链路控制",
+    "interception": "拦截",
     "downloads": "下载",
     "api": "API",
     "about": "关于",
@@ -444,7 +445,8 @@
       "socks5Stopped": "SOCKS5 已停止",
       "transparent": "透明",
       "transparentStarted": "透明代理已启动",
-      "transparentStopped": "透明代理已停止"
+      "transparentStopped": "透明代理已停止",
+      "transparentLog": "实时拦截的连接"
     },
     "blacklist": {
       "title": "黑名单",
@@ -765,6 +767,22 @@
       "viaChannel": "通过通道",
       "okFail": "{up} ok / {down} fail",
       "uptime24h": "24h uptime: {pct}%"
+    },
+    "interception": {
+      "title": "拦截",
+      "subtitle": "透明流量拦截控制",
+      "localTitle": "整机透明拦截",
+      "wholeMachineDesc": "将整机的所有流量（本地网络除外）重定向到透明代理。",
+      "detectedIp": "检测到的本机 IP",
+      "proxyPid": "服务端进程 PID（防回环）",
+      "active": "已启用",
+      "inactive": "未启用",
+      "appliedAt": "应用时间",
+      "applyCmd": "应用（在 root 终端中运行）",
+      "revertCmd": "撤销（在 root 终端中运行）",
+      "copy": "复制",
+      "localNetNote": "本地网络（10/8、172.16/12、192.168/16、loopback、link-local、multicast）默认排除。",
+      "runHint": "复制命令并在 root 终端（sudo）中运行。规则由管理员手动应用——不会向 Web 后端授予任何权限。"
     },
     "downloads": {
       "title": "下载",

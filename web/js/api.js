@@ -39,6 +39,7 @@ const api = {
   transparentStatus() { return this.request('/api/transparent/status'); },
   transparentStart(port) { return this.request(`/api/transparent/start?port=${port}`, 'POST'); },
   transparentStop() { return this.request('/api/transparent/stop', 'POST'); },
+  interception() { return this.request('/api/interception'); },
   blAdd(addr, reason) { return this.request('/api/blacklist/add', 'POST', { address: addr, reason }); },
   blRemove(addr) { return this.request('/api/blacklist/remove', 'POST', { address: addr }); },
   favAdd(addr) { return this.request('/api/favorites/add', 'POST', { address: addr }); },

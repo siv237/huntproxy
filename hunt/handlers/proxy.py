@@ -1,11 +1,60 @@
 """Proxy handlers — proxy/socks5/transparent runner control, selection, detail views."""
 
 import asyncio
+import fcntl
 import json
+import logging
+import os
+import socket
+import struct
 from urllib.parse import unquote
 
+from hunt.constants import DATA_DIR
 from hunt.geo import country_code_from_name, country_flag, country_name_from_code
 from hunt.handlers import _qs, _int_param
+
+logger = logging.getLogger(__name__)
+
+# State file written by setup_iptables.sh after start/stop (read by the web
+# backend so it can show interception status without any root privileges).
+INTERCEPTION_STATE_FILE = DATA_DIR / "transparent_state.json"
+
+
+def _detect_local_ips():
+    """Enumerate non-loopback IPv4 addresses without root (ioctl SIOCGIFADDR)."""
+    SIOCGIFADDR = 0x8915
+    ips = []
+    try:
+        with open("/proc/net/dev") as f:
+            ifaces = [ln.split(":", 1)[0].strip() for ln in f.readlines()[2:] if ":" in ln]
+    except Exception:
+        logger.debug("suppressed", exc_info=True)
+        ifaces = []
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        for iface in ifaces:
+            try:
+                ifr = iface.encode() + b"\x00" * 24
+                res = fcntl.ioctl(s.fileno(), SIOCGIFADDR, ifr)
+                ip = socket.inet_ntoa(res[20:24])
+                if ip != "127.0.0.1":
+                    ips.append(ip)
+            except Exception:
+                logger.debug("suppressed", exc_info=True)
+    except Exception:
+        logger.debug("suppressed", exc_info=True)
+    return sorted(set(ips))
+
+
+def _read_interception_state():
+    try:
+        if INTERCEPTION_STATE_FILE.exists():
+            data = json.loads(INTERCEPTION_STATE_FILE.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                return data
+    except Exception:
+        logger.debug("suppressed", exc_info=True)
+    return {"active": False}
 
 
 class ProxyHandlers:
@@ -77,6 +126,41 @@ class ProxyHandlers:
         self.state._log_action("transparent.stop")
         await self.server.transparent.stop()
         return json.dumps({"ok": True}), 200, "application/json"
+
+    async def _handle_interception(self, raw_path, body):
+        """Whole-machine transparent interception status + admin command.
+
+        The web backend has no root, so it only *generates* the command an
+        admin pastes into a root terminal and reads back the on/off state from
+        the file ``setup_iptables.sh`` writes (no iptables read privilege).
+
+        Loop prevention excludes the proxy's own upstream connections by
+        **cgroup v2** (``-m cgroup --path``) — the modern replacement for the
+        removed ``--pid-owner``. The command moves this server process into a
+        dedicated cgroup (``huntproxy``) and redirects all other machine
+        traffic to the proxy. This isolates only the proxy's traffic even when
+        it shares the operator's UID, so user apps are still intercepted.
+        Local/reserved destinations are returned by the script itself, so no
+        ``--own-ip`` is needed.
+        """
+        own_ips = _detect_local_ips()
+        uid = os.getuid()
+        pid = os.getpid()
+        redirect_port = getattr(self.server.transparent, "port", None) or \
+            getattr(self.state, "_transparent_port", None) or 17477
+        apply_cmd = (
+            f"sudo ./setup_iptables.sh start --redirect-port {redirect_port} "
+            f"--exclude-cgroup huntproxy --cgroup-pid {pid}"
+        )
+        revert_cmd = "sudo ./setup_iptables.sh stop"
+        return json.dumps({
+            "own_ips": own_ips,
+            "proxy_pid": pid,
+            "proxy_uid": uid,
+            "apply_command": apply_cmd,
+            "revert_command": revert_cmd,
+            "status": _read_interception_state(),
+        }), 200, "application/json"
 
     async def _handle_proxy_select(self, raw_path, body):
         qs = _qs(raw_path)

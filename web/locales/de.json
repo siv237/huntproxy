@@ -18,6 +18,7 @@
     "domainLists": "Domain-Listen",
     "customProxies": "Benutzerdefinierte Proxys",
     "connectivity": "Verbindungskontrolle",
+    "interception": "Abgreifen",
     "downloads": "Downloads",
     "api": "API",
     "about": "Über",
@@ -737,6 +738,22 @@
       "viaChannel": "über Kanal",
       "okFail": "{up} ok / {down} fail",
       "uptime24h": "24h uptime: {pct}%"
+    },
+    "interception": {
+      "title": "Abgreifen",
+      "subtitle": "Steuerung des transparenten Traffic-Abgriffs",
+      "localTitle": "Transparenter Abgriff für die ganze Maschine",
+      "wholeMachineDesc": "Den gesamten Traffic der Maschine (außer lokaler Netze) durch den transparenten Proxy leiten.",
+      "detectedIp": "Ermittelte Maschinen-IP",
+      "proxyPid": "PID des Server-Prozesses (Loop-Schutz)",
+      "active": "Aktiv",
+      "inactive": "Inaktiv",
+      "appliedAt": "angewendet um",
+      "applyCmd": "Anwenden (im Root-Terminal ausführen)",
+      "revertCmd": "Rückgängig (im Root-Terminal ausführen)",
+      "copy": "Kopieren",
+      "localNetNote": "Lokale Netze (10/8, 172.16/12, 192.168/16, Loopback, Link-Local, Multicast) sind standardmäßig ausgeschlossen.",
+      "runHint": "Kopieren Sie den Befehl und führen Sie ihn im Terminal als Root (sudo) aus. Der Admin wendet die Regeln manuell an — dem Web-Backend werden keine Rechte gewährt."
     },
     "downloads": {
       "title": "Downloads",
