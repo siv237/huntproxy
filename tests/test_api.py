@@ -168,6 +168,27 @@ class TestApiProxy:
         assert "--cgroup-pid" in data["apply_command"]
         assert data["revert_command"] == "sudo ./setup_iptables.sh stop"
         assert "status" in data and isinstance(data["status"], dict)
+        assert "readiness" in data and isinstance(data["readiness"], dict)
+        assert "ready" in data["readiness"]
+        assert "blockers" in data["readiness"]
+
+    @pytest.mark.asyncio
+    async def test_interception_apply_requires_readiness(self, http_client):
+        # Tests run as a non-root user, so can_apply is False and the
+        # one-click apply must be rejected (never touches iptables).
+        resp = await http_client("POST", "/api/interception/apply")
+        status, data = json_body(resp)
+        assert status == 409
+        assert data["ok"] is False
+        assert "readiness" in data
+
+    @pytest.mark.asyncio
+    async def test_interception_stop_resolves(self, http_client):
+        # Stop must resolve (no 404) even if it fails to run iptables as
+        # non-root — the endpoint itself must never vanish.
+        resp = await http_client("POST", "/api/interception/stop")
+        status, _ = json_body(resp)
+        assert status != 404
 
 
 class TestApiSettings:

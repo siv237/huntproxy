@@ -439,6 +439,24 @@
   overflow: hidden;
 }
 
+/* Interception page: stack cards vertically and scroll the page so the
+   one-click toggle button is never clipped by card overflow:hidden */
+.interception-page {
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.interception-page > .card {
+  flex: none;
+  overflow: visible;
+}
+
+.interception-page > #interception-tp-log-card {
+  flex: none;
+  height: 220px;
+  overflow: hidden;
+}
+
 .content .card .card-header {
   flex-shrink: 0;
 }

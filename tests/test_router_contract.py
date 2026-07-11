@@ -74,6 +74,8 @@ POST_ENDPOINTS = [
     "/api/proxy/stop",
     "/api/socks5/stop",
     "/api/transparent/stop",
+    "/api/interception/apply",
+    "/api/interception/stop",
     "/api/settings/country_filter?code=US",
     "/api/schedules/pause",
     "/api/schedules/resume",

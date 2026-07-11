@@ -782,7 +782,13 @@
       "revertCmd": "撤销（在 root 终端中运行）",
       "copy": "复制",
       "localNetNote": "本地网络（10/8、172.16/12、192.168/16、loopback、link-local、multicast）默认排除。",
-      "runHint": "复制命令并在 root 终端（sudo）中运行。规则由管理员手动应用——不会向 Web 后端授予任何权限。"
+      "runHint": "复制命令并在 root 终端（sudo）中运行。规则由管理员手动应用——不会向 Web 后端授予任何权限。",
+      "enable": "启用拦截",
+      "disable": "禁用拦截",
+      "readinessTitle": "系统就绪状态",
+      "notReady": "系统未就绪，无法拦截：",
+      "readyHint": "系统已就绪 — 可启用拦截",
+      "applying": "正在应用规则…"
     },
     "downloads": {
       "title": "下载",

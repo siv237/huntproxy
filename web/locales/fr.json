@@ -753,7 +753,13 @@
       "revertCmd": "Annuler (exécuter dans un terminal root)",
       "copy": "Copier",
       "localNetNote": "Les réseaux locaux (10/8, 172.16/12, 192.168/16, loopback, link-local, multicast) sont exclus par défaut.",
-      "runHint": "Copiez la commande et exécutez-la dans un terminal en root (sudo). L'admin applique les règles manuellement — aucun privilège n'est accordé au backend web."
+      "runHint": "Copiez la commande et exécutez-la dans un terminal en root (sudo). L'admin applique les règles manuellement — aucun privilège n'est accordé au backend web.",
+      "enable": "Activer l'interception",
+      "disable": "Désactiver l'interception",
+      "readinessTitle": "Disponibilité du système",
+      "notReady": "Système non prêt pour l'interception :",
+      "readyHint": "Système prêt — l'interception peut être activée",
+      "applying": "Application des règles…"
     },
     "downloads": {
       "title": "Téléchargements",

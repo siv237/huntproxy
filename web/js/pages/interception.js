@@ -1,5 +1,6 @@
 router.register('interception', (container) => {
   container.innerHTML = '';
+  container.classList.add('interception-page');
   container.style.display = 'flex';
   container.style.flexDirection = 'column';
   container.style.gap = '10px';
@@ -23,6 +24,36 @@ router.register('interception', (container) => {
 
   const info = ui.el('div', '', { id: 'interception-info', style: 'font-size:12px;color:var(--text-secondary);margin-bottom:10px' });
   card.appendChild(info);
+
+  // ── Readiness checklist + one-click toggle ──
+  const readinessEl = ui.el('div', '', {
+    id: 'interception-readiness',
+    style: 'font-size:12px;line-height:1.6;margin-bottom:10px;padding:8px 10px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-xs)',
+  });
+  card.appendChild(readinessEl);
+
+  const toggleBtn = ui.el('button', 'btn btn-primary', {
+    id: 'btn-intercept-toggle',
+    style: 'margin-bottom:10px',
+    text: t('page.interception.enable'),
+  });
+  toggleBtn.addEventListener('click', async () => {
+    const wasActive = toggleBtn.dataset.active === '1';
+    toggleBtn.disabled = true;
+    try {
+      if (wasActive) {
+        await api.interceptionStop();
+      } else {
+        toggleBtn.textContent = t('page.interception.applying');
+        await api.interceptionApply();
+      }
+      load();
+    } catch (e) {
+      app.toast(t('common.error', { message: e.message }), 'error');
+      toggleBtn.disabled = false;
+    }
+  });
+  card.appendChild(toggleBtn);
 
   function buildCmdBlock(labelKey, codeId, btnId) {
     const wrap = ui.el('div', '', { style: 'margin-top:10px' });
@@ -98,6 +129,53 @@ router.register('interception', (container) => {
   logCard.appendChild(tpLog);
   container.appendChild(logCard);
 
+  function renderReadiness(r) {
+    const el = document.getElementById('interception-readiness');
+    if (!el) return;
+    if (!r) { el.innerHTML = ''; return; }
+    const checks = [
+      [r.is_root, 'Бэкенд запущен от root (права на iptables)'],
+      [r.iptables, 'iptables доступен'],
+      [r.cgroup_v2, 'cgroup v2 доступен (для --exclude-cgroup)'],
+      [r.script_present, 'setup_iptables.sh найден'],
+      [r.transparent_running, 'Прозрачный прокси запущен'],
+      [r.transparent_listening, 'Порт прозрачного прокси слушается (' + r.transparent_port + ')'],
+    ];
+    let html = '<div style="font-weight:600;margin-bottom:4px">' + t('page.interception.readinessTitle') + '</div>';
+    for (const pair of checks) {
+      const ok = pair[0];
+      const label = pair[1];
+      const color = ok ? 'var(--success)' : '#f85149';
+      const mark = ok ? '✓' : '✗';
+      html += '<div><span style="color:' + color + ';font-weight:700">' + mark + '</span> ' + label + '</div>';
+    }
+    if (!r.ready) {
+      html += '<div style="margin-top:4px;color:#f85149">' + t('page.interception.notReady') + '</div>';
+      for (const b of (r.blockers || [])) html += '<div style="color:#f85149">• ' + b + '</div>';
+    } else {
+      html += '<div style="margin-top:4px;color:var(--success)">' + t('page.interception.readyHint') + '</div>';
+    }
+    el.innerHTML = html;
+  }
+
+  function updateToggleBtn(d) {
+    const btn = document.getElementById('btn-intercept-toggle');
+    if (!btn) return;
+    const active = !!(d.status && d.status.active);
+    btn.dataset.active = active ? '1' : '0';
+    if (active) {
+      btn.textContent = t('page.interception.disable');
+      btn.disabled = false;
+    } else if (d.readiness && d.readiness.ready) {
+      btn.textContent = t('page.interception.enable');
+      btn.disabled = false;
+    } else {
+      btn.textContent = t('page.interception.enable');
+      btn.disabled = true;
+      btn.title = t('page.interception.notReady');
+    }
+  }
+
   function copyText(txt, btn) {
     navigator.clipboard.writeText(txt).then(() => {
       const old = btn.textContent;
@@ -167,6 +245,8 @@ router.register('interception', (container) => {
           `<div><b>${t('page.interception.proxyPid')}:</b> ${d.proxy_pid != null ? d.proxy_pid : '—'}</div>`;
       }
       renderInterceptStatus(d.status);
+      renderReadiness(d.readiness);
+      updateToggleBtn(d);
     } catch (e) {
       console.error('interception load', e);
     }

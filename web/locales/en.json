@@ -820,7 +820,13 @@
       "revertCmd": "Revert (run in a root terminal)",
       "copy": "Copy",
       "localNetNote": "Local networks (10/8, 172.16/12, 192.168/16, loopback, link-local, multicast) are excluded by default.",
-      "runHint": "Copy the command and run it in a terminal as root (sudo). The admin applies rules manually — no privileges are granted to the web backend."
+      "runHint": "Copy the command and run it in a terminal as root (sudo). The admin applies rules manually — no privileges are granted to the web backend.",
+      "enable": "Enable interception",
+      "disable": "Disable interception",
+      "readinessTitle": "System readiness",
+      "notReady": "System not ready for interception:",
+      "readyHint": "System is ready — interception can be enabled",
+      "applying": "Applying rules…"
     },
     "downloads": {
       "title": "Downloads",

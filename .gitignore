@@ -14,3 +14,7 @@ data/
 node_modules/
 package-lock.json
 
+# Local dev-machine instance switchers (not part of the project)
+to-dev.sh
+to-battle.sh
+
