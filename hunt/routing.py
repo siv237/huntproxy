@@ -35,16 +35,19 @@ class RoutingMixin:
             }
 
     def routing_enable(self):
-            self._routing_set("routing_enabled", "true")
-            self._emit("Routing enabled", "info")
+        self._routing_set("routing_enabled", "true")
+        self._route_cache_invalidate()
+        self._emit("Routing enabled", "info")
 
     def routing_disable(self):
-            self._routing_set("routing_enabled", "false")
-            self._emit("Routing disabled", "info")
+        self._routing_set("routing_enabled", "false")
+        self._route_cache_invalidate()
+        self._emit("Routing disabled", "info")
 
     def routing_set_default(self, route: str):
-            self._routing_set("default_route", route)
-            self._emit(f"Default route set to: {route}", "info")
+        self._routing_set("default_route", route)
+        self._route_cache_invalidate()
+        self._emit(f"Default route set to: {route}", "info")
 
     def routing_test(self, domain: str) -> dict:
             enabled = self._routing_get("routing_enabled", "false") == "true"
@@ -132,6 +135,7 @@ class RoutingMixin:
                         conn.execute("INSERT OR IGNORE INTO domain_entries (list_id, pattern) VALUES (?,?)", (list_id, p))
                 conn.commit()
                 conn.close()
+                self._route_cache_invalidate()
                 self._emit(f"Domain list created: {name} ({len(domains)} domains)", "info")
                 return self.get_domain_list(list_id)
             except Exception as e:
@@ -163,6 +167,7 @@ class RoutingMixin:
                             conn.execute("INSERT OR IGNORE INTO domain_entries (list_id, pattern) VALUES (?,?)", (list_id, p))
                 conn.commit()
                 conn.close()
+                self._route_cache_invalidate()
                 self._emit(f"Domain list updated: {list_id}", "info")
                 return self.get_domain_list(list_id)
             except Exception as e:
@@ -176,6 +181,7 @@ class RoutingMixin:
                 conn.execute("DELETE FROM domain_lists WHERE id=?", (list_id,))
                 conn.commit()
                 conn.close()
+                self._route_cache_invalidate()
                 self._emit(f"Domain list deleted: {list_id}", "warn")
                 return True
             except Exception as e:
@@ -193,6 +199,7 @@ class RoutingMixin:
                 conn.execute("UPDATE domain_lists SET enabled=?, updated_at=? WHERE id=?", (new_val, time.time(), list_id))
                 conn.commit()
                 conn.close()
+                self._route_cache_invalidate()
                 status = "enabled" if new_val else "disabled"
                 self._emit(f"Domain list {list_id} {status}", "info")
                 return self.get_domain_list(list_id)
@@ -207,38 +214,94 @@ class RoutingMixin:
                     conn.execute("UPDATE domain_lists SET priority=? WHERE id=?", (i, list_id))
                 conn.commit()
                 conn.close()
+                self._route_cache_invalidate()
                 self._emit("Routes reordered", "info")
             except Exception as e:
                 logger.error("reorder_domain_lists: %s", e)
 
-    def _resolve_route(self, host: str) -> str:
-            enabled = self._routing_get("routing_enabled", "false") == "true"
-            if not enabled:
-                if hasattr(self, 'proxy_runner') and self.proxy_runner:
-                    if self.proxy_runner.direct_mode:
-                        return "direct"
-                    if self.proxy_runner.active_proxy_addr:
-                        return f"proxy:{self.proxy_runner.active_proxy_addr}"
-                return "pool"
+    # --- cached, in-memory route resolution ---
+    # _resolve_route() runs on the event loop for EVERY proxied connection.
+    # The old implementation hit the DB and scanned every pattern synchronously
+    # per connection, which starved the loop (high CPU, scheduler stalls)
+    # once large domain lists were enabled. We now compile the lists into
+    # memory once and refresh on a TTL / explicit invalidation.
+    _ROUTE_CACHE_TTL = 30
 
-            conn = self._db()
-            try:
-                rows = conn.execute(
-                    "SELECT dl.id, dl.route FROM domain_lists dl "
-                    "WHERE dl.enabled=1 AND dl.route!='' ORDER BY dl.priority ASC"
-                ).fetchall()
-                for row in rows:
-                    patterns = conn.execute(
-                        "SELECT pattern FROM domain_entries WHERE list_id=?",
-                        (row["id"],)
+    def _route_cache_invalidate(self):
+        self._route_cache = None
+
+    def _route_cache_get(self):
+        cache = getattr(self, "_route_cache", None)
+        ts = getattr(self, "_route_cache_ts", 0)
+        if cache is None or (time.time() - ts) >= self._ROUTE_CACHE_TTL:
+            return self._route_cache_build()
+        return cache
+
+    def _route_cache_build(self):
+        cache = {"enabled": False, "default": "direct", "lists": []}
+        try:
+            cache["enabled"] = self._routing_get("routing_enabled", "false") == "true"
+            cache["default"] = self._routing_get("default_route", "direct")
+            if cache["enabled"]:
+                conn = self._db()
+                try:
+                    rows = conn.execute(
+                        "SELECT dl.id, dl.route FROM domain_lists dl "
+                        "WHERE dl.enabled=1 AND dl.route!='' ORDER BY dl.priority ASC"
                     ).fetchall()
-                    if self._domain_matches(host, [p["pattern"] for p in patterns]):
-                        return row["route"]
-            except Exception as e:
-                logger.error("_resolve_route: %s", e)
-            finally:
-                conn.close()
-            return self._routing_get("default_route", "direct")
+                    for row in rows:
+                        patterns = conn.execute(
+                            "SELECT pattern FROM domain_entries WHERE list_id=?",
+                            (row["id"],)
+                        ).fetchall()
+                        exact = set()
+                        suffixes = set()
+                        for raw in (x["pattern"] for x in patterns):
+                            p = (raw or "").lower().strip()
+                            if not p:
+                                continue
+                            if p.startswith("exact:"):
+                                exact.add(p[6:])
+                            elif p.startswith("*."):
+                                x = p[2:]
+                                exact.add(x)
+                                suffixes.add("." + x)
+                            elif p.startswith("."):
+                                x = p[1:]
+                                exact.add(x)
+                                suffixes.add("." + x)
+                            else:
+                                exact.add(p)
+                                suffixes.add("." + p)
+                        cache["lists"].append((row["route"], exact, suffixes))
+                finally:
+                    conn.close()
+        except Exception as e:
+            logger.error("route cache build: %s", e)
+        self._route_cache = cache
+        self._route_cache_ts = time.time()
+        return cache
+
+    def _resolve_route(self, host: str) -> str:
+        cache = self._route_cache_get()
+        if not cache["enabled"]:
+            if hasattr(self, 'proxy_runner') and self.proxy_runner:
+                if self.proxy_runner.direct_mode:
+                    return "direct"
+                if self.proxy_runner.active_proxy_addr:
+                    return f"proxy:{self.proxy_runner.active_proxy_addr}"
+            return "pool"
+
+        host_lower = host.lower()
+        labels = host_lower.split(".")
+        dot_suffixes = ["." + ".".join(labels[i:]) for i in range(len(labels))]
+        for route, exact, suffixes in cache["lists"]:
+            if host_lower in exact:
+                return route
+            for s in dot_suffixes:
+                if s in suffixes:
+                    return route
+        return cache["default"]
 
     @staticmethod
     def _domain_matches(host: str, patterns: list) -> bool:

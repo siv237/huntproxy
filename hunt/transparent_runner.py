@@ -82,6 +82,27 @@ class TransparentRunner:
 
     # -- core ---------------------------------------------------------------
 
+    def _is_self_target(self, host: str, port: int) -> bool:
+        """True if ``(host, port)`` points at one of our own listener sockets.
+
+        Routing or an active proxy misconfigured at our own address would make
+        the proxy connect its upstream to its own listener, producing an
+        infinite self-loop that pins the event loop at 100% CPU.  Drop such
+        connections before we delegate to the upstream connector.
+        """
+        host = (host or "").lower()
+        if host in ("127.0.0.1", "localhost", "::1", "0.0.0.0", "[::1]", ""):
+            ports = {self.port}
+            pr = getattr(self.state, "proxy_runner", None)
+            if pr is not None:
+                ports.add(pr.port)
+            for attr in ("_socks5_port", "_transparent_port", "_proxy_port"):
+                p = getattr(self.state, attr, None)
+                if isinstance(p, int):
+                    ports.add(p)
+            return port in ports
+        return False
+
     @staticmethod
     def _get_original_dst(writer) -> tuple[str, int] | None:
         """Recover the original destination from an iptables-redirected socket.
@@ -120,6 +141,12 @@ class TransparentRunner:
                 self._log(peer, "?", "no original dst", duration=time.monotonic() - t0)
                 return
             target_host, target_port = dst
+
+            if self._is_self_target(target_host, target_port):
+                writer.close()
+                self._log(peer, f"{target_host}:{target_port}",
+                          "self-target dropped", duration=time.monotonic() - t0)
+                return
 
             # Delegates to ProxyRunner._connect_upstream so that routing,
             # cascade pool, custom proxies, channel, and direct mode all

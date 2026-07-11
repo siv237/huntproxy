@@ -9,7 +9,20 @@ _CONNECT_RETRIES = 3
 _RETRY_DELAY = 0.3
 
 class ProxyRouteMixin:
+    def _is_self_target(self, host: str, port: int) -> bool:
+        host = (host or "").lower()
+        if host in ("127.0.0.1", "localhost", "::1", "0.0.0.0", "[::1]", ""):
+            ports = {self.port}
+            for attr in ("_socks5_port", "_transparent_port", "_proxy_port"):
+                p = getattr(self.state, attr, None)
+                if isinstance(p, int):
+                    ports.add(p)
+            return port in ports
+        return False
+
     async def _connect_upstream(self, host: str, port: int, need_connect: bool = True):
+        if self._is_self_target(host, port):
+            return None
         route = self.state._resolve_route(host)
         chain = []
         result = await self._connect_by_route(route, host, port, chain, need_connect)
