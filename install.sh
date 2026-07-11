@@ -45,6 +45,11 @@ c_ok "System packages installed"
 mkdir -p "$INSTALL_DIR"
 
 if [ -d "$INSTALL_DIR/.git" ]; then
+    MODE="update"
+    echo ""
+    echo "  ╔══════════════════════════════════════╗"
+    echo "  ║           UPDATE MODE                 ║"
+    echo "  ╚══════════════════════════════════════╝"
     c_info "Existing install detected at $INSTALL_DIR — running UPDATE"
     cd "$INSTALL_DIR"
 
@@ -97,6 +102,11 @@ if [ -d "$INSTALL_DIR/.git" ]; then
         c_ok "Local customizations restored from $BACKUP_DIR"
     fi
 else
+    MODE="install"
+    echo ""
+    echo "  ╔══════════════════════════════════════╗"
+    echo "  ║        CLEAN INSTALL MODE             ║"
+    echo "  ╚══════════════════════════════════════╝"
     c_info "No existing install — running CLEAN INSTALL to $INSTALL_DIR"
     git clone --progress -b "$BRANCH" "$REPO" "$INSTALL_DIR"
     c_ok "Repository cloned"
@@ -156,10 +166,29 @@ c_ok "systemd service created (huntproxy.service)"
 
 # --- done ---
 echo ""
+if [ "$MODE" = "update" ]; then
+  TITLE="Update complete!"
+else
+  TITLE="Clean install complete!"
+fi
 echo "  ╔══════════════════════════════════════════════╗"
-echo "  ║  Installation complete!                      ║"
+printf "  ║%-42s║\n" "  $TITLE"
 echo "  ╚══════════════════════════════════════════════╝"
 echo ""
+DEPLOYED=$(git -C "$INSTALL_DIR" rev-parse --short HEAD 2>/dev/null)
+DEPLOY_DATE=$(git -C "$INSTALL_DIR" show -s --format=%cs HEAD 2>/dev/null)
+if [ -n "$DEPLOYED" ]; then
+  echo "  Deployed:  $DEPLOY_DATE ($DEPLOYED)"
+  echo ""
+fi
+if [ "$MODE" = "update" ]; then
+  echo "  To run the new version:  systemctl restart huntproxy"
+  echo ""
+fi
+if [ "$MODE" = "install" ]; then
+  echo "  Service was NOT started automatically."
+  echo ""
+fi
 echo "  Location:  $INSTALL_DIR"
 echo ""
 echo "  Start as service:"
