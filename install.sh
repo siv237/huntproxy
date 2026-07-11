@@ -42,29 +42,81 @@ apt-get install -y python3 python3-venv python3-pip git curl
 c_ok "System packages installed"
 
 # --- 2. clone / update ---
+mkdir -p "$INSTALL_DIR"
+
 if [ -d "$INSTALL_DIR/.git" ]; then
-    c_info "Updating existing install at $INSTALL_DIR..."
-    git -C "$INSTALL_DIR" fetch --progress origin "$BRANCH"
-    git -C "$INSTALL_DIR" reset --hard "origin/$BRANCH"
-    c_ok "Repository updated"
+    c_info "Existing install detected at $INSTALL_DIR — running UPDATE"
+    cd "$INSTALL_DIR"
+
+    # Snapshot the currently-deployed commit so we can later tell which
+    # tracked files the upstream update actually changed.
+    OLD_HEAD=$(git rev-parse HEAD 2>/dev/null || echo "")
+
+    # Back up any LOCAL tracked modifications BEFORE reset --hard, so a
+    # customized config.yaml (or other tracked file) is never silently lost.
+    mkdir -p data
+    BACKED_UP=""
+    if [ -n "$(git diff --name-only HEAD 2>/dev/null)" ]; then
+        BACKUP_DIR="data/pre-update-$(date +%Y%m%d-%H%M%S)"
+        mkdir -p "$BACKUP_DIR"
+        for f in $(git diff --name-only HEAD 2>/dev/null); do
+            mkdir -p "$BACKUP_DIR/$(dirname "$f")"
+            cp -a "$f" "$BACKUP_DIR/$f"
+            BACKED_UP="$BACKED_UP $f"
+        done
+        c_ok "Local changes backed up to $BACKUP_DIR"
+    fi
+
+    # Decide whether the venv must be rebuilt: only if requirements changed.
+    OLD_REQ_HASH=$(git show HEAD:requirements.txt 2>/dev/null | sha256sum | cut -d' ' -f1)
+    NEW_REQ_HASH=$(git show "origin/$BRANCH:requirements.txt" 2>/dev/null | sha256sum | cut -d' ' -f1)
+
+    c_info "Fetching latest code..."
+    git fetch --progress origin "$BRANCH"
+    git reset --hard "origin/$BRANCH"
+    c_ok "Repository updated to origin/$BRANCH"
+
+    if [ "$OLD_REQ_HASH" != "$NEW_REQ_HASH" ]; then
+        c_info "requirements.txt changed — dependencies will be upgraded in place"
+    else
+        c_info "requirements.txt unchanged — dependencies will be reused"
+    fi
+
+    # Restore the local customizations we backed up (so they survive the
+    # reset). If the upstream update also touched one of those files, warn
+    # the admin to review the new defaults against the backup.
+    if [ -n "$BACKED_UP" ]; then
+        for f in $BACKED_UP; do
+            if [ -n "$OLD_HEAD" ] && git diff --quiet "$OLD_HEAD" HEAD -- "$f" 2>/dev/null; then
+                : # upstream did NOT change this file — safe to restore as-is
+            else
+                c_info "Upstream also changed '$f' — review backup vs new defaults before trusting it"
+            fi
+            cp -a "$BACKUP_DIR/$f" "$f"
+        done
+        c_ok "Local customizations restored from $BACKUP_DIR"
+    fi
 else
-    c_info "Cloning huntproxy to $INSTALL_DIR..."
+    c_info "No existing install — running CLEAN INSTALL to $INSTALL_DIR"
     git clone --progress -b "$BRANCH" "$REPO" "$INSTALL_DIR"
     c_ok "Repository cloned"
+    cd "$INSTALL_DIR"
 fi
 
-cd "$INSTALL_DIR"
+# --- 3. venv + deps (create once, upgrade in place — never rm a live venv) ---
+if [ ! -d .venv ]; then
+    c_info "Creating Python virtual environment..."
+    python3 -m venv .venv
+    c_ok "Virtual environment ready"
+else
+    c_info "Reusing existing virtual environment (.venv)"
+fi
 
-# --- 3. venv + deps ---
-c_info "Creating Python virtual environment..."
-rm -rf .venv
-python3 -m venv .venv
-c_ok "Virtual environment ready"
-
-c_info "Installing Python dependencies..."
+c_info "Installing / upgrading Python dependencies..."
 .venv/bin/pip install --upgrade pip setuptools wheel
 .venv/bin/pip install -r requirements.txt
 touch .venv/installed.flag
+c_ok "Python dependencies installed"
 
 # --- verify yaml actually imports ---
 if ! .venv/bin/python -c "import yaml" 2>/dev/null; then
