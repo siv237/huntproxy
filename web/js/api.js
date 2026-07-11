@@ -51,6 +51,7 @@ const api = {
 
   // New endpoints (Phase 1+)
   countries() { return this.request('/api/countries'); },
+  version() { return this.request('/api/version'); },
   system() { return this.request('/api/system'); },
   activity(limit = 10) { return this.request(`/api/activity?limit=${limit}`); },
   actions(limit = 100) { return this.request(`/api/actions?limit=${limit}`); },

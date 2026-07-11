@@ -212,6 +212,7 @@ class HuntServer:
         self._router.add_prefix("POST", "/api/settings/country_filter", a._handle_country_filter)
 
         self._router.add("GET", "/api/countries", c._handle_countries)
+        self._router.add("GET", "/api/version", c._handle_version)
         self._router.add_prefix("GET", "/api/system", c._handle_system)
         self._router.add_prefix("GET", "/api/activity", c._handle_activity)
         self._router.add_prefix("GET", "/api/actions", c._handle_actions)

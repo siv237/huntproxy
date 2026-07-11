@@ -27,6 +27,7 @@ GET_ENDPOINTS = [
     "/",
     "/api/snapshot",
     "/api/countries",
+    "/api/version",
     "/api/favorites",
     "/api/proxy/status",
     "/api/proxy/alive",

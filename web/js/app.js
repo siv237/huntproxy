@@ -152,7 +152,9 @@ const app = {
     this._pollers.push(setInterval(() => this.pollTraffic(), 2000));
     this._pollers.push(setInterval(() => this.pollDirectMode(), 3000));
     this._pollers.push(setInterval(() => this.pollChannel(), 3000));
+    this._pollers.push(setInterval(() => this.pollVersion(), 60000));
     this.pollCanary();
+    this.pollVersion();
     this.pollTraffic();
     this.pollDirectMode();
     this.pollChannel();
@@ -182,6 +184,19 @@ const app = {
       const text = document.getElementById('canary-text');
       if (dot) dot.className = 'status-dot offline';
       if (text) text.textContent = t('sidebar.internetUnknown');
+    }
+  },
+
+  async pollVersion() {
+    try {
+      const v = await api.version();
+      const el = document.getElementById('sys-version');
+      if (!el || !v) return;
+      el.textContent = v.display || v.commit || '';
+      el.href = v.url || '#';
+    } catch (e) {
+      const el = document.getElementById('sys-version');
+      if (el) { el.textContent = 'unknown'; el.href = '#'; }
     }
   },
 
