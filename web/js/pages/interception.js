@@ -134,12 +134,12 @@ router.register('interception', (container) => {
     if (!el) return;
     if (!r) { el.innerHTML = ''; return; }
     const checks = [
-      [r.is_root, 'Бэкенд запущен от root (права на iptables)'],
-      [r.iptables, 'iptables доступен'],
-      [r.cgroup_v2, 'cgroup v2 доступен (для --exclude-cgroup)'],
-      [r.script_present, 'setup_iptables.sh найден'],
-      [r.transparent_running, 'Прозрачный прокси запущен'],
-      [r.transparent_listening, 'Порт прозрачного прокси слушается (' + r.transparent_port + ')'],
+      [r.is_root, t('page.interception.readinessIsRoot')],
+      [r.iptables, t('page.interception.readinessIptables')],
+      [r.cgroup_v2, t('page.interception.readinessCgroup')],
+      [r.script_present, t('page.interception.readinessScript')],
+      [r.transparent_running, t('page.interception.readinessTransparentRunning')],
+      [r.transparent_listening, t('page.interception.readinessTransparentListening', { port: r.transparent_port })],
     ];
     let html = '<div style="font-weight:600;margin-bottom:4px">' + t('page.interception.readinessTitle') + '</div>';
     for (const pair of checks) {

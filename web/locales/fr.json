@@ -759,7 +759,13 @@
       "readinessTitle": "Disponibilité du système",
       "notReady": "Système non prêt pour l'interception :",
       "readyHint": "Système prêt — l'interception peut être activée",
-      "applying": "Application des règles…"
+      "applying": "Application des règles…",
+      "readinessIsRoot": "Le backend tourne en root (droits iptables)",
+      "readinessIptables": "iptables disponible",
+      "readinessCgroup": "cgroup v2 disponible (pour --exclude-cgroup)",
+      "readinessScript": "setup_iptables.sh trouvé",
+      "readinessTransparentRunning": "Le proxy transparent fonctionne",
+      "readinessTransparentListening": "Le port du proxy transparent écoute ({port})"
     },
     "downloads": {
       "title": "Téléchargements",
@@ -1045,5 +1051,14 @@
       "web": "Web surfing"
     },
     "webrtcLeak": "WebRTC leak"
+  },
+  "time": {
+    "year": "an",
+    "month": "mois",
+    "day": "j",
+    "hour": "h",
+    "minute": "m",
+    "second": "s",
+    "ago": "il y a"
   }
 }

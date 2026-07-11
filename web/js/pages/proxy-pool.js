@@ -18,20 +18,20 @@ router.register('proxy-pool', (container) => {
   }
 
   function fmtDuration(sec) {
-    if (!sec || sec <= 0) return '—';
+    if (!sec || sec <=0) return '—';
     const s = Math.round(sec % 60);
     const m = Math.floor((sec % 3600) / 60);
     const hh = Math.floor(sec / 3600);
     const dd = Math.floor(sec / 86400);
     const mo = Math.floor(dd / 30);
     const y = Math.floor(dd / 365);
-    if (sec >= 94608000) return y + 'г';
-    if (sec >= 7776000) return mo + 'мес';
-    if (sec >= 259200) return dd + 'д';
-    if (sec >= 10800) return hh + 'ч';
-    if (sec >= 180) return (hh ? hh + 'ч ' : '') + m + 'м';
-    if (m) return m + 'м ' + s + 'с';
-    return s + 'с';
+    if (sec >= 94608000) return y + ' ' + t('time.year');
+    if (sec >= 7776000) return mo + ' ' + t('time.month');
+    if (sec >= 259200) return dd + ' ' + t('time.day');
+    if (sec >= 10800) return hh + ' ' + t('time.hour');
+    if (sec >= 180) return (hh ? hh + ' ' + t('time.hour') + ' ' : '') + m + ' ' + t('time.minute');
+    if (m) return m + ' ' + t('time.minute') + ' ' + s + ' ' + t('time.second');
+    return s + ' ' + t('time.second');
   }
 
   function fmtFullTime(ts) {
@@ -51,13 +51,13 @@ router.register('proxy-pool', (container) => {
     const days = Math.floor(d / 86400);
     const mo = Math.floor(days / 30);
     const y = Math.floor(days / 365);
-    if (d >= 94608000) return y + 'г назад';
-    if (d >= 7776000) return mo + 'мес назад';
-    if (d >= 259200) return days + 'д назад';
-    if (d >= 10800) return hh + 'ч назад';
-    if (d >= 180) return (hh ? hh + 'ч ' : '') + m + 'м назад';
-    if (m) return m + 'м ' + s + 'с назад';
-    return s + 'с назад';
+    if (d >= 94608000) return y + ' ' + t('time.year') + ' ' + t('time.ago');
+    if (d >= 7776000) return mo + ' ' + t('time.month') + ' ' + t('time.ago');
+    if (d >= 259200) return days + ' ' + t('time.day') + ' ' + t('time.ago');
+    if (d >= 10800) return hh + ' ' + t('time.hour') + ' ' + t('time.ago');
+    if (d >= 180) return (hh ? hh + ' ' + t('time.hour') + ' ' : '') + m + ' ' + t('time.minute') + ' ' + t('time.ago');
+    if (m) return m + ' ' + t('time.minute') + ' ' + s + ' ' + t('time.second') + ' ' + t('time.ago');
+    return s + ' ' + t('time.second') + ' ' + t('time.ago');
   }
 
   function build() {

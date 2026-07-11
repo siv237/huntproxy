@@ -826,7 +826,13 @@
       "readinessTitle": "System readiness",
       "notReady": "System not ready for interception:",
       "readyHint": "System is ready — interception can be enabled",
-      "applying": "Applying rules…"
+      "applying": "Applying rules…",
+      "readinessIsRoot": "Backend is running as root (iptables rights)",
+      "readinessIptables": "iptables available",
+      "readinessCgroup": "cgroup v2 available (for --exclude-cgroup)",
+      "readinessScript": "setup_iptables.sh found",
+      "readinessTransparentRunning": "Transparent proxy is running",
+      "readinessTransparentListening": "Transparent proxy port is listening ({port})"
     },
     "downloads": {
       "title": "Downloads",
@@ -1045,5 +1051,14 @@
   },
   "lang": {
     "selector": "Language"
+  },
+  "time": {
+    "year": "y",
+    "month": "mo",
+    "day": "d",
+    "hour": "h",
+    "minute": "m",
+    "second": "s",
+    "ago": "ago"
   }
 }

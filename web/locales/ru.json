@@ -826,7 +826,13 @@
       "readinessTitle": "Готовность системы",
       "notReady": "Система не готова к перехвату:",
       "readyHint": "Система готова — перехват можно включить",
-      "applying": "Применяем правила…"
+      "applying": "Применяем правила…",
+      "readinessIsRoot": "Бэкенд запущен от root (права на iptables)",
+      "readinessIptables": "iptables доступен",
+      "readinessCgroup": "cgroup v2 доступен (для --exclude-cgroup)",
+      "readinessScript": "setup_iptables.sh найден",
+      "readinessTransparentRunning": "Прозрачный прокси запущен",
+      "readinessTransparentListening": "Порт прозрачного прокси слушается ({port})"
     },
     "downloads": {
       "title": "Загрузки",
@@ -1045,5 +1051,14 @@
   },
   "lang": {
     "selector": "Язык"
+  },
+  "time": {
+    "year": "г",
+    "month": "мес",
+    "day": "д",
+    "hour": "ч",
+    "minute": "м",
+    "second": "с",
+    "ago": "назад"
   }
 }

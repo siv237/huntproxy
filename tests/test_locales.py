@@ -103,3 +103,29 @@ class TestLocaleCompleteness:
                             f"{lang}: '{stray}' found inside page.{page_name} "
                             f"(should be page.{stray})"
                         )
+
+    def test_no_hardcoded_cyrillic_ui(self):
+        """User-facing strings must go through the i18n system (t()/tp()),
+        never as hardcoded Cyrillic literals in JS. The UI language is
+        selectable, so a Russian literal leaks when the UI is English.
+        The i18n engine (i18n.js) is excluded: it legitimately holds
+        native language names like 'Русский'."""
+        offenders = []
+        for js in (WEB_DIR / "js").rglob("*.js"):
+            if js.name == "i18n.js":
+                continue
+            src = js.read_text(encoding="utf-8")
+            # Drop block + line comments so comment text isn't flagged.
+            src = re.sub(r"/\*.*?\*/", "", src, flags=re.S)
+            src = re.sub(r"//[^\n]*", "", src)
+            # Drop i18n key arguments (t('key') / tp('key')) so their
+            # (ASCII) literals aren't mistaken for hardcoded UI text.
+            src = re.sub(r"""[tp]\(['"][^'")]*['"]""", "", src)
+            for m in re.finditer(
+                r"""['"]([^'"]*[а-яА-ЯёЁ][^'"]*)['"]""", src
+            ):
+                offenders.append(f"{js.name}: {m.group(0)}")
+        assert not offenders, (
+            "Hardcoded Cyrillic UI strings found (must use t()/tp()):\n  "
+            + "\n  ".join(sorted(offenders))
+        )

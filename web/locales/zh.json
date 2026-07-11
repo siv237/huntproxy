@@ -788,7 +788,13 @@
       "readinessTitle": "系统就绪状态",
       "notReady": "系统未就绪，无法拦截：",
       "readyHint": "系统已就绪 — 可启用拦截",
-      "applying": "正在应用规则…"
+      "applying": "正在应用规则…",
+      "readinessIsRoot": "后端以 root 运行（拥有 iptables 权限）",
+      "readinessIptables": "iptables 可用",
+      "readinessCgroup": "cgroup v2 可用（用于 --exclude-cgroup）",
+      "readinessScript": "已找到 setup_iptables.sh",
+      "readinessTransparentRunning": "透明代理正在运行",
+      "readinessTransparentListening": "透明代理端口正在监听（{port}）"
     },
     "downloads": {
       "title": "下载",
@@ -1046,5 +1052,14 @@
       "web": "Web surfing"
     },
     "webrtcLeak": "WebRTC leak"
+  },
+  "time": {
+    "year": "年",
+    "month": "月",
+    "day": "天",
+    "hour": "时",
+    "minute": "分",
+    "second": "秒",
+    "ago": "前"
   }
 }

@@ -759,7 +759,13 @@
       "readinessTitle": "Systembereitschaft",
       "notReady": "System nicht bereit für Abfangen:",
       "readyHint": "System bereit — Abfangen kann aktiviert werden",
-      "applying": "Regeln werden angewendet…"
+      "applying": "Regeln werden angewendet…",
+      "readinessIsRoot": "Backend läuft als root (iptables-Rechte)",
+      "readinessIptables": "iptables verfügbar",
+      "readinessCgroup": "cgroup v2 verfügbar (für --exclude-cgroup)",
+      "readinessScript": "setup_iptables.sh gefunden",
+      "readinessTransparentRunning": "Transparenter Proxy läuft",
+      "readinessTransparentListening": "Port des transparenten Proxys hört ({port})"
     },
     "downloads": {
       "title": "Downloads",
@@ -1045,5 +1051,14 @@
       "web": "Web surfing"
     },
     "webrtcLeak": "WebRTC leak"
+  },
+  "time": {
+    "year": "J",
+    "month": "Mo",
+    "day": "T",
+    "hour": "Std",
+    "minute": "Min",
+    "second": "S",
+    "ago": "vor"
   }
 }
