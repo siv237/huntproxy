@@ -23,6 +23,8 @@ from hunt.handlers.traffic import TrafficHandlers
 from hunt.handlers.sources import SourceHandlers
 from hunt.handlers.routing import RoutingHandlers
 from hunt.handlers.admin import AdminHandlers
+from hunt.handlers.interception import InterceptionHandlers
+from hunt.handlers.version import VersionHandlers
 
 
 class HuntServer:
@@ -51,6 +53,8 @@ class HuntServer:
         self._h_sources = SourceHandlers(self.state, self)
         self._h_routing = RoutingHandlers(self.state, self)
         self._h_admin = AdminHandlers(self.state, self)
+        self._h_interception = InterceptionHandlers(self.state, self)
+        self._h_version = VersionHandlers(self.state, self)
         self._register_routes()
 
     async def start(self):
@@ -202,9 +206,9 @@ class HuntServer:
         for m in ("GET", "POST"):
             self._router.add_prefix(m, "/api/transparent/start", p._handle_transparent_start)
             self._router.add(m, "/api/transparent/stop", p._handle_transparent_stop)
-        self._router.add("GET", "/api/interception", p._handle_interception)
-        self._router.add("POST", "/api/interception/apply", p._handle_interception_apply)
-        self._router.add("POST", "/api/interception/stop", p._handle_interception_stop)
+        self._router.add("GET", "/api/interception", self._h_interception._handle_interception)
+        self._router.add("POST", "/api/interception/apply", self._h_interception._handle_interception_apply)
+        self._router.add("POST", "/api/interception/stop", self._h_interception._handle_interception_stop)
         self._router.add_prefix("GET", "/api/proxy/", p._handle_proxy_detail)
 
         self._router.add("GET", "/api/channel/status", a._handle_channel_status)
@@ -212,7 +216,7 @@ class HuntServer:
         self._router.add_prefix("POST", "/api/settings/country_filter", a._handle_country_filter)
 
         self._router.add("GET", "/api/countries", c._handle_countries)
-        self._router.add("GET", "/api/version", c._handle_version)
+        self._router.add("GET", "/api/version", self._h_version._handle_version)
         self._router.add_prefix("GET", "/api/system", c._handle_system)
         self._router.add_prefix("GET", "/api/activity", c._handle_activity)
         self._router.add_prefix("GET", "/api/actions", c._handle_actions)

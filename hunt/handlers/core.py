@@ -2,40 +2,12 @@
 
 import asyncio
 import json
-import logging
-import subprocess
 import yaml
 from urllib.parse import unquote
 
-from hunt.constants import CONFIG_PATH, WEB_DIR, PROJECT_DIR
+from hunt.constants import CONFIG_PATH, WEB_DIR
 from hunt.handlers import _qs, _int_param
 from hunt.web_legacy import WEB_HTML
-
-logger = logging.getLogger(__name__)
-
-
-def _git(*args):
-    """Run a git command in the project repo; return stripped stdout or ''."""
-    try:
-        out = subprocess.run(
-            ["git", "-C", str(PROJECT_DIR), *args],
-            capture_output=True, text=True, timeout=5,
-        )
-        if out.returncode == 0:
-            return out.stdout.strip()
-    except Exception:
-        logger.debug("suppressed", exc_info=True)
-    return ""
-
-
-def _commit_url(commit, remote):
-    if not remote or not commit:
-        return ""
-    r = remote
-    if r.startswith("git@"):
-        r = "https://" + r[4:].replace(":", "/", 1)
-    r = r.replace(".git", "")
-    return f"{r}/commit/{commit}"
 
 
 
@@ -128,19 +100,6 @@ class CoreHandlers:
     async def _handle_downloads_count(self, raw_path, body):
         counts = self.state.get_download_counts()
         return json.dumps(counts), 200, "application/json"
-
-    async def _handle_version(self, raw_path, body):
-        commit = _git("rev-parse", "--short", "HEAD") or "unknown"
-        date = _git("show", "-s", "--format=%cs", "HEAD")
-        remote = _git("remote", "get-url", "origin")
-        url = _commit_url(commit, remote)
-        display = f"{date} ({commit})" if date else commit
-        return json.dumps({
-            "commit": commit,
-            "date": date,
-            "url": url,
-            "display": display,
-        }), 200, "application/json"
 
     async def _handle_download(self, raw_path, body):
         path = raw_path.split("?", 1)[0]
