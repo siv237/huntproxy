@@ -86,8 +86,7 @@ async def _execute_proxy_check(state, entry: ScheduleEntry):
     state.working = 0
     state.failed = 0
     await state._validate_all(addrs)
-    state._save_state()
-    state._save_working_file()
+    state._flush_proxy_checks()
     state._emit(
         f"Scheduler: proxy_check — done "
         f"({state.working} ok, {state.failed} failed)",

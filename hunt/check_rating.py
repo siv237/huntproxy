@@ -9,16 +9,31 @@ class CheckRatingMixin:
     _SOCKS_PORTS = frozenset({1080, 10808, 9050, 4145})
     def _record_proxy_check(self, addr: str, ts: float, latency: float,
                                   speed: float, ok: bool):
-            try:
-                conn = self._stats_db()
-                conn.execute(
-                    "INSERT INTO proxy_checks (address, ts, latency, speed, ok) VALUES (?,?,?,?,?)",
-                    (addr, ts, latency, speed, 1 if ok else 0),
-                )
-                conn.commit()
-                conn.close()
-            except Exception as e:
-                logger.error("record proxy check: %s", e)
+            self._proxy_check_buffer.append((addr, ts, latency, speed, 1 if ok else 0))
+            if len(self._proxy_check_buffer) >= 2000:
+                self._flush_proxy_checks()
+
+    def _flush_proxy_checks(self):
+        """Flush the buffered proxy_checks history in a single transaction.
+
+        Called automatically when the buffer fills, and at every persistence
+        checkpoint (_save_dirty_ratings / _save_state) so no history is lost
+        between the periodic rating saves."""
+        buf = self._proxy_check_buffer
+        if not buf:
+            return
+        try:
+            conn = self._stats_db()
+            conn.executemany(
+                "INSERT INTO proxy_checks (address, ts, latency, speed, ok) VALUES (?,?,?,?,?)",
+                buf,
+            )
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            logger.error("record proxy check: %s", e)
+        finally:
+            buf.clear()
 
 
     def _update_rating(self, addr: str, ok: bool, country: str, latency: float,
@@ -49,7 +64,6 @@ class CheckRatingMixin:
             self._rating_updates_since_save += 1
             if self._rating_updates_since_save >= 200:
                 self._save_dirty_ratings()
-                self._save_working_file()
                 self._rating_updates_since_save = 0
             elif self._rating_updates_since_save % 50 == 0:
                 self._save_dirty_ratings()

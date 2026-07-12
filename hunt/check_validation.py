@@ -67,37 +67,75 @@ class CheckValidationMixin:
         }
 
     async def _validate_all(self, proxies: set):
+        total = len(proxies)
+        if total == 0:
+            self._save_state()
+            self._save_working_file()
+            self._rating_updates_since_save = 0
+            self._push_history()
+            return
         sem = asyncio.Semaphore(self.parallel)
         lock = asyncio.Lock()
         ctx = _ValidationContext()
         self._fail_streak = 0
         self._check_streak = 0
 
-        tasks = [asyncio.create_task(self._check_one(addr, sem, lock, ctx)) for p in proxies for addr in [p]]
-        gather_task = asyncio.ensure_future(asyncio.gather(*tasks, return_exceptions=True))
+        # Bounded worker pool: feed addresses through a queue instead of
+        # spawning one asyncio.Task per proxy.  With tens of thousands of
+        # proxies the former fans out that many coroutines at once (large
+        # memory + scheduling cost) while only ``parallel`` ever run
+        # concurrently anyway.  Workers pull from the queue until it drains;
+        # one None sentinel per worker stops it once all real work is done.
+        queue: "asyncio.Queue" = asyncio.Queue()
+        for addr in proxies:
+            queue.put_nowait(addr)
+        for _ in range(max(1, self.parallel)):
+            queue.put_nowait(None)
+
+        processed = 0
+        complete = asyncio.Event()
+
+        async def worker():
+            nonlocal processed
+            while True:
+                addr = await queue.get()
+                try:
+                    if addr is None:
+                        return
+                    await self._check_one(addr, sem, lock, ctx)
+                    processed += 1
+                    if processed >= total:
+                        complete.set()
+                finally:
+                    queue.task_done()
+
+        workers = [asyncio.ensure_future(worker()) for _ in range(max(1, self.parallel))]
         skip_task = asyncio.ensure_future(self._skip_event.wait())
-        overall_timeout = len(proxies) * (self.effective_timeout + 10) // max(1, self.parallel) + 60
-        done, pending = await asyncio.wait(
-            {gather_task, skip_task}, timeout=overall_timeout,
+        complete_task = asyncio.ensure_future(complete.wait())
+        overall_timeout = total * (self.effective_timeout + 10) // max(1, self.parallel) + 60
+        done, _pending = await asyncio.wait(
+            {complete_task, skip_task}, timeout=overall_timeout,
             return_when=asyncio.FIRST_COMPLETED,
         )
-        if skip_task in done and not gather_task.done():
-            for t in tasks:
-                if not t.done():
-                    t.cancel()
+        if skip_task in done and complete_task not in done:
+            for w in workers:
+                w.cancel()
             try:
-                await gather_task
+                await asyncio.gather(*workers, return_exceptions=True)
             except Exception:
                 logger.debug("suppressed", exc_info=True)
             self._reset_skip()
             self._emit("Validation skipped by user", "warn")
-        elif not gather_task.done():
-            for t in tasks:
-                if not t.done():
-                    t.cancel()
+        elif complete_task not in done:
+            for w in workers:
+                w.cancel()
             self._emit("Validation timed out, cancelling stuck tasks", "warn")
         else:
             skip_task.cancel()
+            try:
+                await asyncio.gather(*workers, return_exceptions=True)
+            except Exception:
+                logger.debug("suppressed", exc_info=True)
         self._save_state()
         self._save_working_file()
         self._rating_updates_since_save = 0

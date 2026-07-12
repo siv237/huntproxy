@@ -128,6 +128,7 @@ class StatePersistenceMixin:
 
     def _save_state(self):
             try:
+                self._flush_proxy_checks()
                 conn = self._db()
                 # ratings
                 conn.execute("DELETE FROM ratings")
@@ -189,6 +190,7 @@ class StatePersistenceMixin:
             Removals (e.g. clear_dead) always go through a full ``_save_state``,
             so the DB never retains stale rows that were deleted from memory.
             """
+            self._flush_proxy_checks()
             if not self._dirty_ratings:
                 return
             try:
@@ -288,7 +290,14 @@ class StatePersistenceMixin:
             downloaded IP blacklist matches only lower the score. Proven
             proxies (those that once produced a non-zero speed measurement)
             are kept during their failure grace period so a temporary outage
-            does not evict them from the working list on the first failure."""
+            does not evict them from the working list on the first failure.
+
+            This is a full rebuild and is only called once at the end of a
+            run (validation / health check).  Mid-run persistence goes through
+            the incremental ``_save_dirty_ratings`` path so the O(n) rewrite
+            of the working set does not happen on every periodic checkpoint
+            during a full pool re-validation (which would multiply the cost by
+            the number of checkpoints)."""
             alive = [r for r in self.ratings.values()
                      if (r.last_status == "ok" or r.in_grace) and not r.in_blacklist]
             alive.sort(key=lambda r: r.score, reverse=True)

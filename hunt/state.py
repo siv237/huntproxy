@@ -110,6 +110,11 @@ class HuntState(DbMixin, EventsMixin, SnapshotMixin, HuntControlMixin, HuntCycle
             # periodic save can upsert only those rows instead of rewriting
             # the entire ratings table on every batch.
             self._dirty_ratings: set[str] = set()
+            # Buffer of pending proxy_checks history rows. INSERTs are
+            # accumulated and flushed in one executemany+commit instead of
+            # committing once per checked proxy (huge win during a full
+            # pool re-validation that touches tens of thousands of proxies).
+            self._proxy_check_buffer: list = []
 
             # Seed psutil's CPU baseline so the first dashboard snapshot
             # reports a real value instead of 0.0 (cpu_percent needs two

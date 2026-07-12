@@ -5,6 +5,7 @@ collapses consecutive duplicates, enriches each row with proxy metadata
 from ratings, and sums traffic served during each entry's active period.
 """
 
+import bisect
 import logging
 import time
 
@@ -99,24 +100,41 @@ def _traffic_by_period(state, chronological: list[dict], now: float) -> dict[int
     address.  We match the address as a suffix after the colon
     (``%:ADDR``) so ``1.2.3.4:1080`` does not match ``11.2.3.4:1080``.
     A bare-address row (no prefix) is matched exactly too.
-    """
+
+    All intervals are covered by ONE query over the whole history window;
+    each traffic row is then bucketed into its owning interval by timestamp
+    (bisect) and attributed to that interval's active address.  This avoids
+    the previous N+1 query pattern (one SQL round-trip per switch-history
+    entry), which made the proxy-status endpoint do hundreds of queries per
+    request when the UI polled it."""
     intervals = _intervals(chronological, now)
     if not intervals:
         return {}
     result: dict[int, int] = {j: 0 for j in intervals}
+    bounds = [(j, start, end, addr) for j, (start, end, addr) in intervals.items()]
+    starts = [b[1] for b in bounds]
+    first = bounds[0][1]
     try:
         conn = state._stats_db()
-        for j, (start, end, addr) in intervals.items():
-            if not addr or end <= start:
-                continue
-            row = conn.execute(
-                "SELECT COALESCE(SUM(bytes_in),0) + COALESCE(SUM(bytes_out),0) "
-                "FROM traffic_log WHERE ts >= ? AND ts < ? AND "
-                "(upstream = ? OR upstream LIKE ?)",
-                (start, end, addr, "%" + _SEP + addr),
-            ).fetchone()
-            result[j] = int(row[0]) if row else 0
+        rows = conn.execute(
+            "SELECT ts, upstream, "
+            "COALESCE(SUM(bytes_in),0) + COALESCE(SUM(bytes_out),0) AS bytes "
+            "FROM traffic_log WHERE ts >= ? AND ts < ? "
+            "GROUP BY ts, upstream",
+            (first, now + 1),
+        ).fetchall()
         conn.close()
+        for row in rows:
+            ts = row["ts"]
+            idx = bisect.bisect_right(starts, ts) - 1
+            if idx < 0:
+                continue
+            _j, _start, _end, addr = bounds[idx]
+            if ts < _start or ts >= _end or not addr:
+                continue
+            upstream = row["upstream"]
+            if upstream == addr or upstream.endswith(_SEP + addr):
+                result[_j] += int(row["bytes"])
     except Exception:
         logger.debug("suppressed", exc_info=True)
     return result
