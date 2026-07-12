@@ -86,6 +86,11 @@ class HuntCycleMixin:
 
     async def _auto_pause_if_internet_down(self):
             self._internet_suspect = True
+            # Clear the pause event synchronously (no await in between) so that
+            # every _check_one task awaiting it actually suspends instead of
+            # busy-looping on an already-set event. Otherwise the event loop is
+            # starved and the canary below can never resolve -> permanent hang.
+            self._pause_event.clear()
             self._emit("Suspect internet down (%d/%d fast fails) — checking canary..." % (self._fail_streak, self._check_streak), "warn")
             try:
                 alive = await self.is_internet_alive()
@@ -95,6 +100,7 @@ class HuntCycleMixin:
                     self._internet_suspect = False
                     self._fail_streak = 0
                     self._check_streak = 0
+                    self._pause_event.set()
                     self._emit("Canary OK — failures are proxy issues, not internet", "info")
             except Exception:
                 self.pause_hunt(manual=False)
