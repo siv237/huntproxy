@@ -691,6 +691,7 @@
       "directExit": "direct exit",
       "noUpstream": "no upstream",
       "bestProxy": "best available proxy",
+      "selectedProxy": "selected pool proxy",
       "matchDecision": "Domain match?",
       "noMatch": "no match → default",
       "defaultRoute": "Default Route",

@@ -122,6 +122,7 @@ router.register('traffic-flow', (container) => {
     if (!route) return 'unknown';
     if (route === 'direct') return 'direct';
     if (route === 'pool') return 'pool';
+    if (route === 'pool_selected') return 'pool_selected';
     if (route.startsWith('custom:')) return 'custom';
     if (route.startsWith('proxy:')) return 'proxy';
     return 'unknown';
@@ -130,6 +131,7 @@ router.register('traffic-flow', (container) => {
   function routeLabel(route) {
     if (route === 'direct') return t('route.direct');
     if (route === 'pool') return t('route.pool');
+    if (route === 'pool_selected') return t('route.poolSelected');
     if (route.startsWith('custom:')) {
       const cp = customProxies.find(p => ('custom:' + p.id) === route);
       return cp ? cp.name : route.slice(7);
@@ -167,10 +169,11 @@ router.register('traffic-flow', (container) => {
       reachable.delete('custom');
     }
 
-    const destOrder = ['direct', 'pool', 'custom', 'proxy'];
+    const destOrder = ['direct', 'pool', 'pool_selected', 'custom', 'proxy'];
     const destMeta = {
       direct: { label: t('route.direct'), sub: t('page.trafficFlow.directExit') },
       pool: { label: t('route.pool'), sub: t('page.trafficFlow.bestProxy') },
+      pool_selected: { label: t('route.poolSelected'), sub: t('page.trafficFlow.selectedProxy') },
       custom: { label: t('route.custom', { name: '' }).replace(/[: ]*$/, ''), sub: '' },
       proxy: { label: t('route.proxy'), sub: activeProxy || '' },
     };

@@ -653,6 +653,7 @@
       "directExit": "直连出口",
       "noUpstream": "无上游",
       "bestProxy": "最佳可用代理",
+      "selectedProxy": "已选择的池代理",
       "matchDecision": "域名匹配？",
       "noMatch": "无匹配 → 默认",
       "defaultRoute": "默认路由",
