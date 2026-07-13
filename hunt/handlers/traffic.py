@@ -10,6 +10,12 @@ from urllib.parse import urlparse
 
 from hunt.constants import logger
 
+# Memoize /api/traffic/summary for this long. It scans traffic_log three times
+# per request and the dashboard polls it every couple of seconds; the data is
+# only shown at second-grained resolution, so a short TTL is indistinguishable
+# to the user while killing the per-poll DB load.
+_SUMMARY_TTL = 10.0
+
 
 class TrafficHandlers:
     def __init__(self, state, server=None):
@@ -229,8 +235,12 @@ class TrafficHandlers:
         }), 200, "application/json"
 
     async def _handle_traffic_summary(self, raw_path, body):
-        periods = {"day": 86400, "week": 604800, "month": 2592000}
         now = time.time()
+        bucket = int(now // _SUMMARY_TTL)
+        cache = getattr(self.state, "_traffic_summary_cache", None)
+        if cache is not None and cache[0] == bucket:
+            return cache[1], 200, "application/json"
+        periods = {"day": 86400, "week": 604800, "month": 2592000}
         conn = None
         try:
             conn = self.state._stats_db()
@@ -244,7 +254,9 @@ class TrafficHandlers:
                 conn.close()
             except Exception:
                 logger.debug("suppressed", exc_info=True)
-        return json.dumps(result), 200, "application/json"
+        payload = json.dumps(result)
+        self.state._traffic_summary_cache = (bucket, payload)
+        return payload, 200, "application/json"
 
     def _compute_traffic_period(self, conn, name, now, secs):
         cutoff = now - secs
@@ -253,19 +265,32 @@ class TrafficHandlers:
         used_db = False
         if conn is not None:
             try:
-                row = conn.execute(
-                    "SELECT COALESCE(SUM(bytes_in),0) as bin, COALESCE(SUM(bytes_out),0) as bout, "
-                    "COUNT(*) as reqs, "
+                # One range scan yields both totals and top routes, instead of
+                # a separate aggregate scan plus a separate GROUP BY scan.
+                rows = conn.execute(
+                    "SELECT upstream, COUNT(*) as cnt, "
+                    "COALESCE(SUM(bytes_in),0) as bin, COALESCE(SUM(bytes_out),0) as bout, "
                     "COALESCE(SUM(CASE WHEN status='ok' THEN 1 ELSE 0 END),0) as ok "
-                    "FROM traffic_log WHERE ts > ?", (cutoff,)
-                ).fetchone()
-                download = int(row["bout"] or 0)
-                upload = int(row["bin"] or 0)
-                reqs = int(row["reqs"] or 0)
-                ok = int(row["ok"] or 0)
+                    "FROM traffic_log WHERE ts > ? GROUP BY upstream ORDER BY cnt DESC",
+                    (cutoff,)
+                ).fetchall()
+                for rr in rows:
+                    cnt = int(rr["cnt"] or 0)
+                    bin_ = int(rr["bin"] or 0)
+                    bout = int(rr["bout"] or 0)
+                    okc = int(rr["ok"] or 0)
+                    reqs += cnt
+                    upload += bin_
+                    download += bout
+                    ok += okc
+                    if len(routes) < 5:
+                        up = rr["upstream"] or "unknown"
+                        routes.append({
+                            "type": self._route_type(up), "upstream": up,
+                            "requests": cnt, "bytes": bout + bin_,
+                        })
                 if reqs > 0:
                     used_db = True
-                    routes = self._top_routes_from_db(conn, cutoff)
             except Exception:
                 used_db = False
         if not used_db and name == "day":
@@ -284,22 +309,6 @@ class TrafficHandlers:
             "success_rate": round(ok / reqs * 100, 1) if reqs else 0,
             "top_routes": routes,
         }
-
-    def _top_routes_from_db(self, conn, cutoff):
-        routes = []
-        for rr in conn.execute(
-            "SELECT upstream, COUNT(*) as cnt, "
-            "COALESCE(SUM(bytes_in),0) as bin, COALESCE(SUM(bytes_out),0) as bout "
-            "FROM traffic_log WHERE ts > ? GROUP BY upstream ORDER BY cnt DESC LIMIT 5",
-            (cutoff,)
-        ).fetchall():
-            up = rr["upstream"] or "unknown"
-            routes.append({
-                "type": self._route_type(up), "upstream": up,
-                "requests": int(rr["cnt"]),
-                "bytes": int(rr["bout"] or 0) + int(rr["bin"] or 0),
-            })
-        return routes
 
     def _top_routes_from_mem(self, entries):
         routes = []

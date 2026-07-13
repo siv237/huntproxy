@@ -13,6 +13,11 @@ logger = logging.getLogger(__name__)
 
 _HISTORY_LIMIT = 500
 _SEP = ":"
+# Memoize enrich_switch_history for this long; the proxy-status endpoint is
+# polled every couple of seconds but old switch intervals never change their
+# traffic retroactively, so recomputing the whole traffic_log scan each poll
+# is pure waste. A new switch changes the signature and forces a recompute.
+_TRAFFIC_CACHE_TTL = 10.0
 
 
 def record_switch(history: list[dict], action: str, address: str) -> None:
@@ -40,6 +45,16 @@ def enrich_switch_history(state) -> list[dict]:
     if not hist:
         return []
     now = time.time()
+    sig = (len(hist), hist[-1].get("ts"), int(now // _TRAFFIC_CACHE_TTL))
+    cache = getattr(state, "_switch_hist_cache", None)
+    if cache is not None and cache[0] == sig:
+        return cache[1]
+    out = _build_switch_history(state, hist, now)
+    state._switch_hist_cache = (sig, out)
+    return out
+
+
+def _build_switch_history(state, hist, now) -> list[dict]:
     merged = _merge_consecutive(hist)
     traffic = _traffic_by_period(state, merged, now)
     durations = _period_durations(merged, now)
@@ -55,8 +70,7 @@ def enrich_switch_history(state) -> list[dict]:
             row["protocol"] = r.protocol
             row["ssl_supported"] = r.ssl_supported
             row["egress_ip"] = r.egress_ip
-            row["egress_country"] = r.egress_country
-            row["egress_country_code"] = r.egress_country_code
+            row["egress_country"] = r.egress_country_code
             row["egress_city"] = r.egress_city
             row["egress_isp"] = r.egress_isp
             row["speed_avg"] = r.speed_avg
