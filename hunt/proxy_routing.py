@@ -46,6 +46,15 @@ class ProxyRouteMixin:
             self.state._record_traffic_fail(addr)
             chain.append(f"proxy:{addr} (fallback→pool)")
             return await self._connect_via_pool(host, port, chain, need_connect)
+        if route == "pool_selected":
+            addr = self.active_proxy_addr
+            if addr:
+                result = await self._connect_via_addr(addr, host, port, chain, need_connect)
+                if result is not None:
+                    return result
+                self.state._record_traffic_fail(addr)
+                chain.append(f"proxy:{addr} (fallback→pool)")
+            return await self._connect_via_pool(host, port, chain, need_connect)
         if route == "pool" or route == "":
             return await self._connect_via_pool(host, port, chain, need_connect)
         # Fallback: direct mode or active proxy, then pool

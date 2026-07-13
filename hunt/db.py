@@ -342,6 +342,8 @@ class DbMixin:
             """Add columns that may be missing in older databases."""
             migrations = [
                 ("blocklist_sources", "download_proxy", "TEXT NOT NULL DEFAULT ''"),
+                ("blocklist_sources", "class", "TEXT NOT NULL DEFAULT 'block'"),
+                ("blocklist_sources", "route", "TEXT NOT NULL DEFAULT ''"),
                 ("schedules", "last_ok", "REAL NOT NULL DEFAULT 0"),
             ]
             for table, column, coldef in migrations:

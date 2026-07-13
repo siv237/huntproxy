@@ -3,6 +3,8 @@
 import json
 from urllib.parse import unquote
 
+from hunt.handlers import _json_body
+
 
 class RoutingHandlers:
     def __init__(self, state, server=None):

@@ -6,6 +6,7 @@ router.register('routes', (container) => {
 
   const ROUTE_OPTIONS = [
     { value: 'direct', labelKey: 'route.directNoProxy' },
+    { value: 'pool_selected', labelKey: 'route.poolSelected' },
     { value: 'pool', labelKey: 'route.poolBest' },
   ];
 
@@ -217,7 +218,7 @@ router.register('routes', (container) => {
   function routeTypeOf(route) {
     if (!route) return 'unknown';
     if (route === 'direct') return 'direct';
-    if (route === 'pool') return 'pool';
+    if (route === 'pool' || route === 'pool_selected') return 'pool';
     if (route.startsWith('custom:')) return 'custom';
     if (route.startsWith('proxy:')) return 'proxy';
     return 'unknown';
@@ -234,7 +235,10 @@ router.register('routes', (container) => {
   function routeLabelHtml(route) {
     const type = routeTypeOf(route);
     if (type === 'direct') return '<span class="route-label direct">' + t('route.direct') + '</span>';
-    if (type === 'pool') return '<span class="route-label pool">' + t('route.pool') + '</span>';
+    if (type === 'pool') {
+      if (route === 'pool_selected') return '<span class="route-label pool">' + t('route.poolSelected') + '</span>';
+      return '<span class="route-label pool">' + t('route.pool') + '</span>';
+    }
     if (type === 'custom') {
       const name = route.slice(7);
       return '<span class="route-label custom">' + t('route.custom', { name: ui.escHtml(name) }) + '</span>';

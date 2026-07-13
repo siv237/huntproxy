@@ -1,23 +1,38 @@
 """Country blocklist sources — downloads IP and domain blocklists organized
-by country and direction (inside/outside), feeding them into the existing
-IP blacklist scoring and domain routing systems.
+by country, direction (inside/outside/domestic) and class (block/white),
+feeding them into the existing IP blacklist scoring and domain routing systems.
 
 Direction semantics:
   "inside"  — resources blocked WITHIN that country (e.g. RKN blocks in RU)
   "outside" — resources of that country blocked ABROAD (e.g. RU geo-restricted)
+  "domestic"— resources OF that country that must stay local (white list)
+
+Class semantics:
+  "block" — route via proxy pool (default for inside/outside)
+  "white" — route direct (default for domestic); overridable via `route`
 
 List types:
   "ip"     → parsed via _parse_ip_blacklist() → ip_blacklist_entries (proxy scoring)
-  "domain" → auto-creates domain_lists entry → domain_entries (routing, route=pool)
+  "domain" → auto-creates domain_lists entry → domain_entries (routing, route from class)
 """
 
 import asyncio
+import re
 import time
 from hunt.constants import DEFAULT_BLOCKLIST_SOURCES, logger
 from hunt.download import stream_download, curl_args
 import logging
 
 logger = logging.getLogger(__name__)
+
+# Upstream rule formats we normalize into plain domain patterns.
+_CLASH_RULE_RE = re.compile(
+    r"^\s*-\s*['\"]?(?P<t>DOMAIN|DOMAIN-SUFFIX|DOMAIN-KEYWORD|DOMAIN-REGEXP|IP-CIDR|IP6-CIDR)"
+    r"\s*,\s*(?P<v>.+?)['\"]?\s*$"
+)
+_V2FLY_RULE_RE = re.compile(
+    r"^(?P<t>domain|domain-suffix|domain-keyword|domain-regexp|full)\s*[:=]\s*(?P<v>.+?)\s*$"
+)
 
 
 class BlocklistsMixin:
@@ -30,12 +45,14 @@ class BlocklistsMixin:
                 conn.close()
                 return
             now = time.time()
-            for i, (sid, name, country, direction, list_type, url) in enumerate(DEFAULT_BLOCKLIST_SOURCES):
+            # White/domestic lists first so they are evaluated before block lists.
+            ordered = sorted(DEFAULT_BLOCKLIST_SOURCES, key=lambda b: (0 if b[6] == "white" else 1, b[0]))
+            for i, (sid, name, country, direction, list_type, url, klass, route) in enumerate(ordered):
                 conn.execute(
                     "INSERT OR IGNORE INTO blocklist_sources "
-                    "(id, name, country, direction, list_type, url, enabled, priority, created_at, updated_at) "
-                    "VALUES (?,?,?,?,?,?,?,?,?,?)",
-                    (sid, name, country, direction, list_type, url, 1, i, now, now)
+                    "(id, name, country, direction, list_type, url, class, route, enabled, priority, created_at, updated_at) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                    (sid, name, country, direction, list_type, url, klass, route, 1, i, now, now)
                 )
             conn.commit()
             conn.close()
@@ -48,24 +65,25 @@ class BlocklistsMixin:
             conn = self._db()
             now = time.time()
             existing_ids = {r["id"] for r in conn.execute("SELECT id FROM blocklist_sources").fetchall()}
-            max_pri = conn.execute("SELECT COALESCE(MAX(priority),-1)+1 as next FROM blocklist_sources").fetchone()["next"]
+            # White/domestic lists first so they are evaluated before block lists.
+            ordered = sorted(DEFAULT_BLOCKLIST_SOURCES, key=lambda b: (0 if b[6] == "white" else 1, b[0]))
             added = 0
-            for i, (sid, name, country, direction, list_type, url) in enumerate(DEFAULT_BLOCKLIST_SOURCES):
+            for i, (sid, name, country, direction, list_type, url, klass, route) in enumerate(ordered):
                 if sid in existing_ids:
                     # Update URL/direction/type for existing default sources whose
-                    # definition changed (e.g. ru-geoblock-domains switched to
-                    # Categories/geoblock.lst). Only touch auto-created sources.
+                    # definition changed. Only touch auto-created sources. Keep
+                    # white lists first by reassigning priority in ordered sequence.
                     conn.execute(
                         "UPDATE blocklist_sources SET name=?, country=?, direction=?, "
-                        "list_type=?, url=?, updated_at=? WHERE id=?",
-                        (name, country, direction, list_type, url, now, sid)
+                        "list_type=?, url=?, class=?, route=?, priority=?, updated_at=? WHERE id=?",
+                        (name, country, direction, list_type, url, klass, route, i, now, sid)
                     )
                     continue
                 conn.execute(
                     "INSERT OR IGNORE INTO blocklist_sources "
-                    "(id, name, country, direction, list_type, url, enabled, priority, created_at, updated_at) "
-                    "VALUES (?,?,?,?,?,?,?,?,?,?)",
-                    (sid, name, country, direction, list_type, url, 1, max_pri + i, now, now)
+                    "(id, name, country, direction, list_type, url, class, route, enabled, priority, created_at, updated_at) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                    (sid, name, country, direction, list_type, url, klass, route, 1, i, now, now)
                 )
                 existing_ids.add(sid)
                 added += 1
@@ -138,8 +156,14 @@ class BlocklistsMixin:
         if not sid or not name or not url:
             return None
         country = data.get("country", "").strip().upper()
-        direction = data.get("direction", "inside").strip()
-        list_type = data.get("list_type", "ip").strip()
+        direction = data.get("direction", "inside").strip().lower()
+        if direction not in ("inside", "outside", "domestic"):
+            direction = "inside"
+        list_type = data.get("list_type", "ip").strip().lower()
+        klass = data.get("class", "block").strip().lower()
+        if klass not in ("block", "white"):
+            klass = "block"
+        route = data.get("route", "").strip()
         download_proxy = data.get("download_proxy", "").strip()
         now = time.time()
         try:
@@ -148,9 +172,9 @@ class BlocklistsMixin:
             priority = max_pri["next"] if max_pri else 0
             conn.execute(
                 "INSERT INTO blocklist_sources "
-                "(id, name, country, direction, list_type, url, download_proxy, enabled, priority, created_at, updated_at) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-                (sid, name, country, direction, list_type, url, download_proxy,
+                "(id, name, country, direction, list_type, url, class, route, download_proxy, enabled, priority, created_at, updated_at) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (sid, name, country, direction, list_type, url, klass, route, download_proxy,
                  1 if data.get("enabled", True) else 0, priority, now, now)
             )
             conn.commit()
@@ -171,13 +195,21 @@ class BlocklistsMixin:
                 return None
             name = data.get("name", "").strip()
             if name:
+                direction = data.get("direction", "inside").strip().lower()
+                if direction and direction not in ("inside", "outside", "domestic"):
+                    direction = "inside"
+                klass = data.get("class", "block").strip().lower()
+                if klass and klass not in ("block", "white"):
+                    klass = "block"
                 conn.execute(
                     "UPDATE blocklist_sources SET name=?, country=?, direction=?, list_type=?, url=?, "
-                    "download_proxy=?, enabled=?, updated_at=? WHERE id=?",
+                    "class=?, route=?, download_proxy=?, enabled=?, updated_at=? WHERE id=?",
                     (name, data.get("country", "").strip().upper(),
-                     data.get("direction", "inside").strip(),
+                     direction or "inside",
                      data.get("list_type", "ip").strip(),
                      data.get("url", "").strip(),
+                     klass or "block",
+                     data.get("route", "").strip(),
                      data.get("download_proxy", "").strip(),
                      1 if data.get("enabled", True) else 0, now, source_id)
                 )
@@ -229,17 +261,29 @@ class BlocklistsMixin:
             logger.error("toggle_blocklist_source: %s", e)
             return None
 
-    def _parse_domain_blocklist(self, text: str, source_id: str, name: str) -> int:
-        """Parse domain blocklist text, create/update domain_list + domain_entries.
+    @staticmethod
+    def _route_for_source(s) -> str:
+        """Derive the routing route for a blocklist source.
+
+        White-class sources default to `direct`; everything else to `pool`.
+        An explicit `route` on the source overrides the default. Works with
+        both dicts and sqlite3.Row (which has no `.get`)."""
+        klass = s["class"] if "class" in s.keys() else "block"
+        route = s["route"] if "route" in s.keys() else ""
+        route = (route or "").strip()
+        if route:
+            return route
+        return "direct" if str(klass).lower() == "white" else "pool"
+
+    def _parse_domain_blocklist(self, text: str, source_id: str, name: str, route: str = "pool") -> int:
+        """Parse domain blocklist text (plain / Clash / v2fly formats), create/update
+        the domain_list (with the given route) and its domain_entries.
         Returns number of domains added."""
         domains = []
         seen = set()
         for raw in text.splitlines():
-            line = raw.strip()
-            if not line or line.startswith("#") or line.startswith(";") or line.startswith("//"):
-                continue
-            d = line.lower()
-            if d not in seen:
+            d = self._normalize_domain_pattern(raw)
+            if d and d not in seen:
                 seen.add(d)
                 domains.append(d)
         if not domains:
@@ -250,8 +294,8 @@ class BlocklistsMixin:
             existing = conn.execute("SELECT id FROM domain_lists WHERE id=?", (source_id,)).fetchone()
             if existing:
                 conn.execute(
-                    "UPDATE domain_lists SET name=?, updated_at=? WHERE id=?",
-                    (name, now, source_id)
+                    "UPDATE domain_lists SET name=?, route=?, updated_at=? WHERE id=?",
+                    (name, route, now, source_id)
                 )
                 conn.execute("DELETE FROM domain_entries WHERE list_id=?", (source_id,))
             else:
@@ -260,7 +304,7 @@ class BlocklistsMixin:
                 conn.execute(
                     "INSERT INTO domain_lists (id, name, source, url, route, enabled, priority, created_at, updated_at) "
                     "VALUES (?,?,?,?,?,?,?,?,?)",
-                    (source_id, name, "blocklist", "", "pool", 1, priority, now, now)
+                    (source_id, name, "blocklist", "", route, 1, priority, now, now)
                 )
             conn.executemany(
                 "INSERT OR IGNORE INTO domain_entries (list_id, pattern) VALUES (?,?)",
@@ -275,6 +319,56 @@ class BlocklistsMixin:
             except Exception:
                 logger.debug("suppressed", exc_info=True)
         return len(domains)
+
+    @staticmethod
+    def _normalize_domain_pattern(raw: str):
+        """Normalize one source line into a domain pattern, or None to skip.
+
+        Handles plain domain lists, Clash rules (DOMAIN-SUFFIX,vk.com) and
+        v2fly rules (domain-suffix:vk.com). Strips scheme, `:port` and inline
+        comments; CIDR/IP lines are skipped (not domain-routed)."""
+        line = (raw or "").strip()
+        if not line:
+            return None
+        if line.startswith("#") or line.startswith(";") or line.startswith("//"):
+            return None
+        for sep in (" #", "\t#", " //", " ;"):
+            idx = line.find(sep)
+            if idx != -1:
+                line = line[:idx].strip()
+        if not line:
+            return None
+        m = _CLASH_RULE_RE.match(line)
+        if m:
+            t = m.group("t")
+            v = m.group("v").strip().strip("'\"")
+            if t in ("IP-CIDR", "IP6-CIDR"):
+                return None
+            if t == "DOMAIN-SUFFIX":
+                return BlocklistsMixin._clean_plain_domain(v, prefix="*.")
+            return BlocklistsMixin._clean_plain_domain(v)
+        m = _V2FLY_RULE_RE.match(line)
+        if m:
+            t = m.group("t")
+            v = m.group("v").strip()
+            if t == "domain-suffix":
+                return BlocklistsMixin._clean_plain_domain(v, prefix="*.")
+            return BlocklistsMixin._clean_plain_domain(v)
+        return BlocklistsMixin._clean_plain_domain(line)
+
+    @staticmethod
+    def _clean_plain_domain(v: str, prefix: str = ""):
+        v = (v or "").strip().lower()
+        if not v:
+            return None
+        v = re.sub(r"^(https?|wss?|socks5?)://", "", v)
+        mm = re.match(r"^([a-z0-9.*-]+)(:\d+)?$", v)
+        if mm and mm.group(2):
+            v = mm.group(1)
+        v = prefix + v
+        if not ('.' in v or v.startswith("*.")):
+            return None
+        return v
 
     async def _download_blocklists(self) -> dict:
         """Download all enabled blocklist sources. Returns {source_id: count}."""
@@ -332,7 +426,8 @@ class BlocklistsMixin:
                         if list_type == "ip":
                             count = self._parse_ip_blacklist(text, source_id, source_name, persist=True)
                         else:
-                            count = self._parse_domain_blocklist(text, source_id, source_name)
+                            route = self._route_for_source(s)
+                            count = self._parse_domain_blocklist(text, source_id, source_name, route)
                             self._update_blocklist_domain_url(source_id)
                         results[source_id] = count
                         self._blocklist_fetch_progress[source_id]["status"] = "done"

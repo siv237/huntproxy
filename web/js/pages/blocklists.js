@@ -100,7 +100,13 @@ router.register('blocklists', (container) => {
 
   function dirLabel(d) {
     if (d === 'outside') return t('page.blocklists.directionOutside');
+    if (d === 'domestic') return t('page.blocklists.directionDomestic');
     return t('page.blocklists.directionInside');
+  }
+
+  function classLabel(c) {
+    if (c === 'white') return t('page.blocklists.classWhite');
+    return t('page.blocklists.classBlock');
   }
 
   function typeLabel(ty) {
@@ -151,11 +157,17 @@ router.register('blocklists', (container) => {
     body.appendChild(mkSelect('bl-direction', t('page.blocklists.directionLabel'), [
       { value: 'inside', label: t('page.blocklists.directionInside') },
       { value: 'outside', label: t('page.blocklists.directionOutside') },
+      { value: 'domestic', label: t('page.blocklists.directionDomestic') },
     ], src ? src.direction : 'inside'));
     body.appendChild(mkSelect('bl-list-type', t('page.blocklists.typeLabel'), [
       { value: 'ip', label: t('page.blocklists.typeIp') },
       { value: 'domain', label: t('page.blocklists.typeDomain') },
     ], src ? src.list_type : 'ip'));
+    body.appendChild(mkSelect('bl-class', t('page.blocklists.classLabel'), [
+      { value: 'block', label: t('page.blocklists.classBlock') },
+      { value: 'white', label: t('page.blocklists.classWhite') },
+    ], src ? (src.class || 'block') : 'block'));
+    body.appendChild(mkField('bl-route', t('page.blocklists.routeLabel'), src ? (src.route || '') : '', 'direct / pool / custom:id / proxy:addr'));
     body.appendChild(mkField('bl-url', t('page.blocklists.urlLabel'), src ? src.url : '', 'https://example.com/list.txt'));
     body.appendChild(mkField('bl-proxy', t('page.blocklists.proxyLabel'), src ? (src.download_proxy || '') : '', 'http://127.0.0.1:17277 or empty'));
 
@@ -185,6 +197,8 @@ router.register('blocklists', (container) => {
         country: document.getElementById('bl-country').value.trim().toUpperCase(),
         direction: document.getElementById('bl-direction').value,
         list_type: document.getElementById('bl-list-type').value,
+        class: document.getElementById('bl-class').value,
+        route: document.getElementById('bl-route').value.trim(),
         download_proxy: document.getElementById('bl-proxy').value.trim(),
       };
       if (editingId) {
@@ -302,6 +316,9 @@ router.register('blocklists', (container) => {
         delBtn.dataset.sourceId = s.id;
         delBtn.dataset.action = 'delete';
 
+        const clsBadge = s.class === 'white'
+          ? `<span style="font-size:8px;font-weight:700;color:#fff;background:var(--success);border-radius:3px;padding:1px 3px;margin-right:4px;vertical-align:middle" title="${ui.escHtml(classLabel('white'))}">W</span>`
+          : '';
         const p = fetchProgress[s.id];
         let entryCell;
         if (p) {
@@ -313,8 +330,8 @@ router.register('blocklists', (container) => {
           entryCell = s.entry_count ?? s.last_fetch_count ?? 0;
         }
 
-        return [
-          nameSpan.outerHTML,
+         return [
+          clsBadge + nameSpan.outerHTML,
           `<span style="font-size:10px;color:var(--text-muted)">${typeLabel(s.list_type)}</span>`,
           statusBadge(s),
           entryCell,

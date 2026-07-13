@@ -1,3 +1,5 @@
+import asyncio
+
 import hunt
 
 
@@ -186,3 +188,25 @@ class TestRouting:
         assert state._domain_matches("www.example.com", ["example.com"]) is True
         assert state._domain_matches("www.example.com", [".example.com"]) is True
         assert state._domain_matches("other.com", ["example.com"]) is False
+
+
+class TestRoutingHandlerEndpoints:
+    """HTTP handler layer — guards against handler-level regressions
+    (e.g. a missing `_json_body` import that 500s on POST/DELETE)."""
+
+    def test_domain_list_create_via_handler(self, state):
+        from hunt.handlers.routing import RoutingHandlers
+        rh = RoutingHandlers(state)
+        body = '{"id":"h-import-test","name":"Import","domains":["a.com"],"route":"direct"}'
+        resp, status, ct = asyncio.run(rh._handle_domain_list_create("/api/domain-lists", body))
+        assert status == 200
+        assert state.get_domain_list("h-import-test") is not None
+        state.delete_domain_list("h-import-test")
+
+    def test_domain_list_delete_via_handler(self, state):
+        from hunt.handlers.routing import RoutingHandlers
+        rh = RoutingHandlers(state)
+        state.create_domain_list({"id": "h-del-test", "name": "Del", "domains": ["b.com"], "route": "direct"})
+        resp, status, ct = asyncio.run(rh._handle_domain_list_delete("/api/domain-lists/h-del-test", ""))
+        assert status == 200
+        assert state.get_domain_list("h-del-test") is None

@@ -242,6 +242,7 @@ const ui = {
     if (!route) return '<span style="color:var(--text-muted)">—</span>';
     if (route === 'direct') return '<span style="color:var(--success);font-weight:600">' + t('route.direct') + '</span>';
     if (route === 'pool') return '<span style="color:var(--accent);font-weight:600">' + t('route.pool') + '</span>';
+    if (route === 'pool_selected') return '<span style="color:var(--accent);font-weight:600">' + t('route.poolSelected') + '</span>';
     if (route.startsWith('custom:')) {
       const name = route.slice(7);
       return '<span style="color:var(--info);font-weight:600">' + t('route.custom', { name: ui.escHtml(name) }) + '</span>';

@@ -106,6 +106,7 @@ router.register('domain-lists', (container) => {
       routeSelect.innerHTML = '';
       const opts = [
         { value: 'direct', text: t('route.directNoProxy') },
+        { value: 'pool_selected', text: t('route.poolSelected') },
         { value: 'pool', text: t('route.poolBest') },
       ];
       opts.forEach(o => {

@@ -125,6 +125,34 @@ class TestProxyServer:
                 await server.wait_closed()
         asyncio.run(run())
 
+    def test_connect_by_route_pool_selected_uses_active_then_pool(self, state):
+        async def run():
+            runner = hunt.ProxyRunner(state, "127.0.0.1")
+            runner.active_proxy_addr = "1.2.3.4:8080"
+            calls = []
+
+            async def fake_via_addr(addr, host, port, chain, need_connect):
+                calls.append(("addr", addr))
+                return ("ar", "aw", False)
+
+            async def fake_via_pool(host, port, chain, need_connect):
+                calls.append(("pool",))
+                return ("pr", "pw", False)
+
+            runner._connect_via_addr = fake_via_addr
+            runner._connect_via_pool = fake_via_pool
+
+            result = await runner._connect_by_route("pool_selected", "example.com", 80, [])
+            assert result == ("ar", "aw", False)
+            assert calls[0] == ("addr", "1.2.3.4:8080")
+
+            runner.active_proxy_addr = None
+            calls.clear()
+            result = await runner._connect_by_route("pool_selected", "example.com", 80, [])
+            assert result == ("pr", "pw", False)
+            assert calls == [("pool",)]
+        asyncio.run(run())
+
     def test_connect_by_route_http_non_connect_returns_raw(self, state):
         async def run():
             async def proxy_handler(reader, writer):

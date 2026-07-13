@@ -42,14 +42,17 @@ def _load_default_sources():
 
       [proxy]                 key = human label, value = URL
       [ip_blacklist]          key = source name,  value = URL
-      [blocklist:<id>]        fields: name, country, direction, type, url
-                              direction = inside | outside
+      [blocklist:<id>]        fields: name, country, direction, type, url, class, route
+                              direction = inside | outside | domestic
                               type      = ip | domain
+                              class     = block | white   (white = route direct by default)
+                              route     = direct | pool | custom:<id> | proxy:<addr>
+                                          (optional; default derived from class)
 
     Returns (proxy_urls, ip_blacklist, blocklists) where:
       proxy_urls    -> list[str]
       ip_blacklist  -> list[(name, url)]
-      blocklists    -> list[(sid, name, country, direction, list_type, url)]
+      blocklists    -> list[(sid, name, country, direction, list_type, url, klass, route)]
     """
     proxy_urls: list = []
     ip_blacklist: list = []
@@ -125,18 +128,23 @@ def _parse_blocklist_section(fp, section, fname, seen_sids):
     country = get("country").upper()
     direction = get("direction").lower()
     list_type = get("type").lower()
+    klass = get("class", "block").lower()
+    route = get("route", "")
     url = get("url")
     if not (name and country and direction and list_type and url):
         logger.warning("Skipping incomplete blocklist source [%s] in %s", section, fname)
         return None
-    if direction not in ("inside", "outside"):
-        logger.warning("Blocklist %s has bad direction=%r (expected inside/outside)", sid, direction)
+    if direction not in ("inside", "outside", "domestic"):
+        logger.warning("Blocklist %s has bad direction=%r (expected inside/outside/domestic)", sid, direction)
         return None
     if list_type not in ("ip", "domain"):
         logger.warning("Blocklist %s has bad type=%r (expected ip/domain)", sid, list_type)
         return None
+    if klass not in ("block", "white"):
+        logger.warning("Blocklist %s has bad class=%r (expected block/white), defaulting to block", sid, klass)
+        klass = "block"
     seen_sids.add(sid)
-    return (sid, name, country, direction, list_type, url)
+    return (sid, name, country, direction, list_type, url, klass, route)
 
 
 DEFAULT_SOURCES, DEFAULT_IP_BLACKLIST_SOURCES, DEFAULT_BLOCKLIST_SOURCES = _load_default_sources()

@@ -12,10 +12,11 @@ class TestIniSources:
         assert len(constants.DEFAULT_BLOCKLIST_SOURCES) >= 3
 
     def test_blocklist_sources_have_country_and_direction(self):
-        for sid, name, country, direction, list_type, url in constants.DEFAULT_BLOCKLIST_SOURCES:
+        for sid, name, country, direction, list_type, url, klass, route in constants.DEFAULT_BLOCKLIST_SOURCES:
             assert country and country.isalpha() and len(country) == 2
-            assert direction in ("inside", "outside")
+            assert direction in ("inside", "outside", "domestic")
             assert list_type in ("ip", "domain")
+            assert klass in ("block", "white")
             assert url.startswith("http")
 
     def test_known_ru_blocklists_present(self):
@@ -59,8 +60,45 @@ class TestIniSources:
             assert proxy == ["https://example.com/proxies.txt"]
             assert ipbl == [("My Feed", "https://example.com/ips.txt")]
             assert block == [
-                ("xx-test", "Test", "XX", "outside", "domain", "https://example.com/domains.lst")
+                ("xx-test", "Test", "XX", "outside", "domain", "https://example.com/domains.lst", "block", "")
             ]
+
+    def test_parser_white_domestic_with_route(self, monkeypatch):
+        ini = (
+            "[blocklist:xx-white]\n"
+            "name = White\n"
+            "country = RU\n"
+            "direction = domestic\n"
+            "class = white\n"
+            "type = domain\n"
+            "route = direct\n"
+            "url = https://example.com/white.lst\n"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            d = Path(tmp)
+            (d / "w.ini").write_text(ini, encoding="utf-8")
+            monkeypatch.setattr(constants, "SOURCES_DIR", d)
+            _, _, block = _load_default_sources()
+            assert block == [
+                ("xx-white", "White", "RU", "domestic", "domain", "https://example.com/white.lst", "white", "direct")
+            ]
+
+    def test_parser_bad_direction_and_class_defaulted(self, monkeypatch):
+        ini = (
+            "[blocklist:xx-bad]\n"
+            "name = Bad\n"
+            "country = RU\n"
+            "direction = sideways\n"
+            "class = weird\n"
+            "type = domain\n"
+            "url = https://example.com/x.lst\n"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            d = Path(tmp)
+            (d / "b.ini").write_text(ini, encoding="utf-8")
+            monkeypatch.setattr(constants, "SOURCES_DIR", d)
+            _, _, block = _load_default_sources()
+            assert block == []
 
     def test_multiple_ini_files_merged(self, monkeypatch):
         with tempfile.TemporaryDirectory() as tmp:
