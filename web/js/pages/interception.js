@@ -1,4 +1,7 @@
 router.register('interception', (container) => {
+  // Last port reported by the backend; the input is synced only when the
+  // SERVER-side value changes so the 2s poll never clobbers user edits.
+  let lastTpPort = null;
   container.innerHTML = '';
   container.classList.add('interception-page');
   container.style.display = 'flex';
@@ -210,7 +213,11 @@ router.register('interception', (container) => {
     const stopBtn = document.getElementById('btn-tp-stop');
     if (startBtn) startBtn.disabled = running;
     if (stopBtn) stopBtn.disabled = !running;
-    if (document.getElementById('interception-tp-port') && ts && ts.port) document.getElementById('interception-tp-port').value = ts.port;
+    if (ts && ts.port && ts.port !== lastTpPort) {
+      lastTpPort = ts.port;
+      const inp = document.getElementById('interception-tp-port');
+      if (inp) inp.value = ts.port;
+    }
     const conn = document.getElementById('interception-tp-connections');
     if (conn) conn.textContent = ts ? (ts.connections || 0) : 0;
   }

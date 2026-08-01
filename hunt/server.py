@@ -121,8 +121,12 @@ class HuntServer:
         if isinstance(body, str):
             body = body.encode()
         if cache_control is None:
-            if ct.startswith("image/") or ct == "image/x-icon" or ct == "application/manifest+json" or ct.startswith("text/css") or ct.startswith("application/javascript"):
+            if ct.startswith("image/") or ct == "image/x-icon" or ct == "application/manifest+json":
                 cache_control = "public, max-age=86400"
+            elif ct.startswith("text/css") or ct.startswith("application/javascript"):
+                # Code assets change on every deploy; a day-long cache serves
+                # stale JS that mismatches the backend. Revalidate every load.
+                cache_control = "no-cache"
             else:
                 cache_control = "no-store"
         resp = (

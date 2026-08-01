@@ -2,6 +2,11 @@ router.register('server', (container) => {
   let aliveProxies = [];
   let customProxies = [];
   let filters = { hideNoHttps: true, hideNoSsl: false, hideMitm: true, hideBlacklisted: true };
+  // Last port values reported by the backend. Port inputs are synced only
+  // when the SERVER-side value actually changes, so user edits (typing or
+  // spinner clicks, which may not focus the input) are never clobbered by
+  // the 2s status poll.
+  const lastPorts = { http: null, s5: null, tp: null };
 
   function build() {
     container.innerHTML = '';
@@ -33,7 +38,7 @@ router.register('server', (container) => {
     card.appendChild(status);
 
     const httpRow = ui.el('div', '', { style: 'display:flex;gap:4px;align-items:center;margin-bottom:6px' });
-    httpRow.appendChild(ui.el('span', '', { style: 'font-size:11px;color:var(--text-secondary);font-weight:600;width:52px;flex-shrink:0', text: t('page.server.http') }));
+    httpRow.appendChild(ui.el('span', '', { style: 'font-size:11px;color:var(--text-secondary);font-weight:600;width:74px;flex-shrink:0', text: t('page.server.http') }));
     httpRow.appendChild(ui.el('span', '', { style: 'font-size:11px;color:var(--text-secondary)', text: t('page.server.port') }));
     const portInp = ui.el('input', '', { id: 'proxy-port', type: 'number', value: '17277', min: '1024', max: '65535', style: 'width:72px;padding:3px 6px;font-size:11px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--bg);color:var(--text-primary)' });
     httpRow.appendChild(portInp);
@@ -46,7 +51,7 @@ router.register('server', (container) => {
     card.appendChild(httpRow);
 
     const s5Row = ui.el('div', '', { style: 'display:flex;gap:4px;align-items:center;margin-bottom:6px;padding-top:6px;border-top:1px solid var(--border-subtle)' });
-    s5Row.appendChild(ui.el('span', '', { style: 'font-size:11px;color:var(--text-secondary);font-weight:600;width:52px;flex-shrink:0', text: t('page.server.socks5') }));
+    s5Row.appendChild(ui.el('span', '', { style: 'font-size:11px;color:var(--text-secondary);font-weight:600;width:74px;flex-shrink:0', text: t('page.server.socks5') }));
     s5Row.appendChild(ui.el('span', '', { style: 'font-size:11px;color:var(--text-secondary)', text: t('page.server.port') }));
     const s5PortInp = ui.el('input', '', { id: 'socks5-port', type: 'number', value: '17278', min: '1024', max: '65535', style: 'width:72px;padding:3px 6px;font-size:11px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--bg);color:var(--text-primary)' });
     s5Row.appendChild(s5PortInp);
@@ -59,7 +64,7 @@ router.register('server', (container) => {
     card.appendChild(s5Row);
 
     const tpRow = ui.el('div', '', { style: 'display:flex;gap:4px;align-items:center;margin-bottom:6px;padding-top:6px;border-top:1px solid var(--border-subtle)' });
-    tpRow.appendChild(ui.el('span', '', { style: 'font-size:11px;color:var(--text-secondary);font-weight:600;width:52px;flex-shrink:0', text: t('page.server.transparent') }));
+    tpRow.appendChild(ui.el('span', '', { style: 'font-size:11px;color:var(--text-secondary);font-weight:600;width:74px;flex-shrink:0', text: t('page.server.transparent') }));
     tpRow.appendChild(ui.el('span', '', { style: 'font-size:11px;color:var(--text-secondary)', text: t('page.server.port') }));
     const tpPortInp = ui.el('input', '', { id: 'transparent-port', type: 'number', value: '17477', min: '1024', max: '65535', style: 'width:72px;padding:3px 6px;font-size:11px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--bg);color:var(--text-primary)' });
     tpRow.appendChild(tpPortInp);
@@ -71,7 +76,7 @@ router.register('server', (container) => {
     tpRow.appendChild(tpStopBtn);
     card.appendChild(tpRow);
 
-    const connRow = ui.el('div', '', { style: 'display:flex;gap:12px;align-items:baseline' });
+    const connRow = ui.el('div', '', { style: 'display:flex;gap:18px;align-items:baseline;margin-top:2px' });
     const httpConn = ui.el('div', '', { style: 'display:flex;align-items:baseline;gap:4px' });
     httpConn.appendChild(ui.el('span', '', { style: 'font-size:11px;color:var(--text-secondary)', text: t('page.server.http') }));
     httpConn.appendChild(ui.el('span', '', { id: 'proxy-connections', style: 'font-size:16px;font-weight:700;color:var(--accent)', text: '0' }));
@@ -216,13 +221,19 @@ router.register('server', (container) => {
     }
     if (el('btn-proxy-start')) el('btn-proxy-start').disabled = httpRunning;
     if (el('btn-proxy-stop')) el('btn-proxy-stop').disabled = !httpRunning;
-    if (el('proxy-port') && ps && ps.port) el('proxy-port').value = ps.port;
+    const syncPort = (id, port, key) => {
+      if (!port || port === lastPorts[key]) return;
+      lastPorts[key] = port;
+      const inp = el(id);
+      if (inp) inp.value = port;
+    };
+    syncPort('proxy-port', ps && ps.port, 'http');
     if (el('btn-socks5-start')) el('btn-socks5-start').disabled = s5Running;
     if (el('btn-socks5-stop')) el('btn-socks5-stop').disabled = !s5Running;
-    if (el('socks5-port') && ss && ss.port) el('socks5-port').value = ss.port;
+    syncPort('socks5-port', ss && ss.port, 's5');
     if (el('btn-transparent-start')) el('btn-transparent-start').disabled = tpRunning;
     if (el('btn-transparent-stop')) el('btn-transparent-stop').disabled = !tpRunning;
-    if (el('transparent-port') && ts && ts.port) el('transparent-port').value = ts.port;
+    syncPort('transparent-port', ts && ts.port, 'tp');
     const httpConn = ps ? (ps.connections || 0) : 0;
     const s5Conn = ss ? (ss.connections || 0) : 0;
     const tpConn = ts ? (ts.connections || 0) : 0;
