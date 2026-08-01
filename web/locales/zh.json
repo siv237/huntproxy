@@ -585,6 +585,7 @@
       "queuedNow": "排队中",
       "overdue": "已过期",
       "taskProxyCheck": "代理池检查",
+      "taskSourceRefresh": "采集新代理",
       "taskIpBlacklist": "更新IP黑名单",
       "taskBlocklist": "更新封锁列表",
       "taskHealthCheck": "健康检查",

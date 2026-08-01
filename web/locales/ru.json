@@ -623,6 +623,7 @@
       "queuedNow": "в очереди",
       "overdue": "просрочено",
       "taskProxyCheck": "Проверка пула прокси",
+      "taskSourceRefresh": "Сбор свежих прокси",
       "taskIpBlacklist": "Обновление IP-блэклистов",
       "taskBlocklist": "Обновление блоклистов",
       "taskHealthCheck": "Перепроверка прокси",

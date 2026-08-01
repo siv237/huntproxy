@@ -90,7 +90,7 @@ sudo OWN_IP=10.8.0.2 ./setup_iptables.sh start
 
 ### Scheduler (Schedules)
 
-A single background-task engine: hunt cycle, IP-blacklist refresh, blocklist refresh, health-check, history recording, dead-proxy cleanup, DB backup. Each task can be toggled, re-scheduled, and run on demand.
+A single background-task engine: fresh proxy intake, pool re-validation, IP-blacklist refresh, blocklist refresh, health-check, history recording, dead-proxy cleanup, DB backup. Each task can be toggled, re-scheduled, and run on demand.
 
 ### Misc
 

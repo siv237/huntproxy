@@ -704,6 +704,52 @@ class TestSchedulerExecutorHistory:
         asyncio.run(run())
 
 
+class TestSchedulerExecutorSourceRefresh:
+    def test_new_addresses_queued_as_untested(self, state):
+        async def run():
+            sched = SchedulerEngine(state)
+            state.ratings["1.2.3.4:8080"] = state._create_rating("1.2.3.4:8080", "", "")
+
+            async def fake_download():
+                return {"1.2.3.4:8080", "5.6.7.8:3128", "9.10.11.12:1080"}
+            state._download_sources = fake_download
+
+            entry = ScheduleEntry(id="source_refresh", name="Fresh proxy intake",
+                                  task_type="source_refresh")
+            await sched.executor.run(entry)
+
+            assert set(state.ratings) == {"1.2.3.4:8080", "5.6.7.8:3128", "9.10.11.12:1080"}
+            for addr in ("5.6.7.8:3128", "9.10.11.12:1080"):
+                r = state.ratings[addr]
+                assert r.last_status == "untested"
+                assert r.score == 0.0
+            # New addresses persisted via _save_dirty_ratings into the tmp DB.
+            conn = state._db()
+            saved = {row["address"] for row in conn.execute("SELECT address FROM ratings")}
+            conn.close()
+            assert saved == {"5.6.7.8:3128", "9.10.11.12:1080"}
+            await sched.stop()
+
+        asyncio.run(run())
+
+    def test_no_new_addresses_is_noop(self, state):
+        async def run():
+            sched = SchedulerEngine(state)
+            state.ratings["1.2.3.4:8080"] = state._create_rating("1.2.3.4:8080", "", "")
+
+            async def fake_download():
+                return {"1.2.3.4:8080"}
+            state._download_sources = fake_download
+
+            entry = ScheduleEntry(id="source_refresh", name="Fresh proxy intake",
+                                  task_type="source_refresh")
+            await sched.executor.run(entry)
+            assert set(state.ratings) == {"1.2.3.4:8080"}
+            await sched.stop()
+
+        asyncio.run(run())
+
+
 class TestSchedulerIntervalFromCompletion:
     """The next run must be scheduled interval_sec after the task COMPLETES,
     not after it starts — so a long hunt does not re-fire too early."""

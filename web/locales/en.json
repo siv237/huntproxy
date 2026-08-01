@@ -623,6 +623,7 @@
       "queuedNow": "queued",
       "overdue": "overdue",
       "taskProxyCheck": "Proxy Pool Check",
+      "taskSourceRefresh": "Fresh Proxy Intake",
       "taskIpBlacklist": "IP Blacklist Refresh",
       "taskBlocklist": "Country Blocklist Refresh",
       "taskHealthCheck": "Health Check",

@@ -11,6 +11,13 @@ TASK_TYPES: dict[str, dict[str, Any]] = {
         "respect_internet": True,
         "busy_flag": "_hunt_running",
     },
+    "source_refresh": {
+        "description": "Download proxy source lists, queue fresh addresses for validation",
+        "mutex_with": [],
+        "respect_pause": False,
+        "respect_internet": True,
+        "busy_flag": "_hunt_running",
+    },
     "ip_blacklist": {
         "description": "Download IP blacklist sources",
         "mutex_with": [],
@@ -91,6 +98,14 @@ DEFAULT_SCHEDULES: list[dict[str, Any]] = [
         "task_type": "proxy_check",
         "enabled": 1,
         "interval_sec": 1800,
+        "config": "{}",
+    },
+    {
+        "id": "source_refresh",
+        "name": "Fresh proxy intake",
+        "task_type": "source_refresh",
+        "enabled": 1,
+        "interval_sec": 3600,
         "config": "{}",
     },
 ]

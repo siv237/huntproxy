@@ -52,6 +52,7 @@ class TaskExecutor:
 
     def _register_defaults(self):
         self.register("proxy_check", _execute_proxy_check)
+        self.register("source_refresh", _execute_source_refresh)
         self.register("ip_blacklist", _execute_ip_blacklist)
         self.register("blocklist", _execute_blocklist)
         self.register("health_check", _execute_health_check)
@@ -92,6 +93,31 @@ async def _execute_proxy_check(state, entry: ScheduleEntry):
         f"({state.working} ok, {state.failed} failed)",
         "ok",
     )
+
+
+async def _execute_source_refresh(state, entry: ScheduleEntry):
+    """Download proxy source lists and queue fresh addresses for validation.
+
+    Collect-only: new addresses are added to ratings as untested (score 0,
+    not eligible for the pool).  The regular proxy_check schedule validates
+    them — newest first — on its next run, so this task never touches the
+    shared validation counters and needs no mutex with proxy_check /
+    health_check.
+    """
+    state._emit("Scheduler: refreshing proxy sources...", "info")
+    raw = await state._download_sources()
+    new = [a for a in raw if a not in state.ratings]
+    for a in new:
+        state.ratings[a] = state._create_rating(a, "", "")
+        state._dirty_ratings.add(a)
+    if new:
+        state._save_dirty_ratings()
+    state._emit(
+        f"Scheduler: {len(new)} fresh proxies queued for validation "
+        f"({len(raw)} total in sources)",
+        "ok",
+    )
+    state._log_action("scheduler.source_refresh", f"{len(new)} fresh / {len(raw)} total")
 
 
 async def _execute_ip_blacklist(state, entry: ScheduleEntry):

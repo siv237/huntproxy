@@ -584,6 +584,7 @@
       "queuedNow": "in Warteschlange",
       "overdue": "überfällig",
       "taskProxyCheck": "Proxy-Pool-Prüfung",
+      "taskSourceRefresh": "Neue Proxys einsammeln",
       "taskIpBlacklist": "IP-Blacklist aktualisieren",
       "taskBlocklist": "Blocklisten aktualisieren",
       "taskHealthCheck": "Gesundheitsprüfung",

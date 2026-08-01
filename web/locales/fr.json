@@ -584,6 +584,7 @@
       "queuedNow": "en file",
       "overdue": "en retard",
       "taskProxyCheck": "Vérification du pool",
+      "taskSourceRefresh": "Collecte de nouveaux proxys",
       "taskIpBlacklist": "Actualisation liste IP noire",
       "taskBlocklist": "Actualisation listes de blocage",
       "taskHealthCheck": "Vérification de santé",

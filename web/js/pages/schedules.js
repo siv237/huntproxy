@@ -5,6 +5,7 @@ router.register('schedules', (container) => {
 
   const TASK_TYPE_KEYS = {
     proxy_check: 'page.schedules.taskProxyCheck',
+    source_refresh: 'page.schedules.taskSourceRefresh',
     ip_blacklist: 'page.schedules.taskIpBlacklist',
     blocklist: 'page.schedules.taskBlocklist',
     health_check: 'page.schedules.taskHealthCheck',
