@@ -124,9 +124,14 @@ def main():
     args, _ = ap.parse_known_args()
 
     if not CONFIG_PATH.exists():
-        import sys
-        print(f"ERROR: {CONFIG_PATH} not found", file=sys.stderr)
-        return
+        example = CONFIG_PATH.with_name("config.example.yaml")
+        if not example.exists():
+            import sys
+            print(f"ERROR: neither {CONFIG_PATH} nor {example} found", file=sys.stderr)
+            return
+        import shutil
+        shutil.copy(example, CONFIG_PATH)
+        logger.info("config.yaml created from config.example.yaml")
 
     with open(CONFIG_PATH) as f:
         config = yaml.safe_load(f)

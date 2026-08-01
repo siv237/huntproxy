@@ -140,7 +140,7 @@ sudo systemctl restart huntproxy
 
 ## Configuration
 
-Everything lives in `config.yaml`. Key settings:
+Everything lives in `config.yaml`. It is created automatically from the tracked template `config.example.yaml` on first start and is gitignored — local edits (including via the web Settings page) never dirty the repo. Key settings:
 
 ```yaml
 server:

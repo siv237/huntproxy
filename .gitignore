@@ -9,6 +9,9 @@ __pycache__/
 
 data/
 
+# Local installation config (tracked template: config.example.yaml)
+config.yaml
+
 .sixth/
 .kilo/
 node_modules/
