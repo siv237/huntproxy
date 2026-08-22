@@ -202,6 +202,7 @@ class HuntServer:
             self._router.add(m, "/api/proxy/next", p._handle_proxy_next)
             self._router.add_prefix(m, "/api/proxy/recheck", p._handle_proxy_recheck)
             self._router.add_prefix(m, "/api/proxy/direct", p._handle_proxy_direct)
+            self._router.add(m, "/api/proxy/fraud", p._handle_proxy_fraud)
         self._router.add("GET", "/api/socks5/status", p._handle_socks5_status)
         for m in ("GET", "POST"):
             self._router.add_prefix(m, "/api/socks5/start", p._handle_socks5_start)

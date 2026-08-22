@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import os
+import time
 from urllib.parse import unquote
 
 from hunt.geo import country_code_from_name, country_flag, country_name_from_code
@@ -157,6 +158,52 @@ class ProxyHandlers:
         self.state._emit(f"Direct mode: {'ON' if en else 'OFF'}", "info")
         self.state._save_state()
         return json.dumps({"ok": True, "direct_mode": en}), 200, "application/json"
+
+    async def _handle_proxy_fraud(self, raw_path, body):
+        """Принудительная fraud-проверка одного прокси (без ожидания health-цикла).
+
+        Ходит через сам прокси (CONNECT ip-api), обновляет fraud-поля рейтинга.
+        Свежий результат (<10 мин) возвращается из кэша.
+        """
+        qs = _qs(raw_path)
+        addr = qs.get("addr", "")
+        if not addr:
+            return json.dumps({"ok": False, "error": "no addr"}), 400, "application/json"
+        r = self.state.ratings.get(addr)
+        if r is None:
+            return json.dumps({"ok": False, "error": "not found"}), 404, "application/json"
+        now = time.time()
+        if r.fraud_checked_ts and now - r.fraud_checked_ts < 600:
+            return json.dumps({"ok": True, "cached": True,
+                               "fraud_score": r.fraud_score, "fraud_verdict": r.fraud_verdict,
+                               "fraud_hosting": r.fraud_hosting, "fraud_proxy": r.fraud_proxy,
+                               "fraud_checked_ts": r.fraud_checked_ts}), 200, "application/json"
+        try:
+            results = await asyncio.gather(
+                asyncio.create_task(self.state._check_proxy(addr)),
+                asyncio.create_task(self.state._check_ssl(addr)),
+                return_exceptions=True,
+            )
+            merged = self.state._merge_check_results(results, addr)
+            ok = bool(merged.get("ok"))
+            egress = merged.get("egress") or {}
+        except Exception as exc:
+            logger.warning("fraud check %s: %s", addr, str(exc)[:200])
+            ok, egress = False, {}
+        if "egress_hosting" not in egress:
+            logger.warning("fraud check %s: egress без fraud-данных (ok=%s)", addr, ok)
+        if "egress_hosting" in egress:
+            r.fraud_hosting = bool(egress.get("egress_hosting"))
+            r.fraud_proxy = bool(egress.get("egress_proxy"))
+            r.fraud_checked_ts = now
+            self.state._dirty_ratings.add(addr)
+            self.state._save_dirty_ratings()
+            return json.dumps({"ok": True, "cached": False,
+                               "fraud_score": r.fraud_score, "fraud_verdict": r.fraud_verdict,
+                               "fraud_hosting": r.fraud_hosting, "fraud_proxy": r.fraud_proxy,
+                               "fraud_checked_ts": r.fraud_checked_ts}), 200, "application/json"
+        return json.dumps({"ok": False, "error": "check failed",
+                           "fraud_score": r.fraud_score, "fraud_verdict": r.fraud_verdict}), 200, "application/json"
 
     async def _handle_proxy_detail(self, raw_path, body):
         path = raw_path.split("?", 1)[0]
