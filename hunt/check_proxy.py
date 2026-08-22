@@ -68,7 +68,7 @@ class CheckProxyMixin:
     async def _check_http_proxy(self, reader, writer, t0, listen_task) -> tuple:
         try:
             req = (
-                "GET http://ip-api.com/json/ HTTP/1.0\r\n"
+                "GET http://ip-api.com/json/?fields=query,city,isp,country,hosting,proxy HTTP/1.0\r\n"
                 "Host: ip-api.com\r\n"
                 "User-Agent: huntproxy\r\n"
                 "Connection: close\r\n"
@@ -100,6 +100,8 @@ class CheckProxyMixin:
             "egress_city": data.get("city", ""),
             "egress_isp": data.get("isp", ""),
             "egress_country": data.get("country", ""),
+            "egress_hosting": bool(data.get("hosting")),
+            "egress_proxy": bool(data.get("proxy")),
         }
         return True, country, False, False, egress, None, http_latency, country_code
 

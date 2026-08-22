@@ -156,6 +156,10 @@ class CheckRatingMixin:
         r.egress_country = egress.get("egress_country") or r.egress_country
         if egress.get("egress_country") and not r.egress_country_code:
             r.egress_country_code = country_code_from_name(egress["egress_country"])
+        if "egress_hosting" in egress or "egress_proxy" in egress:
+            r.fraud_hosting = bool(egress.get("egress_hosting"))
+            r.fraud_proxy = bool(egress.get("egress_proxy"))
+            r.fraud_checked_ts = time.time()
 
     def _apply_listen(self, r: ProxyRating, listen: dict):
         r.listen_country = listen.get("country") or r.listen_country

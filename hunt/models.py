@@ -43,6 +43,9 @@ class ProxyRating:
     listen_isp: str = ""
     egress_http_ip: str = ""
     egress_http_country: str = ""
+    fraud_hosting: bool = False  # egress-IP за дата-центром/хостингом (ip-api hosting)
+    fraud_proxy: bool = False  # egress-IP помечен как прокси/VPN (ip-api proxy)
+    fraud_checked_ts: float = 0.0  # когда в последний раз получали fraud-данные
     speed_sum: float = 0.0
     speed_count: int = 0
     last_speed: float = 0.0
@@ -58,6 +61,29 @@ class ProxyRating:
     @property
     def latency_avg(self) -> float:
         return self.latency_sum / self.latency_count if self.latency_count else 0.0
+
+    @property
+    def fraud_score(self) -> int:
+        """Чистота egress-IP по флагам ip-api: 0 = чистый (резидент),
+        50 = дата-центр/хостинг, 100 = прокси/VPN, -1 = данных нет."""
+        if not self.fraud_checked_ts:
+            return -1
+        if self.fraud_proxy:
+            return 100
+        if self.fraud_hosting:
+            return 50
+        return 0
+
+    @property
+    def fraud_verdict(self) -> str:
+        s = self.fraud_score
+        if s < 0:
+            return "UNKNOWN"
+        if s == 0:
+            return "CLEAN"
+        if s == 50:
+            return "DC"
+        return "PROXY"
 
     @property
     def success_rate(self) -> float:
@@ -184,6 +210,11 @@ class ProxyRating:
             "listen_city": self.listen_city,
             "listen_isp": self.listen_isp,
             "ssl_supported": self.ssl_supported,
+            "fraud_hosting": self.fraud_hosting,
+            "fraud_proxy": self.fraud_proxy,
+            "fraud_score": self.fraud_score,
+            "fraud_verdict": self.fraud_verdict,
+            "fraud_checked_ts": self.fraud_checked_ts,
         }
 
     def to_pool_dict(self) -> dict:
@@ -222,4 +253,9 @@ class ProxyRating:
             "listen_city": self.listen_city,
             "listen_isp": self.listen_isp,
             "ssl_supported": self.ssl_supported,
+            "fraud_hosting": self.fraud_hosting,
+            "fraud_proxy": self.fraud_proxy,
+            "fraud_score": self.fraud_score,
+            "fraud_verdict": self.fraud_verdict,
+            "fraud_checked_ts": self.fraud_checked_ts,
         }
