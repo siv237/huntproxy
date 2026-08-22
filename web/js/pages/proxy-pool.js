@@ -8,6 +8,7 @@ router.register('proxy-pool', (container) => {
     hideNoSsl: false,
     hideMitm: true,
     hideBlacklisted: true,
+    hideFraud: false,
     groupByProtocol: true,
   };
 
@@ -176,6 +177,12 @@ router.register('proxy-pool', (container) => {
     blLbl.appendChild(blCb);
     blLbl.appendChild(ui.el('span', '', { text: t('page.proxyPool.hideBlacklisted') }));
     filterRow.appendChild(blLbl);
+    const fraudLbl = ui.el('label', '', { style: 'display:flex;align-items:center;gap:4px;cursor:pointer;font-size:11px' });
+    const fraudCb = ui.el('input', '', { id: 'hide-fraud', type: 'checkbox' });
+    fraudCb.addEventListener('change', () => { state.hideFraud = fraudCb.checked; updateSelectProxy(state.proxies); });
+    fraudLbl.appendChild(fraudCb);
+    fraudLbl.appendChild(ui.el('span', '', { text: 'fraud-CLEAN only' }));
+    filterRow.appendChild(fraudLbl);
     card.appendChild(filterRow);
 
     const wrap = ui.el('div', '', { id: 'select-proxy-tbl', style: 'flex:1;overflow-y:auto;min-height:0' });
@@ -358,7 +365,7 @@ router.register('proxy-pool', (container) => {
 
     const sorted = (proxies || []).slice()
       .map(p => { p._diff = (p.listen_country && p.egress_country && p.listen_country !== p.egress_country) ? 1 : 0; p._exit_code = p.egress_country ? ui.flag(p.egress_country.slice(0,2).toUpperCase().replace(/[^A-Z]/g,'')) : ''; p._protoGroup = proxyProtoGroup(p); return p; })
-      .filter(p => (!state.hideNoHttps || p.supports_connect) && (!state.hideNoSsl || p.ssl_supported) && (!state.hideMitm || !p.mitm_suspect) && (!state.hideBlacklisted || !(p.in_blacklist || (p.ip_blacklist_hits || 0) > 0)))
+      .filter(p => (!state.hideNoHttps || p.supports_connect) && (!state.hideNoSsl || p.ssl_supported) && (!state.hideMitm || !p.mitm_suspect) && (!state.hideBlacklisted || !(p.in_blacklist || (p.ip_blacklist_hits || 0) > 0)) && (!state.hideFraud || p.fraud_verdict === 'CLEAN'))
       .sort((a, b) => {
         const key = state.proxySortKey;
         const dir = state.proxySortDir;
@@ -372,10 +379,20 @@ router.register('proxy-pool', (container) => {
       if (state.hideNoSsl) tags.push('SSL');
       if (state.hideMitm) tags.push('no-MITM');
       if (state.hideBlacklisted) tags.push('no-BL');
+      if (state.hideFraud) tags.push('fraud-CLEAN');
       count.textContent = sorted.length + (tags.length ? ' ' + tags.join('+') : ' alive');
     }
 
     const h = (label, key, width, align) => ({ label: label + (key ? ui.sortArrow(key, state.proxySortKey, state.proxySortDir) : ''), width, align, sortKey: key, onSort: key ? () => setProxySort(key) : undefined });
+
+    function fraudBadge(p) {
+      const v = p.fraud_verdict || 'UNKNOWN';
+      const s = typeof p.fraud_score === 'number' ? p.fraud_score : -1;
+      if (s < 0) return '<span style="color:var(--text-muted);font-size:9px">—</span>';
+      const color = v === 'CLEAN' ? 'var(--success)' : v === 'DC' ? 'var(--warning)' : 'var(--danger)';
+      const bg = v === 'CLEAN' ? 'rgba(34,197,94,.12)' : v === 'DC' ? 'rgba(245,158,11,.12)' : 'rgba(239,68,68,.12)';
+      return `<span title="fraud: ${v} (${s}/100)" style="display:inline-flex;align-items:center;justify-content:center;min-width:40px;padding:1px 4px;border-radius:var(--radius-xs);background:${bg};color:${color};font-weight:700;font-size:9px">${v} ${s}</span>`;
+    }
 
     function blacklistBadge(p) {
       const hits = p.ip_blacklist_hits || 0;
@@ -421,6 +438,7 @@ router.register('proxy-pool', (container) => {
           h('Succ', 'success_rate', '40px', 'right'),
           h('Score', 'score', '40px', 'right'),
           h('BL', 'ip_blacklist_hits', '36px', 'center'),
+          h('Fraud', 'fraud_score', '52px', 'center'),
           h('Ok', 'last_ok', '36px', 'right'),
           h('', null, '40px', 'center'),
         ];
@@ -442,6 +460,7 @@ router.register('proxy-pool', (container) => {
             (p.success_rate * 100).toFixed(0) + '%',
             `<div style="display:inline-block;width:30px;height:4px;background:var(--surface-raised);border-radius:2px;vertical-align:middle;overflow:hidden"><div style="width:${sc}%;height:100%;background:linear-gradient(90deg,var(--accent),var(--info));transition:width 0.4s"></div></div>`,
             blacklistBadge(p),
+            fraudBadge(p),
             ui.ago(p.last_ok),
             `<button class="btn btn-xs ${isSel ? 'btn-primary' : 'btn-secondary'}" onclick="selectProxy('${p.address}')" style="padding:1px 4px;font-size:9px">${isSel ? t('page.proxyPool.active') : t('page.proxyPool.select')}</button>`,
           ];
@@ -469,6 +488,7 @@ router.register('proxy-pool', (container) => {
         h('Succ', 'success_rate', '40px', 'right'),
         h('Score', 'score', '40px', 'right'),
         h('BL', 'ip_blacklist_hits', '36px', 'center'),
+        h('Fraud', 'fraud_score', '52px', 'center'),
         h('Flags', 'supports_connect', '50px', 'center'),
         h('Ok', 'last_ok', '36px', 'right'),
         h('', null, '40px', 'center'),
@@ -497,6 +517,7 @@ router.register('proxy-pool', (container) => {
           (p.success_rate * 100).toFixed(0) + '%',
           `<div style="display:inline-block;width:30px;height:4px;background:var(--surface-raised);border-radius:2px;vertical-align:middle;overflow:hidden"><div style="width:${sc}%;height:100%;background:linear-gradient(90deg,var(--accent),var(--info));transition:width 0.4s"></div></div>`,
           blacklistBadge(p),
+          fraudBadge(p),
           `<span style="color:var(--text-muted);font-size:10px">${proto}</span> ${flags.join(' ')}`,
           ui.ago(p.last_ok),
           `<button class="btn btn-xs ${isSel ? 'btn-primary' : 'btn-secondary'}" onclick="selectProxy('${p.address}')" style="padding:1px 4px;font-size:9px">${isSel ? t('page.proxyPool.active') : t('page.proxyPool.select')}</button>`,

@@ -14,6 +14,8 @@ const proxyCard = {
       let checksData = null;
       try { checksData = await api.proxyChecks(addr, 30); } catch (e) { checksData = { checks: [], p95: 0, max_speed: 0, errors: 0, count: 0 }; }
       this._render(modal, p, checksData, overlay);
+      const fs = typeof p.fraud_score === 'number' ? p.fraud_score : -1;
+      if (fs < 0) setTimeout(() => this._fraudCheck(addr), 500);
     } catch (e) {
       modal.innerHTML = `<div style="padding:40px;color:var(--danger)">${t('common.error', {message: ui.escHtml(e.message)})}</div>`;
     }
@@ -21,6 +23,8 @@ const proxyCard = {
 
   _render(modal, p, checksData, overlay) {
     modal.innerHTML = '';
+    this._modal = modal;
+    this._overlay = overlay;
 
     modal.appendChild(this._topBar(p, overlay));
 
@@ -401,6 +405,27 @@ const proxyCard = {
     } else if (isp) {
       details.appendChild(this._routeDetail(t('proxyCard.isp'), isp));
     }
+    const fv = p.fraud_verdict || 'UNKNOWN';
+    const fs = typeof p.fraud_score === 'number' ? p.fraud_score : -1;
+    const fraudRow = ui.el('div', 'proxy-card-route-detail');
+    fraudRow.appendChild(ui.el('div', 'proxy-card-route-detail-key', { text: 'Fraud' }));
+    if (fs >= 0) {
+      const fColor = fv === 'CLEAN' ? '#22c55e' : fv === 'DC' ? '#f59e0b' : '#ef4444';
+      const badge = ui.el('div', 'proxy-card-route-detail-val', { text: `${fv} ${fs}/100` });
+      badge.style.color = fColor;
+      badge.style.fontWeight = '700';
+      fraudRow.appendChild(badge);
+      details.appendChild(fraudRow);
+      details.appendChild(this._routeDetail('Fraud flags', `hosting ${p.fraud_hosting ? 'yes' : 'no'} · proxy ${p.fraud_proxy ? 'yes' : 'no'}`));
+    } else {
+      const val = ui.el('div', 'proxy-card-route-detail-val', { text: '— (not checked yet) ' });
+      const btn = ui.el('button', 'btn btn-xs btn-secondary', { text: 'Check' });
+      btn.style.cssText = 'padding:1px 6px;font-size:9px;margin-left:6px';
+      btn.addEventListener('click', () => this._fraudCheck(p.address));
+      val.appendChild(btn);
+      fraudRow.appendChild(val);
+      details.appendChild(fraudRow);
+    }
     section.appendChild(details);
 
     return section;
@@ -411,6 +436,15 @@ const proxyCard = {
     row.appendChild(ui.el('div', 'proxy-card-route-detail-key', { text: key }));
     row.appendChild(ui.el('div', 'proxy-card-route-detail-val', { text: value }));
     return row;
+  },
+
+  async _fraudCheck(addr) {
+    try {
+      await api.proxyFraud(addr);
+    } catch (e) {
+      app.toast(t('common.error', { message: e.message }), 'error');
+    }
+    if (this._modal) this._refresh(this._modal, addr, this._overlay);
   },
 
   _timeline(p) {
