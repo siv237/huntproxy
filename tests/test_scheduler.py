@@ -724,6 +724,9 @@ class TestSchedulerExecutorSourceRefresh:
                 assert r.last_status == "untested"
                 assert r.score == 0.0
             # New addresses persisted via _save_dirty_ratings into the tmp DB.
+            # That save is fire-and-forget on the background writer thread,
+            # so drain it before opening a reader connection.
+            state._state_writer().drain()
             conn = state._db()
             saved = {row["address"] for row in conn.execute("SELECT address FROM ratings")}
             conn.close()

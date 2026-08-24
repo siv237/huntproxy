@@ -161,6 +161,10 @@ class TestDirtyRatingsSave:
         state._save_dirty_ratings()
         assert state._dirty_ratings == set()
 
+        # The dirty upsert is queued on the background writer thread;
+        # drain it so the reload below is deterministic.
+        state._state_writer().drain()
+
         # Reload from DB — only r1 should reflect the change, but both must exist.
         state2 = hunt.HuntState({"ip_blacklists": {"enabled": False}})
         state2._load_state()
