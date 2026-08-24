@@ -9,7 +9,20 @@ class ProxyRating:
     # (in the working list and in ratings) for this many consecutive failed
     # checks before being dropped, so a temporary outage does not evict a
     # proven good proxy on the first failure.
-    GRACE_FAILS = 100
+    GRACE_FAILS = 50
+
+    # EWMA factor for recency-weighted reliability/latency/speed: effective
+    # window is roughly the last 10-15 measurements, so degraded proxies sink
+    # and recovered ones climb back within a few health cycles instead of
+    # keeping lifetime averages forever.
+    EWMA_ALPHA = 0.25
+    # Fraud risk older than this no longer modifies the score (an accusation
+    # fades when it cannot be re-confirmed — anti-fraud refreshes every check).
+    FRAUD_FRESH_SECONDS = 30 * 24 * 3600.0
+    # Real-traffic failures update the reliability EWMA at most once per this
+    # interval: one user page load can produce several connection errors, and
+    # each should not count as an independent failed check.
+    TRAFFIC_FAIL_THROTTLE = 5.0
 
     address: str
     country: str = ""
@@ -55,6 +68,10 @@ class ProxyRating:
     consecutive_fails: int = 0
     source_ids: list = field(default_factory=list)
     ssl_supported: bool = False
+    sr_ewma: float = -1.0        # EWMA успеха; <0 — не инициализирован (сид из lifetime)
+    latency_ewma: float = -1.0   # EWMA задержки, сек; <0 — нет данных
+    speed_ewma: float = -1.0     # EWMA скорости, KB/s; <0 — нет данных
+    last_traffic_fail_ts: float = 0.0  # троттлинг трафик-фейлов для EWMA
 
     @property
     def speed_avg(self) -> float:
@@ -114,68 +131,94 @@ class ProxyRating:
     def is_blacklisted(self) -> bool:
         return self.in_blacklist or bool(self.ip_blacklist_reason)
 
+    def update_reliability(self, ok: bool):
+        """EWMA of check/traffic outcomes; first call seeds from lifetime rate."""
+        base = self.sr_ewma if self.sr_ewma >= 0 else (
+            self.success_rate if self.checks_total else float(ok))
+        a = self.EWMA_ALPHA
+        self.sr_ewma = (1.0 - a) * base + a * (1.0 if ok else 0.0)
+
+    def update_latency(self, lat: float):
+        a = self.EWMA_ALPHA
+        prev = self.latency_ewma
+        self.latency_ewma = lat if prev < 0 else (1.0 - a) * prev + a * lat
+
+    def update_speed(self, sp: float):
+        a = self.EWMA_ALPHA
+        prev = self.speed_ewma
+        self.speed_ewma = sp if prev < 0 else (1.0 - a) * prev + a * sp
+
+    def record_traffic_fail(self):
+        """Throttled reliability hit from real user-traffic failures."""
+        now = time.time()
+        if now - self.last_traffic_fail_ts >= self.TRAFFIC_FAIL_THROTTLE:
+            self.last_traffic_fail_ts = now
+            self.update_reliability(False)
+
     @property
     def score(self) -> float:
         if self.checks_total == 0:
             return 0.0
-        if self.last_status != "ok":
-            # A proven proxy (one that once had non-zero speed) stays ranked
-            # during its grace period, with the score decaying as consecutive
-            # failures accumulate so it sinks gradually rather than vanishing
-            # on the first failure.
-            if not self.in_grace:
-                return 0.0
-            grace_ratio = 1.0 - (self.consecutive_fails / self.GRACE_FAILS)
-            return max(0.0, self._compute_score() * grace_ratio * 0.5)
-        return self._compute_score()
-
-    def _compute_score(self) -> float:
-        sr = self.success_rate
-        # Reliability and latency matter, but usable speed is the dominant
-        # factor for the end user experience.
-        base = sr * 40
-        if self.latency_count == 0:
-            lat_score = 20
-        else:
-            lat_score = max(0, 100 - self.latency_avg * 10) * 0.2
-        result = base + lat_score
-        if self.ssl_supported:
-            result += 10
-        if self.supports_connect:
-            result += 5
-        if self.mitm_suspect:
-            result -= 30
-        # Speed is dominant. A non-SOCKS proxy that has never produced a speed
-        # measurement is unusable in practice; zero it out instead of letting it
-        # linger near the top with a small score from reliability only.
-        # SOCKS tunnels cannot use the HTTP speed servers meaningfully, so they
-        # are exempt — their score is based on reliability, latency and protocol.
-        if self.speed_count == 0 and self.checks_ok > 0:
-            port = None
-            socks_proxy = False
-            try:
-                port = int(self.address.rsplit(":", 1)[1])
-            except (IndexError, ValueError):
-                pass
-            if port is not None and port in (1080, 10808, 9050, 4145, 9051):
-                socks_proxy = True
-            if not socks_proxy:
-                # Boost the result upward before subtraction so a strong base
-                # does not slip into a small positive score; the requirement is
-                # that a no-speed proxy is dropped, not merely demoted.
-                result -= max(80, result + 10)
-        if self.speed_count > 0:
-            result += min(50, self.speed_avg / 20)
-        if self.speed_fails > 0:
-            result -= min(45, self.speed_fails * 15)
-        # Manual operator blacklist is still a hard exclusion.
         if self.in_blacklist:
             return 0.0
-        # IP blacklist hits lower the score: more lists -> heavier penalty,
-        # but never drop below 20% of the computed score so it remains usable.
+        if self.last_status != "ok":
+            # A proven proxy (one that once had non-zero speed) stays ranked
+            # during its grace period so it sinks gradually instead of
+            # vanishing on the first failure — but deep enough to always rank
+            # below any live proxy of comparable quality.
+            if not self.in_grace:
+                return 0.0
+            grace_ratio = max(0.0, 1.0 - self.consecutive_fails / self.GRACE_FAILS)
+            return max(0.0, min(100.0, self._base_points() * self._modifier_factor() * 0.3 * grace_ratio))
+        return max(0.0, min(100.0, self._base_points() * self._modifier_factor()))
+
+    def _effective_socks(self) -> bool:
+        if self.protocol in ("socks4", "socks5"):
+            return True
+        try:
+            return int(self.address.rsplit(":", 1)[1]) in (1080, 10808, 9050, 9051, 4145)
+        except (IndexError, ValueError):
+            return False
+
+    def _speed_points(self) -> float:
+        sp = self.speed_ewma if self.speed_ewma >= 0 else self.speed_avg
+        if sp > 0:
+            pts = 25.0 * (min(sp, 1600.0) / 1600.0) ** 0.5
+            if self.speed_fails > 0:
+                pts *= max(0.0, 1.0 - 0.35 * self.speed_fails)
+            return pts
+        # No usable measurement yet: SOCKS cannot use the HTTP speed servers,
+        # a newborn proxy gets provisional credit until its first measurements
+        # arrive; a veteran without any measurement evidence scores zero.
+        if self._effective_socks():
+            return 12.0
+        if self.speed_fails == 0 and self.checks_ok < 5:
+            return 12.5
+        return 0.0
+
+    def _base_points(self) -> float:
+        sr = self.sr_ewma if self.sr_ewma >= 0 else self.success_rate
+        lat = self.latency_ewma if self.latency_ewma >= 0 else self.latency_avg
+        pts = sr * 40.0
+        pts += 20.0 * max(0.0, 1.0 - lat / 10.0)
+        pts += self._speed_points()
+        if self.ssl_supported:
+            pts += 5.0
+        if self.supports_connect:
+            pts += 5.0
+        if self._effective_socks():
+            pts += 5.0
+        return pts
+
+    def _modifier_factor(self) -> float:
+        f = 1.0
+        if self.fraud_checked_ts and time.time() - self.fraud_checked_ts <= self.FRAUD_FRESH_SECONDS:
+            f *= 1.0 - 0.006 * max(0, self.fraud_score - 15)
+        if self.mitm_suspect:
+            f *= 0.5
         if self.ip_blacklist_hits > 0:
-            result *= max(0.2, 0.75 ** self.ip_blacklist_hits)
-        return max(0.0, min(100.0, result))
+            f *= max(0.25, 0.75 ** self.ip_blacklist_hits)
+        return f
 
     def to_dict(self) -> dict:
         return {
@@ -197,6 +240,9 @@ class ProxyRating:
             "speed_count": self.speed_count,
             "speed_fails": self.speed_fails,
             "consecutive_fails": self.consecutive_fails,
+            "sr_ewma": round(self.sr_ewma, 4) if self.sr_ewma >= 0 else -1,
+            "latency_ewma": round(self.latency_ewma, 4) if self.latency_ewma >= 0 else -1,
+            "speed_ewma": round(self.speed_ewma, 4) if self.speed_ewma >= 0 else -1,
             "in_grace": self.in_grace,
             "last_check": self.last_check,
             "last_status": self.last_status,

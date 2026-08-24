@@ -55,6 +55,7 @@ class CheckRatingMixin:
             else:
                 r.last_status = "failed"
                 r.consecutive_fails += 1
+            r.update_reliability(ok)
             self.ratings[addr] = r
             self._dirty_ratings.add(addr)
             if r.egress_ip:
@@ -81,6 +82,7 @@ class CheckRatingMixin:
             return
         r.last_status = "failed"
         r.consecutive_fails += 1
+        r.record_traffic_fail()
         r.last_check = time.time()
         self._dirty_ratings.add(addr)
         self._rating_updates_since_save += 1
@@ -120,6 +122,9 @@ class CheckRatingMixin:
         r.last_ok = time.time()
         r.consecutive_fails = 0
         self._apply_speed(r, speed)
+        if speed > 0:
+            r.update_speed(speed)
+        r.update_latency(latency)
         self._apply_country(r, country, country_code)
         r.supports_connect = supports_connect
         r.ssl_supported = ssl_supported

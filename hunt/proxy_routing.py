@@ -161,12 +161,20 @@ class ProxyRouteMixin:
         return await self._connect_via_pool(host, port, chain, need_connect)
 
     def _build_pool(self, need_connect: bool) -> list:
-        pool = [r for r in self.state.ratings.values()
-                if (r.last_status == "ok" or r.in_grace) and not r.in_blacklist]
-        if need_connect:
-            pool = [r for r in pool if r.supports_connect or r.protocol in ("socks4", "socks5")]
-        pool.sort(key=lambda r: r.score, reverse=True)
-        return pool
+        def _eligible(r: ProxyRating) -> bool:
+            if r.in_blacklist or not (r.last_status == "ok" or r.in_grace):
+                return False
+            return need_connect is False or r.supports_connect or r.protocol in ("socks4", "socks5")
+
+        live = [r for r in self.state.ratings.values() if _eligible(r) and r.last_status == "ok"]
+        grace = [r for r in self.state.ratings.values() if _eligible(r) and r.last_status != "ok"]
+        # Live proxies always precede grace-period ones regardless of score:
+        # a grace proxy's score is decayed, but sorting them separately
+        # guarantees user traffic never starts probing a half-dead proxy while
+        # live alternatives exist.
+        live.sort(key=lambda r: r.score, reverse=True)
+        grace.sort(key=lambda r: r.score, reverse=True)
+        return live + grace
 
     async def _open_proxy_conn(self, r: ProxyRating):
         phost, pport_str = r.address.rsplit(":", 1)

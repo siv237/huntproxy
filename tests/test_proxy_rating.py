@@ -44,7 +44,7 @@ class TestProxyRating:
             speed_sum=100, speed_count=1,
         )
         early = r.score
-        r.consecutive_fails = 50
+        r.consecutive_fails = 25
         later = r.score
         assert early > later > 0.0
 
@@ -139,20 +139,26 @@ class TestProxyRating:
         )
         assert r.score <= 100.0
 
-    def test_score_is_zero_when_speed_never_measured(self):
-        """Non-SOCKS proxies that passed basic checks but never produced a
-        speed measurement must receive a heavy penalty so they do not rank
-        above proxies that actually have working speed data."""
-        r = hunt.ProxyRating(
+    def test_veteran_without_speed_gets_no_speed_points(self):
+        """A veteran proxy (many ok checks) with zero speed evidence must not
+        receive any speed credit: its score rests on reliability alone and
+        stays below an identical proxy with measured speed."""
+        no_speed = hunt.ProxyRating(
             address="1.2.3.4:8080",
             checks_total=10, checks_ok=8, last_status="ok",
             latency_sum=0.5, latency_count=1,
             speed_count=0, speed_sum=0,
             ssl_supported=True, supports_connect=True,
         )
-        # Other factors give a non-zero base, but the -50 no-speed penalty
-        # makes the resulting score 0.
-        assert r.score == 0.0
+        assert no_speed._speed_points() == 0.0
+        measured = hunt.ProxyRating(
+            address="1.2.3.4:8081",
+            checks_total=10, checks_ok=8, last_status="ok",
+            latency_sum=0.5, latency_count=1,
+            speed_count=8, speed_sum=800, speed_fails=0,
+            ssl_supported=True, supports_connect=True,
+        )
+        assert measured.score > no_speed.score
 
     def test_socks_proxy_without_speed_is_not_penalized_to_zero(self):
         """SOCKS proxies that never produced a speed measurement should still
