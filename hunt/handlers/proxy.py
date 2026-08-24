@@ -13,15 +13,32 @@ from hunt.handlers import _qs, _int_param
 logger = logging.getLogger(__name__)
 
 class ProxyHandlers:
+    STATUS_TTL = 2.0
+
     def __init__(self, state, server=None):
         self.state = state
         self.server = server
+        self._status_lock = asyncio.Lock()
+        self._status_cache_ts = 0.0
+        self._status_cache_data = None
 
     async def _handle_proxy_status(self, raw_path, body):
         # get_status enriches switch history with a traffic_log aggregation
-        # that can take seconds on a large DB — run it off the event loop so
-        # the UI keeps responding while it works.
-        status = await asyncio.to_thread(self.server.proxy.get_status)
+        # that can take seconds on a large DB. The UI polls this endpoint
+        # every couple of seconds; without coalescing, overlapping polls
+        # stack heavy thread-pool jobs until the executor saturates and the
+        # whole UI hangs. TTL cache + single-flight: at most one computation
+        # per TTL window, everyone else shares its result.
+        cached = self._status_cache_data
+        if cached is not None and time.monotonic() - self._status_cache_ts < self.STATUS_TTL:
+            return json.dumps(cached), 200, "application/json"
+        async with self._status_lock:
+            if self._status_cache_data is not None and \
+                    time.monotonic() - self._status_cache_ts < self.STATUS_TTL:
+                return json.dumps(self._status_cache_data), 200, "application/json"
+            status = await asyncio.to_thread(self.server.proxy.get_status)
+            self._status_cache_data = status
+            self._status_cache_ts = time.monotonic()
         return json.dumps(status), 200, "application/json"
 
     async def _handle_proxy_alive(self, raw_path, body):

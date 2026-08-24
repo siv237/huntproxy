@@ -135,15 +135,17 @@ def _traffic_by_period(state, chronological: list[dict], now: float) -> dict[int
         import sqlite3
         conn = sqlite3.connect(str(state._db_path), check_same_thread=False)
         conn.row_factory = sqlite3.Row
-        rows = conn.execute(
+        # Streaming range scan on idx_traffic_ts.  A GROUP BY over the raw
+        # ts (near-unique per row) is not an aggregation — it sorts the
+        # whole window into a temp b-tree on every call, which stacked up
+        # concurrent status polls and starved the server.
+        cur = conn.execute(
             "SELECT ts, upstream, "
-            "COALESCE(SUM(bytes_in),0) + COALESCE(SUM(bytes_out),0) AS bytes "
-            "FROM traffic_log WHERE ts >= ? AND ts < ? "
-            "GROUP BY ts, upstream",
+            "COALESCE(bytes_in,0) + COALESCE(bytes_out,0) AS bytes "
+            "FROM traffic_log WHERE ts >= ? AND ts < ?",
             (first, now + 1),
-        ).fetchall()
-        conn.close()
-        for row in rows:
+        )
+        for row in cur:
             ts = row["ts"]
             idx = bisect.bisect_right(starts, ts) - 1
             if idx < 0:
@@ -154,6 +156,7 @@ def _traffic_by_period(state, chronological: list[dict], now: float) -> dict[int
             upstream = row["upstream"]
             if upstream == addr or upstream.endswith(_SEP + addr):
                 result[_j] += int(row["bytes"])
+        conn.close()
     except Exception:
         logger.debug("suppressed", exc_info=True)
     return result
