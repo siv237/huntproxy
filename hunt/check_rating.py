@@ -125,8 +125,7 @@ class CheckRatingMixin:
         r.ssl_supported = ssl_supported
         if ssl_supported and r.protocol not in ('socks5', 'socks4'):
             r.protocol = 'https'
-        if mitm_suspect:
-            r.mitm_suspect = True
+        r.mitm_suspect = bool(mitm_suspect)
         if egress:
             self._apply_egress(r, egress)
         if listen:

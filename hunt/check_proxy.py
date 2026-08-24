@@ -132,46 +132,14 @@ class CheckProxyMixin:
 
 
     async def _check_proxy_connect(self, host: str, port: int, is_socks: bool = False) -> tuple:
+            """CONNECT/SOCKS capability + MITM verdict via multi-target TLS
+            verification (see CheckMitmMixin._check_mitm_via)."""
             try:
                 r, w = await self._outbound_connect(host, port, timeout=self.effective_timeout)
             except Exception:
                 return False, False
             try:
-                if is_socks:
-                    if port == 4145:
-                        ok = await self._socks4_test(r, w)
-                    else:
-                        ok = await self._socks5_test(r, w)
-                    if ok:
-                        if self._resolve_channel():
-                            # Reuse the existing tunnel to the tested proxy:
-                            # build a SOCKS tunnel to 2ip.ru:443 on r,w, then
-                            # verify the cert. Avoids a second connection.
-                            mitm = await self._check_mitm_socks_via_channel(r, w, port)
-                        else:
-                            mitm = await self._check_mitm_socks(r, w, port)
-                        return ok, mitm
-                    return ok, False
-                else:
-                    req = f"CONNECT 2ip.ru:443 HTTP/1.1\r\nHost: 2ip.ru:443\r\n\r\n"
-                    w.write(req.encode())
-                    await asyncio.wait_for(w.drain(), timeout=self.effective_timeout)
-                    try:
-                        resp = await asyncio.wait_for(r.readuntil(b"\r\n\r\n"), timeout=15)
-                        if b"200" not in resp.split(b"\r\n")[0]:
-                            return False, False
-                    except (asyncio.IncompleteReadError, asyncio.TimeoutError):
-                        return False, False
-
-                    if self._resolve_channel():
-                        mitm = await self._check_mitm_tls_over(w)
-                        if mitm and not await self._channel_tls_baseline_trusted():
-                            mitm = False
-                    else:
-                        mitm = await self._check_mitm_http(r, w)
-                    return True, mitm
-            except Exception:
-                return False, False
+                return await self._check_mitm_via(r, w, port, is_socks)
             finally:
                 try:
                     w.close()

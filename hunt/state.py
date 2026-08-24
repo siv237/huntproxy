@@ -13,7 +13,7 @@ from hunt.check_validation import CheckValidationMixin
 from hunt.check_proxy import CheckProxyMixin
 from hunt.check_ssl import CheckSslMixin
 from hunt.check_speed import CheckSpeedMixin
-from hunt.check_mitm import CheckMitmMixin
+from hunt.check_mitm import CheckMitmMixin, MITM_TEST_HOSTS
 import logging
 
 logger = logging.getLogger(__name__)
@@ -168,6 +168,7 @@ class HuntState(DbMixin, EventsMixin, SnapshotMixin, HuntControlMixin, HuntCycle
             self._speed_server_idx: int = 0
 
             self.canary_hosts = cfg.get("canary_hosts", ["ya.ru", "google.com", "2ip.ru"])
+            self.mitm_hosts = list(cfg.get("mitm_hosts", MITM_TEST_HOSTS))
             self._canary_last_check: float = 0
             self._canary_interval: float = 30
             self._internet_alive: Optional[bool] = None
