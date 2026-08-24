@@ -4,6 +4,7 @@ Also owns the in-memory traffic helpers ``_mem_traffic``, ``_route_type`` and
 ``_aggregate_routes`` that were previously on ``HuntServer``.
 """
 
+import asyncio
 import json
 import time
 from urllib.parse import urlparse
@@ -107,6 +108,10 @@ class TrafficHandlers:
         return json.dumps({"requests": reqs}), 200, "application/json"
 
     async def _handle_clients(self, raw_path, body):
+        # GROUP BY over the full traffic_log — keep it off the event loop.
+        return json.dumps(await asyncio.to_thread(self._clients_payload)), 200, "application/json"
+
+    def _clients_payload(self):
         clients = {}
         try:
             conn = self.state._stats_db()
@@ -121,9 +126,13 @@ class TrafficHandlers:
                     clients[c] = {"client": c, "requests": 0, "last_seen": entry.get("ts", 0)}
                 clients[c]["requests"] += 1
                 clients[c]["last_seen"] = max(clients[c]["last_seen"], entry.get("ts", 0))
-        return json.dumps({"clients": sorted(clients.values(), key=lambda x: x["requests"], reverse=True)[:20]}), 200, "application/json"
+        return {"clients": sorted(clients.values(), key=lambda x: x["requests"], reverse=True)[:20]}
 
     async def _handle_domains(self, raw_path, body):
+        # GROUP BY over the full traffic_log — keep it off the event loop.
+        return json.dumps(await asyncio.to_thread(self._domains_payload)), 200, "application/json"
+
+    def _domains_payload(self):
         domains = {}
         try:
             conn = self.state._stats_db()
@@ -156,7 +165,7 @@ class TrafficHandlers:
         total = sum(d["requests"] for d in top) or 1
         for d in top:
             d["pct"] = round(d["requests"] / total * 100, 1)
-        return json.dumps({"domains": top}), 200, "application/json"
+        return {"domains": top}
 
     def _classify_error(self, st: str) -> str:
         sl = st.lower()
@@ -171,6 +180,10 @@ class TrafficHandlers:
         return "other"
 
     async def _handle_errors(self, raw_path, body):
+        # GROUP BY over the full traffic_log — keep it off the event loop.
+        return json.dumps(await asyncio.to_thread(self._errors_payload)), 200, "application/json"
+
+    def _errors_payload(self):
         errors = {"timeout": 0, "connect_failed": 0, "4xx": 0, "5xx": 0, "other": 0}
         try:
             conn = self.state._stats_db()
@@ -183,9 +196,14 @@ class TrafficHandlers:
                 errors[self._classify_error(entry.get("status", ""))] += 1
         total = sum(errors.values()) or 1
         result = [{"type": k, "count": v, "pct": round(v / total * 100, 1)} for k, v in errors.items() if v]
-        return json.dumps({"errors": result, "total": total}), 200, "application/json"
+        return {"errors": result, "total": total}
 
     async def _handle_traffic_routes(self, raw_path, body):
+        # Pulls every row of the 24h window out of traffic_log — keep it off
+        # the event loop.
+        return json.dumps(await asyncio.to_thread(self._routes_payload)), 200, "application/json"
+
+    def _routes_payload(self):
         cutoff = time.time() - 86400
         entries = []
         try:
@@ -202,9 +220,12 @@ class TrafficHandlers:
         if not entries:
             entries = self._mem_traffic(cutoff)
         result = self._aggregate_routes(entries)
-        return json.dumps({"routes": result}), 200, "application/json"
+        return {"routes": result}
 
     async def _handle_bandwidth(self, raw_path, body):
+        return json.dumps(await asyncio.to_thread(self._bandwidth_payload)), 200, "application/json"
+
+    def _bandwidth_payload(self):
         cutoff = time.time() - 86400
         upload = 0
         download = 0
@@ -228,11 +249,11 @@ class TrafficHandlers:
             for e in self._mem_traffic(cutoff):
                 upload += int(e.get("bytes_in", 0) or 0)
                 download += int(e.get("bytes_out", 0) or 0)
-        return json.dumps({
+        return {
             "download": download,
             "upload": upload,
             "total": download + upload,
-        }), 200, "application/json"
+        }
 
     async def _handle_traffic_summary(self, raw_path, body):
         now = time.time()
@@ -240,6 +261,13 @@ class TrafficHandlers:
         cache = getattr(self.state, "_traffic_summary_cache", None)
         if cache is not None and cache[0] == bucket:
             return cache[1], 200, "application/json"
+        # Three range scans + GROUP BY over traffic_log — keep them off the
+        # event loop so a cache miss can't freeze every other page.
+        payload = await asyncio.to_thread(self._summary_payload, now)
+        self.state._traffic_summary_cache = (bucket, payload)
+        return payload, 200, "application/json"
+
+    def _summary_payload(self, now):
         periods = {"day": 86400, "week": 604800, "month": 2592000}
         conn = None
         try:
@@ -254,9 +282,7 @@ class TrafficHandlers:
                 conn.close()
             except Exception:
                 logger.debug("suppressed", exc_info=True)
-        payload = json.dumps(result)
-        self.state._traffic_summary_cache = (bucket, payload)
-        return payload, 200, "application/json"
+        return json.dumps(result)
 
     def _compute_traffic_period(self, conn, name, now, secs):
         cutoff = now - secs
