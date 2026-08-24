@@ -1055,7 +1055,12 @@
       "speedFailPenalty": "Penalty for failed speed tests.",
       "ipBlacklistMultiplier": "Score multiplier based on blacklist hits.",
       "totalScore": "Final rating from 0 to 100."
-    }
+    },
+    "reliabilityScore": "Reliability",
+    "speedScore": "Speed",
+    "fraudFactor": "Anti-fraud",
+    "ipblFactor": "IP blacklist",
+    "fraudUnknown": "no data"
   },
   "lang": {
     "selector": "Language"

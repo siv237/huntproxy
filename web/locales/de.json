@@ -1058,7 +1058,12 @@
       "streaming": "Streaming",
       "web": "Web surfing"
     },
-    "webrtcLeak": "WebRTC leak"
+    "webrtcLeak": "WebRTC leak",
+    "reliabilityScore": "Zuverlässigkeit",
+    "speedScore": "Geschwindigkeit",
+    "fraudFactor": "Anti-Fraud",
+    "ipblFactor": "IP-Blacklist",
+    "fraudUnknown": "keine Daten"
   },
   "time": {
     "year": "J",

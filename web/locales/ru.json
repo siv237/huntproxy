@@ -1055,7 +1055,12 @@
       "speedFailPenalty": "Штраф за неудачные тесты скорости.",
       "ipBlacklistMultiplier": "Множитель рейтинга по числу совпадений в чёрных списках.",
       "totalScore": "Итоговый рейтинг от 0 до 100."
-    }
+    },
+    "reliabilityScore": "Надёжность",
+    "speedScore": "Скорость",
+    "fraudFactor": "Антифрод",
+    "ipblFactor": "IP-блэклист",
+    "fraudUnknown": "нет данных"
   },
   "lang": {
     "selector": "Язык"

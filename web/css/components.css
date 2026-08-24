@@ -1204,11 +1204,21 @@
   min-height: 0;
 }
 
+.proxy-card .content > * {
+  /* The modal is height-constrained (max-height 92vh); without this the
+     flex column squeezes the grids below their content and later sections
+     paint over the squeezed one (the route Fraud row "disappeared"). */
+  flex-shrink: 0;
+}
+
 .proxy-card-grid-3 {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: clamp(7px, 1cqi, 12px);
   min-height: 0;
+  /* auto row sizing ignores the route section's real contribution (its Fraud
+     row got clipped by the next grid); min-content sizes the row correctly. */
+  grid-auto-rows: min-content;
 }
 
 /* Security checklist */

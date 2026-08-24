@@ -409,29 +409,30 @@ const proxyCard = {
     const fs = typeof p.fraud_score === 'number' ? p.fraud_score : -1;
     const fraudRow = ui.el('div', 'proxy-card-route-detail');
     fraudRow.appendChild(ui.el('div', 'proxy-card-route-detail-key', { text: 'Fraud' }));
+    const valWrap = ui.el('div', 'proxy-card-route-detail-val');
+    valWrap.style.cssText = 'display:flex;align-items:center;justify-content:flex-end;gap:6px;min-width:0';
     if (fs >= 0) {
       const fColor = fv === 'CLEAN' ? '#22c55e' : fv === 'MOBILE' ? '#3b82f6' : fv === 'DC' ? '#f59e0b' : '#ef4444';
-      const badge = ui.el('div', 'proxy-card-route-detail-val', { text: `${fv} ${fs}/100` });
-      badge.style.color = fColor;
-      badge.style.fontWeight = '700';
+      const badge = ui.el('span', '', { text: `${fv} ${fs}/100` });
+      badge.style.cssText = `color:${fColor};font-weight:700;white-space:nowrap`;
       badge.title = (typeof p.fraud_score_raw === 'number' && p.fraud_score_raw >= 0)
         ? `risk ${p.fraud_score_raw}/100 (proxycheck.io)`
         : 'estimate from ip-api flags';
-      fraudRow.appendChild(badge);
+      valWrap.appendChild(badge);
       if (p.fraud_checked_ts) {
-        fraudRow.appendChild(ui.el('div', 'proxy-card-route-detail-val', { text: ui.ago(p.fraud_checked_ts), style: 'color:var(--text-muted);font-size:9px' }));
+        valWrap.appendChild(ui.el('span', '', { text: ui.ago(p.fraud_checked_ts), style: 'color:var(--text-muted);font-size:9px;white-space:nowrap' }));
       }
       details.appendChild(fraudRow);
       details.appendChild(this._routeDetail('Fraud flags', `hosting ${p.fraud_hosting ? 'yes' : 'no'} · proxy ${p.fraud_proxy ? 'yes' : 'no'} · mobile ${p.fraud_mobile ? 'yes' : 'no'}`));
     } else {
-      const val = ui.el('div', 'proxy-card-route-detail-val', { text: '— (not checked yet) ' });
-      fraudRow.appendChild(val);
+      valWrap.appendChild(ui.el('span', '', { text: '— (not checked yet)', style: 'color:var(--text-muted);white-space:nowrap' }));
       details.appendChild(fraudRow);
     }
     const btn = ui.el('button', 'btn btn-xs btn-secondary', { text: fs >= 0 ? '↻ Re-check' : 'Check' });
-    btn.style.cssText = 'padding:1px 6px;font-size:9px;margin-left:6px';
+    btn.style.cssText = 'padding:1px 6px;font-size:9px;flex:none';
     btn.addEventListener('click', () => this._fraudCheck(p.address, true));
-    fraudRow.appendChild(btn);
+    valWrap.appendChild(btn);
+    fraudRow.appendChild(valWrap);
     section.appendChild(details);
 
     return section;
@@ -519,30 +520,30 @@ const proxyCard = {
     const section = ui.el('div', 'proxy-card-section');
     section.appendChild(this._sectionTitle(t('proxyCard.scoreBreakdown'), this._svg('bar-chart')));
 
-    const sr = p.success_rate || 0;
-    const base = sr * 40;
-    const lat = p.latency_avg || 0;
-    const latScore = Math.max(0, 100 - lat * 10) * 0.2;
-    const sslBonus = p.ssl_supported ? 10 : 0;
+    // Зеркало ProxyRating._base_points / _modifier_factor (rating v2).
+    const sr = (typeof p.sr_ewma === 'number' && p.sr_ewma >= 0) ? p.sr_ewma : (p.success_rate || 0);
+    const relScore = sr * 40;
+    const lat = (typeof p.latency_ewma === 'number' && p.latency_ewma >= 0) ? p.latency_ewma : (p.latency_avg || 0);
+    const latScore = 20 * Math.max(0, 1 - lat / 10);
+    const isSocks = p.protocol === 'socks4' || p.protocol === 'socks5';
+    const sp = (typeof p.speed_ewma === 'number' && p.speed_ewma >= 0) ? p.speed_ewma : (p.speed_avg || 0);
+    let speedScore;
+    if (sp > 0) speedScore = 25 * Math.sqrt(Math.min(sp, 1600) / 1600);
+    else if (isSocks) speedScore = 12;
+    else if (!(p.speed_fails > 0) && (p.checks_ok || 0) < 5) speedScore = 12.5;
+    else speedScore = 0;
+    if (sp > 0 && p.speed_fails > 0) speedScore *= Math.max(0, 1 - 0.35 * p.speed_fails);
+    const sslBonus = p.ssl_supported ? 5 : 0;
     const connectBonus = p.supports_connect ? 5 : 0;
-    const mitmPenalty = p.mitm_suspect ? -30 : 0;
-    const speedBonus = p.speed_avg ? Math.min(50, p.speed_avg / 20) : 0;
-    const speedFailPenalty = -Math.min(45, (p.speed_fails || 0) * 15);
-    let total = base + latScore + sslBonus + connectBonus + mitmPenalty + speedBonus + speedFailPenalty;
-    const hits = p.ip_blacklist_hits || 0;
-    const ipMultiplier = hits ? Math.max(0.2, Math.pow(0.75, hits)) : 1;
-    if (hits) total *= ipMultiplier;
-    if (p.in_blacklist) total = 0;
-    total = Math.max(0, Math.min(100, total));
+    const socksBonus = isSocks ? 5 : 0;
 
     const components = [
-      { label: t('proxyCard.successRate'), value: base, max: 40, color: 'var(--success)' },
-      { label: t('proxyCard.latencyScore'), value: latScore, max: 25, color: 'var(--success)' },
-      { label: 'SSL', value: sslBonus, max: 10, color: 'var(--success)' },
+      { label: t('proxyCard.reliabilityScore'), value: relScore, max: 40, color: 'var(--success)' },
+      { label: t('proxyCard.latencyScore'), value: latScore, max: 20, color: 'var(--success)' },
+      { label: t('proxyCard.speedScore'), value: speedScore, max: 25, color: 'var(--success)' },
+      { label: 'SSL', value: sslBonus, max: 5, color: 'var(--success)' },
       { label: 'CONNECT', value: connectBonus, max: 5, color: 'var(--success)' },
-      { label: t('proxyCard.speedBonus'), value: speedBonus, max: 10, color: 'var(--success)' },
-      { label: t('proxyCard.mitmPenalty'), value: Math.abs(mitmPenalty), max: 10, color: 'var(--danger)', negative: true },
-      { label: t('proxyCard.speedFailPenalty'), value: Math.abs(speedFailPenalty), max: 10, color: 'var(--danger)', negative: true },
+      { label: 'SOCKS', value: socksBonus, max: 5, color: 'var(--success)' },
     ];
 
     const grid = ui.el('div', 'proxy-card-score-hgrid');
@@ -551,10 +552,7 @@ const proxyCard = {
       const item = ui.el('div', 'proxy-card-score-hitem');
       const header = ui.el('div', 'proxy-card-score-hheader');
       header.appendChild(ui.el('div', 'proxy-card-score-hlabel', { text: c.label }));
-      let sign = '';
-      if (c.negative) sign = '-';
-      else if (c.value > 0) sign = '+';
-      header.appendChild(ui.el('div', 'proxy-card-score-hvalue', { text: `${sign}${c.value.toFixed(1)}`, style: `color:${c.color}` }));
+      header.appendChild(ui.el('div', 'proxy-card-score-hvalue', { text: `${c.value > 0 ? '+' : ''}${c.value.toFixed(1)}`, style: `color:${c.color}` }));
       item.appendChild(header);
       const bar = ui.el('div', 'proxy-card-score-hbar');
       bar.appendChild(ui.el('div', '', { style: `width:${pct}%;background:${c.color}` }));
@@ -564,9 +562,35 @@ const proxyCard = {
     });
     section.appendChild(grid);
 
+    // Множители (модификаторы) — применяются к сумме базы.
+    const fresh = p.fraud_checked_ts && (Date.now() / 1000 - p.fraud_checked_ts) < 30 * 86400;
+    const fs = typeof p.fraud_score === 'number' ? p.fraud_score : -1;
+    const fraudMul = (fresh && fs >= 15) ? 1 - 0.006 * (fs - 15) : 1;
+    const mitmMul = p.mitm_suspect ? 0.5 : 1;
+    const hits = p.ip_blacklist_hits || 0;
+    const ipMul = hits ? Math.max(0.25, Math.pow(0.75, hits)) : 1;
+    const modifiers = [
+      { label: t('proxyCard.fraudFactor'), mul: fraudMul, note: (fresh && fs >= 0) ? `risk ${fs}` : t('proxyCard.fraudUnknown'), dim: !(fresh && fs > 15) },
+      { label: 'MITM', mul: mitmMul, note: p.mitm_suspect ? t('proxyCard.mitmPenalty').toLowerCase() : '', dim: !p.mitm_suspect },
+      { label: t('proxyCard.ipblFactor'), mul: ipMul, note: hits ? `${hits}×` : '', dim: !hits },
+    ];
+    const modRow = ui.el('div', 'proxy-card-score-hgrid');
+    modifiers.forEach(m => {
+      const item = ui.el('div', 'proxy-card-score-hitem');
+      const header = ui.el('div', 'proxy-card-score-hheader');
+      header.appendChild(ui.el('div', 'proxy-card-score-hlabel', { text: m.label }));
+      const color = m.dim ? 'var(--text-muted)' : (m.mul < 1 ? 'var(--danger)' : 'var(--success)');
+      header.appendChild(ui.el('div', 'proxy-card-score-hvalue', { text: `×${m.mul.toFixed(2)}`, style: `color:${color}` }));
+      item.appendChild(header);
+      if (m.note) item.appendChild(ui.el('div', 'proxy-card-score-hmax', { text: m.note }));
+      modRow.appendChild(item);
+    });
+    section.appendChild(modRow);
+
+    const total = Math.round(p.score || 0);
     const totalRow = ui.el('div', 'proxy-card-score-total');
     totalRow.appendChild(ui.el('div', 'proxy-card-score-total-label', { text: t('proxyCard.totalScore') }));
-    const totalVal = ui.el('div', 'proxy-card-score-total-value', { html: `${Math.round(total)}<small>/100</small>`, style: `color:${total >= 60 ? 'var(--success)' : total >= 30 ? 'var(--warning)' : 'var(--danger)'}` });
+    const totalVal = ui.el('div', 'proxy-card-score-total-value', { html: `${total}<small>/100</small>`, style: `color:${total >= 60 ? 'var(--success)' : total >= 30 ? 'var(--warning)' : 'var(--danger)'}` });
     totalRow.appendChild(totalVal);
     section.appendChild(totalRow);
 

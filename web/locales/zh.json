@@ -1059,7 +1059,12 @@
       "streaming": "Streaming",
       "web": "Web surfing"
     },
-    "webrtcLeak": "WebRTC leak"
+    "webrtcLeak": "WebRTC leak",
+    "reliabilityScore": "可靠性",
+    "speedScore": "速度",
+    "fraudFactor": "反欺诈",
+    "ipblFactor": "IP黑名单",
+    "fraudUnknown": "暂无数据"
   },
   "time": {
     "year": "年",
