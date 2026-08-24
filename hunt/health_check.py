@@ -189,15 +189,24 @@ class HealthCheckMixin:
         http_task = asyncio.create_task(self._check_proxy(r.address))
         ssl_task = asyncio.create_task(self._check_ssl(r.address))
         fraud_task = asyncio.create_task(self._fetch_fraud_score(r.address))
+        # Only the protocol probes are bounded by the tight check timeout;
+        # the fraud probe (tunnel + TLS + round-trip through the proxy) is
+        # the slowest child and used to be killed by that outer deadline,
+        # silently losing fresh anti-fraud data on every slow check.
+        pair = asyncio.gather(http_task, ssl_task, return_exceptions=True)
         try:
-            return await asyncio.wait_for(
-                asyncio.gather(http_task, ssl_task, fraud_task, return_exceptions=True),
-                timeout=self.effective_timeout + 5,
-            )
+            http_res, ssl_res = await asyncio.wait_for(
+                pair, timeout=self.effective_timeout + 5)
         except asyncio.TimeoutError:
             http_task.cancel()
             ssl_task.cancel()
-            return [asyncio.TimeoutError(), asyncio.TimeoutError()]
+            http_res, ssl_res = asyncio.TimeoutError(), asyncio.TimeoutError()
+        try:
+            fraud_res = await asyncio.wait_for(
+                fraud_task, timeout=self.effective_timeout + 45)
+        except asyncio.TimeoutError:
+            fraud_res = {}
+        return [http_res, ssl_res, fraud_res]
 
     async def _measure_health_speed(self, r, ok, _proto, country, cc, ssl_ok, supports_connect) -> float:
         if not ok:

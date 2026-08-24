@@ -134,6 +134,13 @@ class CheckRatingMixin:
             self._apply_listen(r, listen)
         if fraud:
             self._apply_fraud(r, fraud)
+        elif fraud is not None:
+            # The fraud probe ran but produced nothing (refused, quota,
+            # timeout). Stamp the attempt so the proxy drops into the
+            # unverified bucket immediately instead of riding the old
+            # verdict until it expires. A missing argument means no
+            # probe was made at all — leave the status untouched.
+            r.fraud_attempt_ts = time.time()
 
     def _apply_fraud(self, r: ProxyRating, fraud: dict):
         """Apply a full 0-100 risk score from proxycheck.io (additive:

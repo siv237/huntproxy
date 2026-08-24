@@ -129,6 +129,7 @@ class ProxyHandlers:
         results = await asyncio.gather(
             asyncio.create_task(self.state._check_proxy(address)),
             asyncio.create_task(self.state._check_ssl(address)),
+            asyncio.create_task(self.state._fetch_fraud_score(address)),
             return_exceptions=True,
         )
         merged = self.state._merge_check_results(results, address)
@@ -145,7 +146,8 @@ class ProxyHandlers:
                 speed = await self.state._measure_speed(host, port, is_socks, use_ssl=use_ssl, supports_connect=supports_connect)
             except Exception:
                 speed = 0.0
-        self.state._update_rating(address, ok, country, http_latency, supports_connect, mitm_suspect, egress, listen, speed, country_code=cc, ssl_supported=ssl_ok)
+        self.state._update_rating(address, ok, country, http_latency, supports_connect, mitm_suspect, egress, listen, speed, country_code=cc, ssl_supported=ssl_ok,
+                                  fraud=merged.get("fraud") or {})
         self.state._save_state()
         self.state._save_working_file()
         return json.dumps({"ok": ok, "address": address}), 200, "application/json"
@@ -211,6 +213,9 @@ class ProxyHandlers:
             self.state._dirty_ratings.add(addr)
             self.state._save_dirty_ratings()
             return json.dumps(self._fraud_response(r, cached=False)), 200, "application/json"
+        r.fraud_attempt_ts = now
+        self.state._dirty_ratings.add(addr)
+        self.state._save_dirty_ratings()
         return json.dumps({"ok": False, "error": "check failed",
                            "fraud_score": r.fraud_score, "fraud_verdict": r.fraud_verdict}), 200, "application/json"
 

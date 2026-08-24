@@ -16,9 +16,17 @@ class ProxyRating:
     # and recovered ones climb back within a few health cycles instead of
     # keeping lifetime averages forever.
     EWMA_ALPHA = 0.25
-    # Fraud risk older than this no longer modifies the score (an accusation
-    # fades when it cannot be re-confirmed — anti-fraud refreshes every check).
-    FRAUD_FRESH_SECONDS = 30 * 24 * 3600.0
+    # Anti-fraud is dynamic: a verdict (clean or accusation) older than this
+    # no longer counts as verified. Fraud is re-fetched on every proxy
+    # re-check; once the window lapses without a fresh confirmation the
+    # proxy drops into the unverified bucket instead of riding an old
+    # verdict for weeks.
+    FRAUD_FRESH_SECONDS = 6 * 3600.0
+    # Score multiplier while fraud status is unverified: never checked,
+    # expired window, or the last attempt produced no data (refused /
+    # timed out). Sits below any confirmed CLEAN proxy so unverified
+    # nodes cannot top the pool, but above confirmed accusations.
+    FRAUD_UNKNOWN_FACTOR = 0.9
     # Real-traffic failures update the reliability EWMA at most once per this
     # interval: one user page load can produce several connection errors, and
     # each should not count as an independent failed check.
@@ -61,6 +69,7 @@ class ProxyRating:
     fraud_mobile: bool = False  # egress-IP мобильный оператор/CGNAT (ip-api mobile)
     fraud_score_raw: int = -1  # риск 0-100 напрямую от proxycheck.io; -1 = нет
     fraud_checked_ts: float = 0.0  # когда в последний раз получали fraud-данные
+    fraud_attempt_ts: float = 0.0  # когда последняя попытка проверки не дала данных
     speed_sum: float = 0.0
     speed_count: int = 0
     last_speed: float = 0.0
@@ -112,6 +121,21 @@ class ProxyRating:
         if s < 65:
             return "DC"
         return "PROXY"
+
+    @property
+    def fraud_confirmed(self) -> bool:
+        """True when fraud data is fresh AND the last attempt confirmed it.
+
+        A refusal (empty result) stamps fraud_attempt_ts, which instantly
+        demotes the proxy to unverified even while the previous verdict is
+        still inside the freshness window; the next successful check
+        restores confirmation because its checked_ts lands after the
+        failed attempt."""
+        if not self.fraud_checked_ts:
+            return False
+        if time.time() - self.fraud_checked_ts > self.FRAUD_FRESH_SECONDS:
+            return False
+        return self.fraud_attempt_ts <= self.fraud_checked_ts
 
     @property
     def success_rate(self) -> float:
@@ -212,8 +236,10 @@ class ProxyRating:
 
     def _modifier_factor(self) -> float:
         f = 1.0
-        if self.fraud_checked_ts and time.time() - self.fraud_checked_ts <= self.FRAUD_FRESH_SECONDS:
+        if self.fraud_confirmed:
             f *= 1.0 - 0.006 * max(0, self.fraud_score - 15)
+        else:
+            f *= self.FRAUD_UNKNOWN_FACTOR
         if self.mitm_suspect:
             f *= 0.5
         if self.ip_blacklist_hits > 0:
@@ -274,6 +300,7 @@ class ProxyRating:
             "fraud_score": self.fraud_score,
             "fraud_verdict": self.fraud_verdict,
             "fraud_checked_ts": self.fraud_checked_ts,
+            "fraud_attempt_ts": self.fraud_attempt_ts,
         }
 
     def to_pool_dict(self) -> dict:
@@ -319,4 +346,5 @@ class ProxyRating:
             "fraud_score": self.fraud_score,
             "fraud_verdict": self.fraud_verdict,
             "fraud_checked_ts": self.fraud_checked_ts,
+            "fraud_attempt_ts": self.fraud_attempt_ts,
         }

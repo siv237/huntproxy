@@ -7,11 +7,13 @@ from hunt.proxy_routing import ProxyRouteMixin
 
 
 def _resident(address=None, **kw):
-    """Healthy proxy: sr 0.95, 0.8s latency, 600 KB/s, SSL+CONNECT."""
+    """Healthy proxy: sr 0.95, 0.8s latency, 600 KB/s, SSL+CONNECT,
+    fraud verified clean just now."""
     if address is None:
         address = kw.pop("address", "1.2.3.4:8080")
     fields = dict(checks_total=20, checks_ok=19, last_status="ok",
                   ssl_supported=True, supports_connect=True, speed_count=1)
+    fields.setdefault("fraud_checked_ts", time.time())
     fields.update(kw)
     r = hunt.ProxyRating(address=address, **fields)
     r.sr_ewma = 0.95
@@ -38,10 +40,11 @@ class TestScoreMatrix:
         assert abs(r.score - clean * (1.0 - 0.006 * 75)) < 0.01
         assert r.score < clean * 0.6
 
-    def test_stale_fraud_data_is_neutral(self):
+    def test_expired_verdict_counts_as_unverified(self):
         r = _resident(fraud_score_raw=95)
         r.fraud_checked_ts = time.time() - hunt.ProxyRating.FRAUD_FRESH_SECONDS - 1
-        assert r.score == _resident().score
+        assert not r.fraud_confirmed
+        assert r.score == pytest.approx(_resident().score * hunt.ProxyRating.FRAUD_UNKNOWN_FACTOR)
 
     def test_mitm_multiplies_not_subtracts(self):
         strong = _resident()
@@ -65,6 +68,48 @@ class TestScoreMatrix:
         mediocre.speed_ewma = 120.0
         assert corpse.score < mediocre.score
         assert corpse.score < _resident().score * 0.35
+
+
+class TestFraudVerification:
+    def test_verified_clean_beats_unverified_twin(self):
+        verified = _resident()
+        unverified = _resident(address="1.2.3.4:8081", fraud_checked_ts=0.0)
+        assert not unverified.fraud_confirmed
+        assert verified.score > unverified.score
+        assert verified.score == pytest.approx(
+            unverified.score / hunt.ProxyRating.FRAUD_UNKNOWN_FACTOR)
+
+    def test_refused_check_drops_to_unverified_immediately(self):
+        r = _resident()
+        base = r.score
+        assert r.fraud_confirmed
+        r.fraud_attempt_ts = r.fraud_checked_ts + 1
+        assert not r.fraud_confirmed
+        assert r.score == pytest.approx(base * hunt.ProxyRating.FRAUD_UNKNOWN_FACTOR)
+
+    def test_success_after_refusal_restores_confirmation(self):
+        r = _resident()
+        r.fraud_attempt_ts = r.fraud_checked_ts + 1
+        assert not r.fraud_confirmed
+        r.fraud_checked_ts = r.fraud_attempt_ts + 1
+        assert r.fraud_confirmed
+
+    def test_unverified_above_confirmed_accusation(self):
+        unknown = _resident(address="1.2.3.4:8081", fraud_checked_ts=0.0)
+        flagged = _resident(fraud_score_raw=66)
+        assert unknown.score > flagged.score
+
+    def test_update_rating_stamps_attempt_on_empty_probe(self, tmp_data_dir):
+        state = hunt.HuntState({"ip_blacklists": {"enabled": False}})
+        addr = "1.2.3.4:8080"
+        state._update_rating(addr, ok=True, country="US", latency=0.5,
+                             fraud={"provider": "proxycheck", "score": 5})
+        r = state.ratings[addr]
+        checked = r.fraud_checked_ts
+        assert r.fraud_confirmed
+        state._update_rating(addr, ok=True, country="US", latency=0.5, fraud={})
+        assert r.fraud_attempt_ts >= checked
+        assert not r.fraud_confirmed
 
 
 class TestEwma:
@@ -127,13 +172,16 @@ class TestSpeedPointsV2:
         assert r._speed_points() == 0.0
 
     def test_socks_fixed_speed_credit_and_feature_bonus(self):
+        now = time.time()
         r = hunt.ProxyRating(address="1.2.3.4:1080", protocol="socks5",
-                             checks_total=10, checks_ok=9, last_status="ok")
+                             checks_total=10, checks_ok=9, last_status="ok",
+                             fraud_checked_ts=now)
         r.sr_ewma = 0.9
         r.latency_ewma = 1.0
         assert r._speed_points() == 12.0
         http_twin = hunt.ProxyRating(address="1.2.3.4:8080",
-                                     checks_total=10, checks_ok=9, last_status="ok")
+                                     checks_total=10, checks_ok=9, last_status="ok",
+                                     fraud_checked_ts=now)
         http_twin.sr_ewma = 0.9
         http_twin.latency_ewma = 1.0
         assert r.score - http_twin.score == pytest.approx(17.0)

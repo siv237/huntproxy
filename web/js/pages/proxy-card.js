@@ -563,14 +563,22 @@ const proxyCard = {
     section.appendChild(grid);
 
     // Множители (модификаторы) — применяются к сумме базы.
-    const fresh = p.fraud_checked_ts && (Date.now() / 1000 - p.fraud_checked_ts) < 30 * 86400;
+    const FRESH_SEC = 6 * 3600;
+    const nowS = Date.now() / 1000;
+    const checkedFresh = p.fraud_checked_ts && (nowS - p.fraud_checked_ts) < FRESH_SEC;
+    const refused = (p.fraud_attempt_ts || 0) > (p.fraud_checked_ts || 0);
+    const confirmed = checkedFresh && !refused;
     const fs = typeof p.fraud_score === 'number' ? p.fraud_score : -1;
-    const fraudMul = (fresh && fs >= 15) ? 1 - 0.006 * (fs - 15) : 1;
+    const fraudMul = confirmed
+      ? (fs >= 15 ? 1 - 0.006 * (fs - 15) : 1)
+      : 0.9;
     const mitmMul = p.mitm_suspect ? 0.5 : 1;
     const hits = p.ip_blacklist_hits || 0;
     const ipMul = hits ? Math.max(0.25, Math.pow(0.75, hits)) : 1;
     const modifiers = [
-      { label: t('proxyCard.fraudFactor'), mul: fraudMul, note: (fresh && fs >= 0) ? `risk ${fs}` : t('proxyCard.fraudUnknown'), dim: !(fresh && fs > 15) },
+      { label: t('proxyCard.fraudFactor'), mul: fraudMul,
+        note: confirmed ? `risk ${fs}` : t('proxyCard.fraudUnknown'),
+        dim: confirmed && fs <= 15 },
       { label: 'MITM', mul: mitmMul, note: p.mitm_suspect ? t('proxyCard.mitmPenalty').toLowerCase() : '', dim: !p.mitm_suspect },
       { label: t('proxyCard.ipblFactor'), mul: ipMul, note: hits ? `${hits}×` : '', dim: !hits },
     ];
