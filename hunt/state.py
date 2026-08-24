@@ -34,6 +34,7 @@ from hunt.health_check import HealthCheckMixin
 from hunt.ip_blacklist import IPBlacklistMixin
 from hunt.ip_blacklist_sources import IPBlacklistSourcesMixin
 from hunt.models import ProxyRating
+from hunt.traffic_stats import TrafficStats
 from hunt.proxy_sources import ProxySourcesMixin
 from hunt.routing import RoutingMixin
 from hunt.snapshot import SnapshotMixin
@@ -200,6 +201,15 @@ class HuntState(DbMixin, EventsMixin, SnapshotMixin, HuntControlMixin, HuntCycle
                 conn.close()
                 if row and row["last_ts"]:
                     self._last_history_ts = row["last_ts"]
+            except Exception:
+                logger.debug("suppressed", exc_info=True)
+            # Hourly traffic rollup: rebuilt once here so dashboard endpoints
+            # read pre-aggregated counters instead of scanning traffic_log.
+            self._traffic_stats = TrafficStats()
+            try:
+                conn = self._stats_db()
+                self._traffic_stats.load_from_db(conn, time.time())
+                conn.close()
             except Exception:
                 logger.debug("suppressed", exc_info=True)
             self._load_ip_blacklist()

@@ -205,28 +205,88 @@ class TrafficHandlers:
 
     def _routes_payload(self):
         cutoff = time.time() - 86400
+        agg = getattr(self.state, "_traffic_stats", None)
+        if agg is not None and agg.ready:
+            rows = [{"upstream": up, "_cnt": r[0], "bytes_in": r[1],
+                     "bytes_out": r[2], "_ok": r[3], "_dur_sum": r[4]}
+                    for up, r in agg.by_upstream(cutoff).items()]
+            if rows:
+                return {"routes": self._aggregate_rollup(rows)}
         entries = []
         try:
             conn = self.state._stats_db()
+            # Aggregate in SQLite: grouping millions of raw rows in C beats
+            # shipping every row into Python just to count them.
             rows = conn.execute(
-                "SELECT ts, upstream, bytes_in, bytes_out, status, duration "
-                "FROM traffic_log WHERE ts > ? ORDER BY id DESC",
+                "SELECT upstream, COUNT(*) AS cnt, "
+                "COALESCE(SUM(bytes_in),0) AS bin, COALESCE(SUM(bytes_out),0) AS bout, "
+                "COALESCE(SUM(CASE WHEN status='ok' THEN 1 ELSE 0 END),0) AS okc, "
+                "COALESCE(SUM(duration),0) AS durs "
+                "FROM traffic_log WHERE ts > ? GROUP BY upstream",
                 (cutoff,)
             ).fetchall()
             conn.close()
-            entries = [dict(r) for r in rows]
+            entries = [{
+                "upstream": r["upstream"], "_cnt": int(r["cnt"]),
+                "bytes_in": int(r["bin"]), "bytes_out": int(r["bout"]),
+                "_ok": int(r["okc"]), "_dur_sum": float(r["durs"]),
+            } for r in rows]
         except Exception:
             entries = []
         if not entries:
-            entries = self._mem_traffic(cutoff)
-        result = self._aggregate_routes(entries)
-        return {"routes": result}
+            return {"routes": self._aggregate_routes(self._mem_traffic(cutoff))}
+        return {"routes": self._aggregate_rollup(entries)}
+
+    def _aggregate_rollup(self, rows: list) -> list:
+        """Route-type buckets from pre-aggregated per-upstream rows."""
+        routes: dict = {}
+        for e in rows:
+            up = e.get("upstream") or ""
+            if not up or up == "?":
+                up = "unknown"
+            rtype = self._route_type(up)
+            rt = routes.setdefault(rtype, {
+                "type": rtype, "requests": 0, "bytes_in": 0, "bytes_out": 0,
+                "ok": 0, "_dur_sum": 0.0, "upstreams": {},
+            })
+            rt["requests"] += e["_cnt"]
+            rt["bytes_in"] += e["bytes_in"]
+            rt["bytes_out"] += e["bytes_out"]
+            rt["ok"] += e["_ok"]
+            rt["_dur_sum"] += e["_dur_sum"]
+            rt["upstreams"][up] = e["_cnt"]
+        result = []
+        for rt in routes.values():
+            cnt = rt["requests"] or 1
+            result.append({
+                "type": rt["type"],
+                "requests": rt["requests"],
+                "bytes_in": rt["bytes_in"],
+                "bytes_out": rt["bytes_out"],
+                "success_rate": round(rt["ok"] / cnt * 100, 1),
+                "avg_duration": round(rt["_dur_sum"] / cnt, 3),
+                "upstreams": [{"upstream": k, "requests": v}
+                              for k, v in sorted(rt["upstreams"].items(),
+                                                 key=lambda x: x[1], reverse=True)[:5]],
+            })
+        result.sort(key=lambda x: x["requests"], reverse=True)
+        return result
 
     async def _handle_bandwidth(self, raw_path, body):
         return json.dumps(await asyncio.to_thread(self._bandwidth_payload)), 200, "application/json"
 
     def _bandwidth_payload(self):
         cutoff = time.time() - 86400
+        agg = getattr(self.state, "_traffic_stats", None)
+        if agg is not None and agg.ready:
+            # totals: [requests, upload(bytes_in), download(bytes_out), ok]
+            reqs, upload, download, _ok = agg.totals(cutoff)
+            if reqs > 0:
+                return {
+                    "download": download,
+                    "upload": upload,
+                    "total": download + upload,
+                }
         upload = 0
         download = 0
         have_db = False
@@ -268,73 +328,149 @@ class TrafficHandlers:
         return payload, 200, "application/json"
 
     def _summary_payload(self, now):
-        periods = {"day": 86400, "week": 604800, "month": 2592000}
+        d_cut = now - 86400
+        w_cut = now - 604800
+        m_cut = now - 2592000
+        result = {name: self._empty_period() for name in ("day", "week", "month")}
+
+        agg = getattr(self.state, "_traffic_stats", None)
+        if agg is not None and agg.ready:
+            # One fold over hourly counters covers all three periods.
+            acc = {name: {} for name in result}
+            for h, buckets in agg.iter_hours():
+                if h < m_cut:
+                    continue
+                for up, row in buckets.items():
+                    for name, cut in (("day", d_cut), ("week", w_cut), ("month", m_cut)):
+                        if h < cut:
+                            continue
+                        b = acc[name].setdefault(up, [0, 0, 0, 0])
+                        b[0] += row[0]
+                        b[1] += row[1]
+                        b[2] += row[2]
+                        b[3] += row[3]
+            for name, rows in acc.items():
+                p = result[name]
+                items = sorted(rows.items(), key=lambda x: x[1][0], reverse=True)
+                for up, (c, bi, bo, okc) in items:
+                    self._period_add(p, c, bi, bo, okc)
+                    if len(p["top_routes"]) < 5:
+                        p["top_routes"].append({
+                            "type": self._route_type(up), "upstream": up or "unknown",
+                            "requests": c, "bytes": bi + bo,
+                        })
+            if result["day"]["requests"] == 0:
+                entries = self._mem_traffic(d_cut)
+                upload = download = reqs = ok = 0
+                for e in entries:
+                    upload += int(e.get("bytes_in", 0) or 0)
+                    download += int(e.get("bytes_out", 0) or 0)
+                    reqs += 1
+                    if (e.get("status") or "") == "ok":
+                        ok += 1
+                if reqs:
+                    result["day"] = {
+                        "download": download, "upload": upload,
+                        "total": download + upload, "requests": reqs,
+                        "success": ok, "failed": reqs - ok,
+                        "success_rate": round(ok / reqs * 100, 1),
+                        "top_routes": self._top_routes_from_mem(entries),
+                    }
+            return json.dumps(result)
+
+        # Fallback: rollup not ready (fresh state / load failure) — one raw
+        # range scan with per-period conditional SUMs in SQLite.
+        periods = {"day": 0, "week": 0, "month": 0}
         conn = None
         try:
             conn = self.state._stats_db()
         except Exception as e:
             logger.error("traffic/summary: %s", e)
-        result = {}
-        for name, secs in periods.items():
-            result[name] = self._compute_traffic_period(conn, name, now, secs)
+        rows = []
         if conn is not None:
             try:
-                conn.close()
+                rows = conn.execute(
+                    "SELECT upstream, "
+                    "SUM(CASE WHEN ts > ? THEN 1 ELSE 0 END) AS d_cnt, "
+                    "COALESCE(SUM(CASE WHEN ts > ? THEN bytes_in ELSE 0 END),0) AS d_bin, "
+                    "COALESCE(SUM(CASE WHEN ts > ? THEN bytes_out ELSE 0 END),0) AS d_bout, "
+                    "COALESCE(SUM(CASE WHEN ts > ? AND status='ok' THEN 1 ELSE 0 END),0) AS d_ok, "
+                    "SUM(CASE WHEN ts > ? THEN 1 ELSE 0 END) AS w_cnt, "
+                    "COALESCE(SUM(CASE WHEN ts > ? THEN bytes_in ELSE 0 END),0) AS w_bin, "
+                    "COALESCE(SUM(CASE WHEN ts > ? THEN bytes_out ELSE 0 END),0) AS w_bout, "
+                    "COALESCE(SUM(CASE WHEN ts > ? AND status='ok' THEN 1 ELSE 0 END),0) AS w_ok, "
+                    "COUNT(*) AS m_cnt, "
+                    "COALESCE(SUM(bytes_in),0) AS m_bin, "
+                    "COALESCE(SUM(bytes_out),0) AS m_bout, "
+                    "COALESCE(SUM(CASE WHEN status='ok' THEN 1 ELSE 0 END),0) AS m_ok "
+                    "FROM traffic_log WHERE ts > ? GROUP BY upstream",
+                    (d_cut, d_cut, d_cut, d_cut,
+                     w_cut, w_cut, w_cut, w_cut, m_cut)
+                ).fetchall()
             except Exception:
                 logger.debug("suppressed", exc_info=True)
-        return json.dumps(result)
+            finally:
+                try:
+                    conn.close()
+                except Exception:
+                    logger.debug("suppressed", exc_info=True)
 
-    def _compute_traffic_period(self, conn, name, now, secs):
-        cutoff = now - secs
-        download = upload = reqs = ok = 0
-        routes = []
-        used_db = False
-        if conn is not None:
-            try:
-                # One range scan yields both totals and top routes, instead of
-                # a separate aggregate scan plus a separate GROUP BY scan.
-                rows = conn.execute(
-                    "SELECT upstream, COUNT(*) as cnt, "
-                    "COALESCE(SUM(bytes_in),0) as bin, COALESCE(SUM(bytes_out),0) as bout, "
-                    "COALESCE(SUM(CASE WHEN status='ok' THEN 1 ELSE 0 END),0) as ok "
-                    "FROM traffic_log WHERE ts > ? GROUP BY upstream ORDER BY cnt DESC",
-                    (cutoff,)
-                ).fetchall()
-                for rr in rows:
-                    cnt = int(rr["cnt"] or 0)
-                    bin_ = int(rr["bin"] or 0)
-                    bout = int(rr["bout"] or 0)
-                    okc = int(rr["ok"] or 0)
-                    reqs += cnt
-                    upload += bin_
-                    download += bout
-                    ok += okc
-                    if len(routes) < 5:
-                        up = rr["upstream"] or "unknown"
-                        routes.append({
-                            "type": self._route_type(up), "upstream": up,
-                            "requests": cnt, "bytes": bout + bin_,
-                        })
-                if reqs > 0:
-                    used_db = True
-            except Exception:
-                used_db = False
-        if not used_db and name == "day":
-            entries = self._mem_traffic(cutoff)
+        def _fill(prefix, name):
+            p = result[name]
+            for r in rows:
+                cnt = int(r[f"{prefix}_cnt"] or 0)
+                if cnt <= 0:
+                    continue
+                bin_ = int(r[f"{prefix}_bin"] or 0)
+                bout = int(r[f"{prefix}_bout"] or 0)
+                okc = int(r[f"{prefix}_ok"] or 0)
+                up = r["upstream"] or "unknown"
+                self._period_add(p, cnt, bin_, bout, okc)
+                if len(p["top_routes"]) < 5:
+                    p["top_routes"].append({
+                        "type": self._route_type(up), "upstream": up,
+                        "requests": cnt, "bytes": bout + bin_,
+                    })
+
+        _fill("d", "day")
+        _fill("w", "week")
+        _fill("m", "month")
+
+        # Old behavior preserved: the "day" tile falls back to the in-memory
+        # proxy log whenever its own window has no DB rows, so the widgets
+        # stay populated while the DB is empty or lagging.
+        if result["day"]["requests"] == 0:
+            entries = self._mem_traffic(d_cut)
+            upload = download = reqs = ok = 0
             for e in entries:
                 upload += int(e.get("bytes_in", 0) or 0)
                 download += int(e.get("bytes_out", 0) or 0)
                 reqs += 1
                 if (e.get("status") or "") == "ok":
                     ok += 1
-            routes = self._top_routes_from_mem(entries)
-        return {
-            "download": download, "upload": upload,
-            "total": download + upload, "requests": reqs,
-            "success": ok, "failed": reqs - ok,
-            "success_rate": round(ok / reqs * 100, 1) if reqs else 0,
-            "top_routes": routes,
-        }
+            result["day"] = {
+                "download": download, "upload": upload,
+                "total": download + upload, "requests": reqs,
+                "success": ok, "failed": reqs - ok,
+                "success_rate": round(ok / reqs * 100, 1) if reqs else 0,
+                "top_routes": self._top_routes_from_mem(entries),
+            }
+        return json.dumps(result)
+
+    @staticmethod
+    def _empty_period():
+        return {"download": 0, "upload": 0, "total": 0, "requests": 0,
+                "success": 0, "failed": 0, "success_rate": 0, "top_routes": []}
+
+    @staticmethod
+    def _period_add(p, cnt, bin_, bout, okc):
+        p["requests"] += cnt
+        p["upload"] += bin_
+        p["download"] += bout
+        p["total"] += bin_ + bout
+        p["success"] += okc
+        p["failed"] += cnt - okc
+        p["success_rate"] = round(p["success"] / p["requests"] * 100, 1) if p["requests"] else 0
 
     def _top_routes_from_mem(self, entries):
         routes = []

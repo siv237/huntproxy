@@ -1,7 +1,7 @@
 # Карта модулей
 Автоматически сгенерировано из исходного кода. Не редактировать руками.
 Запуск: `python scripts/module_map.py`
-Всего модулей: 63 | Всего строк: 11248
+Всего модулей: 64 | Всего строк: 11558
 ---
 ## Сводка
 | Модуль | Строк | Публичные классы/функции | Импортирует из hunt |
@@ -16,14 +16,14 @@
 | `hunt/check_geo.py` | 132 | `CheckGeoMixin` | hunt.constants |
 | `hunt/check_mitm.py` | 139 | `CheckMitmMixin` | hunt.conn, hunt.constants |
 | `hunt/check_proxy.py` | 138 | `CheckProxyMixin` | hunt.constants, hunt.geo |
-| `hunt/check_rating.py` | 169 | `CheckRatingMixin` | hunt.constants, hunt.geo, hunt.models |
+| `hunt/check_rating.py` | 171 | `CheckRatingMixin` | hunt.constants, hunt.geo, hunt.models |
 | `hunt/check_speed.py` | 209 | `CheckSpeedMixin` | hunt.constants |
 | `hunt/check_ssl.py` | 136 | `CheckSslMixin` | hunt.constants |
 | `hunt/check_validation.py` | 258 | `CheckValidationMixin` | hunt.constants |
 | `hunt/conn.py` | 126 | `socks5_connect`, `socks4_connect`, `http_connect` | — |
 | `hunt/constants.py` | 117 | — | — |
 | `hunt/custom_proxies.py` | 311 | `CustomProxiesMixin` | hunt.conn, hunt.constants |
-| `hunt/db.py` | 456 | `DbMixin` | — |
+| `hunt/db.py` | 462 | `DbMixin` | — |
 | `hunt/domain_parser.py` | 58 | `normalize_domain_pattern` | — |
 | `hunt/download.py` | 62 | `curl_args`, `stream_download` | — |
 | `hunt/events.py` | 35 | `EventsMixin` | — |
@@ -36,12 +36,12 @@
 | `hunt/handlers/hunt.py` | 100 | `HuntHandlers` | hunt.models |
 | `hunt/handlers/interception.py` | 222 | `InterceptionHandlers` | hunt.constants, hunt.handlers |
 | `hunt/handlers/pool.py` | 49 | `PoolHandlers` | hunt.handlers |
-| `hunt/handlers/proxy.py` | 339 | `ProxyHandlers` | hunt.geo, hunt.handlers |
+| `hunt/handlers/proxy.py` | 357 | `ProxyHandlers` | hunt.geo, hunt.handlers |
 | `hunt/handlers/routing.py` | 75 | `RoutingHandlers` | hunt.handlers |
 | `hunt/handlers/sources.py` | 260 | `SourceHandlers` | hunt.constants, hunt.handlers |
-| `hunt/handlers/traffic.py` | 294 | `TrafficHandlers` | hunt.constants |
+| `hunt/handlers/traffic.py` | 429 | `TrafficHandlers` | hunt.constants |
 | `hunt/handlers/version.py` | 42 | `VersionHandlers` | hunt.constants |
-| `hunt/health_check.py` | 326 | `HealthCheckMixin` | hunt.constants, hunt.models |
+| `hunt/health_check.py` | 331 | `HealthCheckMixin` | hunt.constants, hunt.models |
 | `hunt/health_loops.py` | 62 | `HealthLoopsMixin` | hunt.constants |
 | `hunt/hunt_control.py` | 123 | `HuntControlMixin` | hunt.constants |
 | `hunt/hunt_cycle.py` | 95 | `HuntCycleMixin` | hunt.constants |
@@ -49,7 +49,7 @@
 | `hunt/ip_blacklist_sources.py` | 291 | `IPBlacklistSourcesMixin` | hunt.constants, hunt.download |
 | `hunt/logging_config.py` | 38 | `setup_logging` | — |
 | `hunt/main.py` | 115 | `amain`, `main` | hunt.constants, hunt.logging_config, hunt.scheduler, hunt.server +1 |
-| `hunt/models.py` | 278 | `ProxyRating` | — |
+| `hunt/models.py` | 297 | `ProxyRating` | — |
 | `hunt/proxy_routing.py` | 185 | `ProxyRouteMixin` | hunt.models |
 | `hunt/proxy_runner.py` | 280 | `ProxyRunner` | hunt.conn, hunt.models, hunt.proxy_routing, hunt.switch_history |
 | `hunt/proxy_sources.py` | 415 | `ProxySourcesMixin` | hunt.constants, hunt.download |
@@ -62,11 +62,12 @@
 | `hunt/server.py` | 279 | `HuntServer` | hunt.constants, hunt.handlers, hunt.handlers.admin, hunt.handlers.core +14 |
 | `hunt/snapshot.py` | 434 | `SnapshotMixin` | hunt.constants, hunt.models |
 | `hunt/socks5_runner.py` | 160 | `Socks5Runner` | hunt.models |
-| `hunt/state.py` | 174 | `HuntState` | hunt.actions, hunt.backup, hunt.blacklist, hunt.blocklists +27 |
+| `hunt/state.py` | 182 | `HuntState` | hunt.actions, hunt.backup, hunt.blacklist, hunt.blocklists +28 |
 | `hunt/state_download.py` | 84 | `StateDownloadMixin` | hunt.constants |
-| `hunt/state_persistence.py` | 295 | `StatePersistenceMixin` | hunt.constants, hunt.geo, hunt.models |
-| `hunt/switch_history.py` | 137 | `record_switch`, `enrich_switch_history` | — |
+| `hunt/state_persistence.py` | 296 | `StatePersistenceMixin` | hunt.constants, hunt.geo, hunt.models |
+| `hunt/switch_history.py` | 142 | `record_switch`, `enrich_switch_history` | — |
 | `hunt/task_executor.py` | 163 | `TaskExecutor` | hunt.constants, hunt.scheduler |
+| `hunt/traffic_stats.py` | 111 | `TrafficStats` | — |
 | `hunt/transparent_runner.py` | 176 | `TransparentRunner` | — |
 | `hunt/web_legacy.py` | 348 | — | — |
 
@@ -139,7 +140,7 @@
 
 **Зависимости:** `hunt.constants`, `hunt.geo`
 
-### `hunt/check_rating.py` (169 строк)
+### `hunt/check_rating.py` (171 строк)
 *Functional split of the huntproxy backend.*
 **Публичные:**
 - `CheckRatingMixin` (class)
@@ -185,7 +186,7 @@
 
 **Зависимости:** `hunt.conn`, `hunt.constants`
 
-### `hunt/db.py` (456 строк)
+### `hunt/db.py` (462 строк)
 *Functional split of the huntproxy backend.*
 **Публичные:**
 - `DbMixin` (class)
@@ -232,7 +233,7 @@
 - `country_name_from_code` (def)
 
 
-### `hunt/health_check.py` (326 строк)
+### `hunt/health_check.py` (331 строк)
 *Functional split of the huntproxy backend.*
 **Публичные:**
 - `HealthCheckMixin` (class)
@@ -288,7 +289,7 @@
 
 **Зависимости:** `hunt.constants`, `hunt.logging_config`, `hunt.scheduler`, `hunt.server`, `hunt.state`
 
-### `hunt/models.py` (278 строк)
+### `hunt/models.py` (297 строк)
 *Functional split of the huntproxy backend.*
 **Публичные:**
 - `ProxyRating` (class)
@@ -376,12 +377,12 @@
 
 **Зависимости:** `hunt.models`
 
-### `hunt/state.py` (174 строк)
+### `hunt/state.py` (182 строк)
 *Functional split of the huntproxy backend.*
 **Публичные:**
 - `HuntState` (class)
 
-**Зависимости:** `hunt.actions`, `hunt.backup`, `hunt.blacklist`, `hunt.blocklists`, `hunt.canary`, `hunt.channel`, `hunt.check_geo`, `hunt.check_mitm`, `hunt.check_proxy`, `hunt.check_rating`, `hunt.check_speed`, `hunt.check_ssl`, `hunt.check_validation`, `hunt.constants`, `hunt.custom_proxies`, `hunt.db`, `hunt.events`, `hunt.favorites`, `hunt.fraudscore`, `hunt.health_check`, `hunt.health_loops`, `hunt.hunt_control`, `hunt.hunt_cycle`, `hunt.ip_blacklist`, `hunt.ip_blacklist_sources`, `hunt.models`, `hunt.proxy_sources`, `hunt.routing`, `hunt.snapshot`, `hunt.state_download`, `hunt.state_persistence`
+**Зависимости:** `hunt.actions`, `hunt.backup`, `hunt.blacklist`, `hunt.blocklists`, `hunt.canary`, `hunt.channel`, `hunt.check_geo`, `hunt.check_mitm`, `hunt.check_proxy`, `hunt.check_rating`, `hunt.check_speed`, `hunt.check_ssl`, `hunt.check_validation`, `hunt.constants`, `hunt.custom_proxies`, `hunt.db`, `hunt.events`, `hunt.favorites`, `hunt.fraudscore`, `hunt.health_check`, `hunt.health_loops`, `hunt.hunt_control`, `hunt.hunt_cycle`, `hunt.ip_blacklist`, `hunt.ip_blacklist_sources`, `hunt.models`, `hunt.proxy_sources`, `hunt.routing`, `hunt.snapshot`, `hunt.state_download`, `hunt.state_persistence`, `hunt.traffic_stats`
 
 ### `hunt/state_download.py` (84 строк)
 *State download/export methods — extracted from state.py.*
@@ -390,14 +391,14 @@
 
 **Зависимости:** `hunt.constants`
 
-### `hunt/state_persistence.py` (295 строк)
+### `hunt/state_persistence.py` (296 строк)
 *State persistence methods — extracted from state.py.*
 **Публичные:**
 - `StatePersistenceMixin` (class)
 
 **Зависимости:** `hunt.constants`, `hunt.geo`, `hunt.models`
 
-### `hunt/switch_history.py` (137 строк)
+### `hunt/switch_history.py` (142 строк)
 *Proxy switch history enrichment — extracted from proxy_runner.py.*
 **Публичные:**
 - `record_switch` (def)
@@ -410,6 +411,12 @@
 - `TaskExecutor` (class)
 
 **Зависимости:** `hunt.constants`, `hunt.scheduler`
+
+### `hunt/traffic_stats.py` (111 строк)
+*In-memory hourly rollup of proxied traffic.*
+**Публичные:**
+- `TrafficStats` (class)
+
 
 ### `hunt/transparent_runner.py` (176 строк)
 *Transparent proxy runner.*
@@ -459,7 +466,7 @@
 
 **Зависимости:** `hunt.handlers`
 
-### `hunt/handlers/proxy.py` (339 строк)
+### `hunt/handlers/proxy.py` (357 строк)
 *Proxy handlers — proxy/socks5/transparent runner control, selection, detail view*
 **Публичные:**
 - `ProxyHandlers` (class)
@@ -480,7 +487,7 @@
 
 **Зависимости:** `hunt.constants`, `hunt.handlers`
 
-### `hunt/handlers/traffic.py` (294 строк)
+### `hunt/handlers/traffic.py` (429 строк)
 *Traffic handlers — live traffic, requests/clients/domains/errors, route aggregat*
 **Публичные:**
 - `TrafficHandlers` (class)
@@ -542,7 +549,7 @@
 | `hunt/server.py` | `hunt.constants`, `hunt.handlers`, `hunt.handlers.admin`, `hunt.handlers.core`, `hunt.handlers.hunt`, `hunt.handlers.interception`, `hunt.handlers.pool`, `hunt.handlers.proxy`, `hunt.handlers.routing`, `hunt.handlers.sources`, `hunt.handlers.traffic`, `hunt.handlers.version`, `hunt.proxy_runner`, `hunt.router`, `hunt.socks5_runner`, `hunt.state`, `hunt.transparent_runner`, `hunt.web_legacy` |
 | `hunt/snapshot.py` | `hunt.constants`, `hunt.models` |
 | `hunt/socks5_runner.py` | `hunt.models` |
-| `hunt/state.py` | `hunt.actions`, `hunt.backup`, `hunt.blacklist`, `hunt.blocklists`, `hunt.canary`, `hunt.channel`, `hunt.check_geo`, `hunt.check_mitm`, `hunt.check_proxy`, `hunt.check_rating`, `hunt.check_speed`, `hunt.check_ssl`, `hunt.check_validation`, `hunt.constants`, `hunt.custom_proxies`, `hunt.db`, `hunt.events`, `hunt.favorites`, `hunt.fraudscore`, `hunt.health_check`, `hunt.health_loops`, `hunt.hunt_control`, `hunt.hunt_cycle`, `hunt.ip_blacklist`, `hunt.ip_blacklist_sources`, `hunt.models`, `hunt.proxy_sources`, `hunt.routing`, `hunt.snapshot`, `hunt.state_download`, `hunt.state_persistence` |
+| `hunt/state.py` | `hunt.actions`, `hunt.backup`, `hunt.blacklist`, `hunt.blocklists`, `hunt.canary`, `hunt.channel`, `hunt.check_geo`, `hunt.check_mitm`, `hunt.check_proxy`, `hunt.check_rating`, `hunt.check_speed`, `hunt.check_ssl`, `hunt.check_validation`, `hunt.constants`, `hunt.custom_proxies`, `hunt.db`, `hunt.events`, `hunt.favorites`, `hunt.fraudscore`, `hunt.health_check`, `hunt.health_loops`, `hunt.hunt_control`, `hunt.hunt_cycle`, `hunt.ip_blacklist`, `hunt.ip_blacklist_sources`, `hunt.models`, `hunt.proxy_sources`, `hunt.routing`, `hunt.snapshot`, `hunt.state_download`, `hunt.state_persistence`, `hunt.traffic_stats` |
 | `hunt/state_download.py` | `hunt.constants` |
 | `hunt/state_persistence.py` | `hunt.constants`, `hunt.geo`, `hunt.models` |
 | `hunt/task_executor.py` | `hunt.constants`, `hunt.scheduler` |

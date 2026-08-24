@@ -478,13 +478,16 @@ router.register('proxy-control', (container) => {
   // --- Polling ---
   async function poll() {
     try {
-      let ps = {}, requests = {}, routes = {}, bw = {}, summary = {}, history = [];
-      try { ps = await api.proxyStatus(); } catch (e) {}
-      try { requests = await api.requests(); } catch (e) {}
-      try { routes = await api.trafficRoutes(); } catch (e) {}
-      try { bw = await api.bandwidth(); } catch (e) {}
-      try { summary = await api.trafficSummary(); } catch (e) {}
-      try { history = await api.history('24h'); } catch (e) {}
+      // Fire all requests in parallel: serial awaits made page open time
+      // equal to the SUM of endpoint latencies instead of the max.
+      const [ps, requests, routes, bw, summary, history] = await Promise.all([
+        api.proxyStatus().catch(() => ({})),
+        api.requests().catch(() => ({})),
+        api.trafficRoutes().catch(() => ({})),
+        api.bandwidth().catch(() => ({})),
+        api.trafficSummary().catch(() => ({})),
+        api.history('24h').catch(() => []),
+      ]);
 
       try { updateTiles(requests.requests || [], routes.routes || [], bw); } catch (e) { console.error('tiles', e); }
       try { updateStream(els.stream, requests); } catch (e) { console.error('stream', e); }

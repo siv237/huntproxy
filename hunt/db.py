@@ -111,6 +111,12 @@ class DbMixin:
     TRAFFIC_FLUSH_BATCH = 500
 
     def _queue_traffic_log(self, row: tuple):
+            agg = getattr(self, "_traffic_stats", None)
+            if agg is not None:
+                try:
+                    agg.add(row[0], row[3], row[4], row[5], row[6], row[7])
+                except Exception:
+                    logger.debug("suppressed", exc_info=True)
             buf = getattr(self, "_traffic_buffer", None)
             if buf is None:
                 buf = self._traffic_buffer = []

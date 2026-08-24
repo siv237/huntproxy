@@ -5,14 +5,12 @@ collapses consecutive duplicates, enriches each row with proxy metadata
 from ratings, and sums traffic served during each entry's active period.
 """
 
-import bisect
 import logging
 import time
 
 logger = logging.getLogger(__name__)
 
 _HISTORY_LIMIT = 500
-_SEP = ":"
 # Memoize enrich_switch_history for this long; the proxy-status endpoint is
 # polled every couple of seconds but old switch intervals never change their
 # traffic retroactively, so recomputing the whole traffic_log scan each poll
@@ -115,48 +113,56 @@ def _traffic_by_period(state, chronological: list[dict], now: float) -> dict[int
     (``%:ADDR``) so ``1.2.3.4:1080`` does not match ``11.2.3.4:1080``.
     A bare-address row (no prefix) is matched exactly too.
 
-    All intervals are covered by ONE query over the whole history window;
-    each traffic row is then bucketed into its owning interval by timestamp
-    (bisect) and attributed to that interval's active address.  This avoids
-    the previous N+1 query pattern (one SQL round-trip per switch-history
-    entry), which made the proxy-status endpoint do hundreds of queries per
-    request when the UI polled it."""
+    All intervals are covered by ONE query: each interval contributes a
+    ``SUM(CASE ...)`` column, so SQLite buckets every row into its owning
+    interval at C speed.  The previous per-row Python bisect pass shipped
+    the whole 24h window into the interpreter on every /api/proxy/status
+    poll, which stacked up concurrent polls and starved the server."""
     intervals = _intervals(chronological, now)
     if not intervals:
         return {}
     result: dict[int, int] = {j: 0 for j in intervals}
-    bounds = [(j, start, end, addr) for j, (start, end, addr) in intervals.items()]
-    starts = [b[1] for b in bounds]
-    first = bounds[0][1]
+    # chronological order ⇒ the earliest start wins
+    first = min(v[0] for v in intervals.values())
     # Never aggregate more than the last 24h: switch history can span days,
-    # and a multi-day GROUP BY over traffic_log stalls the whole server.
+    # and a multi-day scan over traffic_log stalls the whole server.
     first = max(first, now - 86400)
+
+    def _like(addr: str) -> str:
+        # addresses are ip:port — no LIKE wildcards to escape
+        return "%:" + addr
+
+    cols = []
+    args: list = []
+    for j, (start, end, addr) in intervals.items():
+        s = max(start, first)
+        e = min(end, now + 1)
+        if not addr or s >= e:
+            continue
+        cols.append(
+            "SUM(CASE WHEN ts >= ? AND ts < ? AND (upstream = ? OR upstream LIKE ?) "
+            "THEN COALESCE(bytes_in,0) + COALESCE(bytes_out,0) ELSE 0 END)"
+        )
+        args.extend((s, e, addr, _like(addr)))
+    if not cols:
+        return result
+    sql = "SELECT " + ", ".join(cols) + " FROM traffic_log WHERE ts >= ? AND ts < ?"
+    args.extend((first, now + 1))
     try:
         import sqlite3
         conn = sqlite3.connect(str(state._db_path), check_same_thread=False)
-        conn.row_factory = sqlite3.Row
-        # Streaming range scan on idx_traffic_ts.  A GROUP BY over the raw
-        # ts (near-unique per row) is not an aggregation — it sorts the
-        # whole window into a temp b-tree on every call, which stacked up
-        # concurrent status polls and starved the server.
-        cur = conn.execute(
-            "SELECT ts, upstream, "
-            "COALESCE(bytes_in,0) + COALESCE(bytes_out,0) AS bytes "
-            "FROM traffic_log WHERE ts >= ? AND ts < ?",
-            (first, now + 1),
-        )
-        for row in cur:
-            ts = row["ts"]
-            idx = bisect.bisect_right(starts, ts) - 1
-            if idx < 0:
-                continue
-            _j, _start, _end, addr = bounds[idx]
-            if ts < _start or ts >= _end or not addr:
-                continue
-            upstream = row["upstream"]
-            if upstream == addr or upstream.endswith(_SEP + addr):
-                result[_j] += int(row["bytes"])
-        conn.close()
+        try:
+            row = conn.execute(sql, args).fetchone()
+            i = 0
+            for j, (start, end, addr) in intervals.items():
+                s = max(start, first)
+                e = min(end, now + 1)
+                if not addr or s >= e:
+                    continue
+                result[j] = int(row[i] or 0) if row else 0
+                i += 1
+        finally:
+            conn.close()
     except Exception:
         logger.debug("suppressed", exc_info=True)
     return result
