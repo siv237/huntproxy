@@ -128,8 +128,13 @@ def _traffic_by_period(state, chronological: list[dict], now: float) -> dict[int
     bounds = [(j, start, end, addr) for j, (start, end, addr) in intervals.items()]
     starts = [b[1] for b in bounds]
     first = bounds[0][1]
+    # Never aggregate more than the last 24h: switch history can span days,
+    # and a multi-day GROUP BY over traffic_log stalls the whole server.
+    first = max(first, now - 86400)
     try:
-        conn = state._stats_db()
+        import sqlite3
+        conn = sqlite3.connect(str(state._db_path), check_same_thread=False)
+        conn.row_factory = sqlite3.Row
         rows = conn.execute(
             "SELECT ts, upstream, "
             "COALESCE(SUM(bytes_in),0) + COALESCE(SUM(bytes_out),0) AS bytes "

@@ -1,5 +1,6 @@
 """Functional split of the huntproxy backend."""
 
+import os
 import sqlite3
 import logging
 
@@ -21,7 +22,142 @@ class _SharedConn:
         pass
 
 
+class _DbWriter:
+    """Dedicated background writer thread for one SQLite database file.
+
+    Hot-path writes (traffic log, rating checkpoints, history) are queued and
+    executed on this thread's own WAL connection with batched commits, so the
+    asyncio event loop never blocks on sqlite commits. Readers keep their
+    existing connections: WAL mode allows concurrent reads during writes.
+    Each queued item is either a parameter tuple (single execute) or a list
+    of tuples (executemany).
+    """
+
+    def __init__(self, path, name: str, ensure=None):
+        import queue as _queue
+        import threading as _threading
+        self._path = path
+        self._ensure = ensure
+        self._queue = _queue.Queue()
+        self._conn = None
+        self._thread = _threading.Thread(
+            target=self._loop, daemon=True, name=f"{name}-db-writer")
+        self._thread.start()
+
+    def submit(self, sql: str, rows):
+        self._queue.put((sql, rows))
+
+    def drain(self):
+        """Block until everything submitted so far has been committed."""
+        self._queue.join()
+
+    def _connection(self):
+        """Open (or re-open after external deletion) the writer connection."""
+        if self._conn is not None and not os.path.exists(str(self._path)):
+            try:
+                self._conn.close()
+            except Exception:
+                logger.debug("suppressed", exc_info=True)
+            self._conn = None
+        if self._conn is None:
+            conn = sqlite3.connect(str(self._path), check_same_thread=False)
+            try:
+                conn.execute("PRAGMA journal_mode=WAL")
+                conn.execute("PRAGMA synchronous=NORMAL")
+            except Exception:
+                logger.debug("suppressed", exc_info=True)
+            if self._ensure is not None:
+                try:
+                    self._ensure(conn)
+                except Exception:
+                    logger.debug("suppressed", exc_info=True)
+            self._conn = conn
+        return self._conn
+
+    def _loop(self):
+        while True:
+            item = self._queue.get()
+            batch = [item]
+            while len(batch) < 128:
+                try:
+                    nxt = self._queue.get_nowait()
+                except Exception:
+                    break
+                batch.append(nxt)
+            ok = True
+            try:
+                conn = self._connection()
+                for sql, rows in batch:
+                    if isinstance(rows, list):
+                        conn.executemany(sql, rows)
+                    else:
+                        conn.execute(sql, rows)
+                conn.commit()
+            except Exception as e:
+                ok = False
+                logger.error("background db write failed: %s", e)
+            for _ in batch:
+                self._queue.task_done()
+            if not ok:
+                logger.debug("suppressed", exc_info=True)
+
+
+
 class DbMixin:
+    # Traffic-log rows are buffered and written in batches: a synchronous
+    # INSERT+commit per proxied request blocks the event loop, and as the
+    # traffic_log table grows into millions of rows those commits get slower
+    # every day — the classic "works fine, degrades over weeks" pattern.
+    TRAFFIC_FLUSH_BATCH = 500
+
+    def _queue_traffic_log(self, row: tuple):
+            buf = getattr(self, "_traffic_buffer", None)
+            if buf is None:
+                buf = self._traffic_buffer = []
+            buf.append(row)
+            if len(buf) >= self.TRAFFIC_FLUSH_BATCH:
+                self._flush_traffic_buffer(wait=False)
+
+    def _flush_traffic_buffer(self, wait: bool = True):
+            """Hand buffered rows to the background stats writer.
+
+            wait=True additionally blocks until every queued write has been
+            committed (used by history aggregation, tests and shutdown paths
+            that read the DB right afterwards).
+            """
+            buf = getattr(self, "_traffic_buffer", None)
+            if not buf:
+                return
+            self._traffic_buffer = []
+            self._stats_writer().submit(
+                "INSERT INTO traffic_log (ts, client, target, status, upstream, bytes_in, bytes_out, duration) "
+                "VALUES (?,?,?,?,?,?,?,?)",
+                buf,
+            )
+            if wait:
+                self._stats_writer().drain()
+
+    def _stats_writer(self) -> "_DbWriter":
+            w = getattr(self, "_stats_writer_inst", None)
+            if w is None:
+                w = self._stats_writer_inst = _DbWriter(
+                    self._db_path, "stats", ensure=self._ensure_stats_db)
+            return w
+
+    def _state_writer(self) -> "_DbWriter":
+            w = getattr(self, "_state_writer_inst", None)
+            if w is None:
+                w = self._state_writer_inst = _DbWriter(
+                    self._state_db_path, "state", ensure=self._ensure_state_db)
+            return w
+
+    def drain_db_writers(self):
+            """Block until both background writers committed everything queued."""
+            if getattr(self, "_stats_writer_inst", None) is not None:
+                self._stats_writer_inst.drain()
+            if getattr(self, "_state_writer_inst", None) is not None:
+                self._state_writer_inst.drain()
+
     def _stats_db(self) -> sqlite3.Connection:
             raw = getattr(self, "_stats_conn", None)
             if raw is not None and self._db_path.exists():

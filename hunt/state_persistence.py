@@ -138,29 +138,27 @@ class StatePersistenceMixin:
     def _save_state(self):
             try:
                 self._flush_proxy_checks()
-                conn = self._db()
+                w = self._state_writer()
                 # ratings
-                conn.execute("DELETE FROM ratings")
-                for r in self.ratings.values():
-                    conn.execute(
-                        "INSERT INTO ratings (address, data) VALUES (?, ?)",
-                        (r.address, json.dumps(r.to_dict())),
-                    )
+                w.submit("DELETE FROM ratings", [()])
+                w.submit(
+                    "INSERT INTO ratings (address, data) VALUES (?, ?)",
+                    [(r.address, json.dumps(r.to_dict())) for r in self.ratings.values()],
+                )
                 # blacklist
-                conn.execute("DELETE FROM blacklist")
-                for addr, reason in self.blacklist.items():
-                    conn.execute(
-                        "INSERT INTO blacklist (address, reason) VALUES (?, ?)",
-                        (addr, reason or ""),
-                    )
+                w.submit("DELETE FROM blacklist", [()])
+                w.submit(
+                    "INSERT INTO blacklist (address, reason) VALUES (?, ?)",
+                    [(addr, reason or "") for addr, reason in self.blacklist.items()],
+                )
                 # favorites
-                conn.execute("DELETE FROM favorites")
-                conn.executemany(
+                w.submit("DELETE FROM favorites", [()])
+                w.submit(
                     "INSERT OR REPLACE INTO favorites (address) VALUES (?)",
                     [(addr,) for addr in self.favorites],
                 )
                 # runtime state
-                conn.execute("DELETE FROM runtime_state")
+                w.submit("DELETE FROM runtime_state", [()])
                 runtime = [
                     ("proxy_runner", json.dumps({
                         "direct_mode": getattr(self, '_proxy_direct_mode', False),
@@ -179,13 +177,11 @@ class StatePersistenceMixin:
                     ("country_filter", self.country_filter or ""),
                     ("switch_history", json.dumps(self._proxy_switch_history[-500:])),
                 ]
-                for key, value in runtime:
-                    conn.execute(
-                        "INSERT INTO runtime_state (key, value) VALUES (?, ?)",
-                        (key, value),
-                    )
-                conn.commit()
-                conn.close()
+                w.submit(
+                    "INSERT INTO runtime_state (key, value) VALUES (?, ?)",
+                    runtime,
+                )
+                w.drain()
                 # A full save covers every rating, so nothing is dirty afterwards.
                 self._dirty_ratings.clear()
             except Exception as e:
@@ -203,19 +199,16 @@ class StatePersistenceMixin:
             if not self._dirty_ratings:
                 return
             try:
-                conn = self._db()
                 rows = []
                 for addr in self._dirty_ratings:
                     r = self.ratings.get(addr)
                     if r is not None:
                         rows.append((r.address, json.dumps(r.to_dict())))
                 if rows:
-                    conn.executemany(
+                    self._state_writer().submit(
                         "INSERT OR REPLACE INTO ratings (address, data) VALUES (?, ?)",
                         rows,
                     )
-                    conn.commit()
-                conn.close()
                 self._dirty_ratings.clear()
             except Exception as e:
                 logger.warning(f"SQLite dirty ratings save failed: {e}")
@@ -311,14 +304,13 @@ class StatePersistenceMixin:
                      if (r.last_status == "ok" or r.in_grace) and not r.in_blacklist]
             alive.sort(key=lambda r: r.score, reverse=True)
             try:
-                conn = self._db()
-                conn.execute("DELETE FROM working_proxies")
-                conn.executemany(
+                w = self._state_writer()
+                w.submit("DELETE FROM working_proxies", [()])
+                w.submit(
                     "INSERT OR IGNORE INTO working_proxies (address, country, latency, score) VALUES (?,?,?,?)",
                     [(r.address, r.country, r.last_latency, r.score) for r in alive],
                 )
-                conn.commit()
-                conn.close()
+                w.drain()
             except Exception as e:
                 logger.warning(f"Working file save failed: {e}")
 

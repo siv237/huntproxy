@@ -21,3 +21,5 @@ package-lock.json
 to-dev.sh
 to-battle.sh
 
+uitest/
+data.old*/

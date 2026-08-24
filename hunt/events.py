@@ -17,10 +17,10 @@ class EventsMixin:
                 self.events = self.events[-300:]
             self.last_event = msg
             try:
-                conn = self._stats_db()
-                conn.execute("INSERT INTO events (ts, seq, type, msg) VALUES (?,?,?,?)", (ts, self._event_seq, kind, msg))
-                conn.commit()
-                conn.close()
+                self._stats_writer().submit(
+                    "INSERT INTO events (ts, seq, type, msg) VALUES (?,?,?,?)",
+                    [(ts, self._event_seq, kind, msg)],
+                )
             except Exception:
                 logger.debug("suppressed", exc_info=True)
             try:

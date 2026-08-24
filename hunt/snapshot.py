@@ -35,13 +35,17 @@ class SnapshotMixin:
             }
 
     def _snapshot_lists(self) -> tuple:
-        alive = [r for r in self.ratings.values()
+        # Atomic snapshot: this runs in a worker thread while checkers mutate
+        # self.ratings on the event loop; iterating the live dict here could
+        # raise "dictionary changed size during iteration".
+        all_ratings = list(self.ratings.values())
+        alive = [r for r in all_ratings
                  if (r.last_status == "ok" or r.in_grace) and not r.in_blacklist]
         sorted_alive = sorted(alive, key=lambda r: r.score, reverse=True)
-        dead = [r for r in self.ratings.values()
+        dead = [r for r in all_ratings
                 if r.last_status == "failed" and not r.in_grace]
         sorted_dead = sorted(dead, key=lambda r: r.last_check, reverse=True)
-        ip_blacklisted = sum(1 for r in self.ratings.values() if r.ip_blacklist_reason and not r.in_blacklist)
+        ip_blacklisted = sum(1 for r in all_ratings if r.ip_blacklist_reason and not r.in_blacklist)
         return alive, sorted_alive, sorted_dead, ip_blacklisted
 
     def _snapshot_progress(self) -> dict:
@@ -106,7 +110,13 @@ class SnapshotMixin:
             return []
 
     def get_countries(self) -> list:
-            alive = [r for r in self.ratings.values()
+            # Short-TTL memo: overview and pool both poll this while the full
+            # scan over every rating is not free on large states.
+            cached = getattr(self, "_countries_cache", None)
+            if cached is not None and time.time() - cached[0] < 5.0:
+                return cached[1]
+            all_ratings = list(self.ratings.values())
+            alive = [r for r in all_ratings
                      if (r.last_status == "ok" or r.in_grace) and not r.in_blacklist]
             counts = Counter((r.country_code or r.country or "?") for r in alive)
             total = sum(counts.values()) or 1
@@ -130,9 +140,21 @@ class SnapshotMixin:
                 }.items()}
                 name = rev.get(code, code)
                 result.append({"country": name, "country_code": code, "count": count, "pct": round(count / total * 100, 1)})
+            self._countries_cache = (time.time(), result)
             return result
 
     def get_events(self, limit: int = 200, event_type: str | None = None) -> list:
+            # Serve from the in-memory ring first: it holds the most recent
+            # events and is always consistent with what the operator just saw.
+            # The DB (written asynchronously) is only consulted when the
+            # in-memory buffer cannot satisfy the requested limit.
+            mem = [
+                {"ts": e["ts"], "seq": e["seq"], "type": e["type"], "msg": e["msg"]}
+                for e in reversed(self.events)
+                if event_type is None or e["type"] == event_type
+            ]
+            if len(mem) >= limit:
+                return mem[:limit]
             try:
                 conn = self._stats_db()
                 if event_type:
@@ -146,10 +168,12 @@ class SnapshotMixin:
                         (limit,),
                     ).fetchall()
                 conn.close()
-                return [{"ts": r["ts"], "seq": r["seq"], "type": r["type"], "msg": r["msg"]} for r in rows]
+                db_rows = [{"ts": r["ts"], "seq": r["seq"], "type": r["type"], "msg": r["msg"]} for r in rows]
+                seen = {e["seq"] for e in mem}
+                return mem + [r for r in db_rows if r["seq"] not in seen][: max(0, limit - len(mem))]
             except Exception as e:
                 logger.error("get_events: %s", e)
-                return []
+                return mem
 
     def get_activity(self, limit: int = 10) -> list:
             def _icon(kind, msg):
@@ -397,6 +421,7 @@ class SnapshotMixin:
             return {"cpu": cpu, "memory": mem, "disk": disk}
 
     def _push_history(self):
+            self._flush_traffic_buffer(wait=True)
             alive = sum(1 for r in self.ratings.values()
                         if (r.last_status == "ok" or r.in_grace) and not r.in_blacklist)
             dead = sum(1 for r in self.ratings.values()
@@ -434,13 +459,10 @@ class SnapshotMixin:
             traffic_sr = (ok_req / max(1, total_req)) * 100 if total_req else 0
 
             try:
-                conn = self._stats_db()
-                conn.execute(
+                self._stats_writer().submit(
                     "INSERT INTO history (ts, alive, dead, total, requests, connections_ok, connections_failed, success_rate, traffic_success_rate, bandwidth_in, bandwidth_out, avg_latency) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-                    (now, alive, dead, len(self.ratings), total_req, ok_req, total_req - ok_req, pool_sr, traffic_sr, bw_in, bw_out, avg_lat)
-                )
-                conn.commit()
-                conn.close()
+                    [(now, alive, dead, len(self.ratings), total_req, ok_req, total_req - ok_req, pool_sr, traffic_sr, bw_in, bw_out, avg_lat)])
+                self._stats_writer().drain()
             except Exception as e:
                 logger.error("DB push history: %s", e)
 

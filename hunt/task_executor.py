@@ -151,13 +151,25 @@ async def _execute_history(state, entry: ScheduleEntry):
     """Record history snapshot and run retention cleanup."""
     state._push_history()
     try:
-        conn = state._stats_db()
         now = time.time()
-        conn.execute("DELETE FROM traffic_log WHERE ts < ?", (now - 7 * 86400,))
-        conn.execute("DELETE FROM events WHERE ts < ?", (now - 30 * 86400,))
-        conn.execute("DELETE FROM actions WHERE ts < ?", (now - 30 * 86400,))
-        conn.commit()
-        conn.close()
+        w = state._stats_writer()
+        w.submit("DELETE FROM traffic_log WHERE ts < ?", [(now - 7 * 86400,)])
+        # Hard cap on top of the time retention: a very busy week must never
+        # push the table into the tens of millions of rows. The cutoff rowid
+        # lookup runs on the reader connection: a stale cutoff only delays
+        # pruning by one cycle, never deletes extra rows.
+        try:
+            conn = state._stats_db()
+            row = conn.execute(
+                "SELECT rowid FROM traffic_log ORDER BY rowid DESC LIMIT 1 OFFSET 2000000"
+            ).fetchone()
+            conn.close()
+            if row is not None:
+                w.submit("DELETE FROM traffic_log WHERE rowid <= ?", [(row[0],)])
+        except Exception as e:
+            logger.debug(f"traffic cap probe skipped: {e}")
+        w.submit("DELETE FROM events WHERE ts < ?", [(now - 30 * 86400,)])
+        w.submit("DELETE FROM actions WHERE ts < ?", [(now - 30 * 86400,)])
     except Exception as e:
         logger.warning(f"Scheduler history cleanup: {e}")
 

@@ -24,6 +24,7 @@ class TestTrafficLog:
             bytes_out=200,
             duration=0.1,
         )
+        runner.state._flush_traffic_buffer()
         conn = sqlite3.connect(str(tmp_data_dir / "stats.db"))
         conn.row_factory = sqlite3.Row
         rows = conn.execute("SELECT target, status, bytes_in, bytes_out FROM traffic_log").fetchall()
@@ -51,6 +52,7 @@ class TestTrafficLog:
             bytes_out=150,
             duration=0.2,
         )
+        runner.state._flush_traffic_buffer()
         conn = sqlite3.connect(str(tmp_data_dir / "stats.db"))
         conn.row_factory = sqlite3.Row
         rows = conn.execute("SELECT target, status FROM traffic_log").fetchall()
@@ -61,8 +63,12 @@ class TestTrafficLog:
     def test_push_history_aggregates_traffic_log(self, state):
         runner = hunt.ProxyRunner(state)
         runner._log(None, "http://example.com/1", "ok", "5.5.5.5:8080", 100, 200, 0.1)
+        runner.state._flush_traffic_buffer()
         runner._log(None, "http://example.com/2", "ok", "5.5.5.5:8080", 100, 200, 0.1)
+        runner.state._flush_traffic_buffer()
         runner._log(None, "http://fail.com", "connect failed", "5.5.5.5:8080", 0, 0, 0.0)
+        runner.state._flush_traffic_buffer()
+        runner.state._flush_traffic_buffer()
         state._push_history()
         hist = state.get_history("1h")
         assert len(hist) == 1
@@ -80,6 +86,8 @@ class TestApiTraffic:
         _, state = api_server
         runner = hunt.ProxyRunner(state)
         runner._log(None, "http://example.com", "ok", "5.5.5.5:8080", 100, 200, 0.1)
+        runner.state._flush_traffic_buffer()
+        runner.state._flush_traffic_buffer()
         state._push_history()
 
         resp = await http_client("GET", "/api/history?last=1h")
@@ -94,6 +102,7 @@ class TestApiTraffic:
         _, state = api_server
         runner = hunt.ProxyRunner(state)
         runner._log(None, "http://example.com", "ok", "5.5.5.5:8080", 100, 200, 0.1)
+        runner.state._flush_traffic_buffer()
 
         resp = await http_client("GET", "/api/bandwidth")
         data = _json_response(resp)
@@ -105,6 +114,7 @@ class TestApiTraffic:
         _, state = api_server
         runner = hunt.ProxyRunner(state)
         runner._log(None, "http://example.com", "ok", "5.5.5.5:8080", 100, 200, 0.1)
+        runner.state._flush_traffic_buffer()
 
         resp = await http_client("GET", "/api/requests")
         data = _json_response(resp)
@@ -115,6 +125,7 @@ class TestApiTraffic:
         _, state = api_server
         runner = hunt.ProxyRunner(state)
         runner._log(("1.2.3.4", 12345), "http://example.com", "ok", "5.5.5.5:8080", 100, 200, 0.1)
+        runner.state._flush_traffic_buffer()
 
         resp = await http_client("GET", "/api/clients")
         data = _json_response(resp)
@@ -125,6 +136,7 @@ class TestApiTraffic:
         _, state = api_server
         runner = hunt.ProxyRunner(state)
         runner._log(("1.2.3.4", 12345), "http://example.com", "ok", "5.5.5.5:8080", 100, 200, 0.1)
+        runner.state._flush_traffic_buffer()
 
         resp = await http_client("GET", "/api/domains")
         data = _json_response(resp)
@@ -135,6 +147,7 @@ class TestApiTraffic:
         _, state = api_server
         runner = hunt.ProxyRunner(state)
         runner._log(None, "http://example.com", "timeout", "5.5.5.5:8080", 0, 0, 0.0)
+        runner.state._flush_traffic_buffer()
 
         resp = await http_client("GET", "/api/errors")
         data = _json_response(resp)
@@ -146,7 +159,9 @@ class TestApiTraffic:
         _, state = api_server
         runner = hunt.ProxyRunner(state)
         runner._log(None, "http://example.com/1", "ok", "5.5.5.5:8080", 100, 200, 0.1)
+        runner.state._flush_traffic_buffer()
         runner._log(None, "http://example.com/2", "ok", "5.5.5.5:8080", 300, 400, 0.1)
+        runner.state._flush_traffic_buffer()
 
         resp = await http_client("GET", "/api/traffic/live")
         data = _json_response(resp)

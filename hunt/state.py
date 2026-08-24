@@ -66,7 +66,7 @@ class HuntState(DbMixin, EventsMixin, SnapshotMixin, HuntControlMixin, HuntCycle
             # IP blacklist (downloaded lists of banned exit IPs / CIDRs)
             self.ip_blacklist_entries: dict[str, list[dict]] = {}  # ip/cidr -> [{source_id, source_name, reason}, ...]
             self.ip_blacklist_exact: set[str] = set()
-            self.ip_blacklist_networks: list[ipaddress.IPv4Network | ipaddress.IPv6Network] = []
+            self.ip_blacklist_networks: list[tuple[int, int, str]] = []  # (lo, hi, entry)
             self._fetching_ip_blacklists: bool = False
             self.phase: str = self.PHASE_IDLE
             self.phase_started: float = 0.0

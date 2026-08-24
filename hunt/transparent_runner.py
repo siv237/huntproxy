@@ -190,14 +190,9 @@ class TransparentRunner:
         if len(self.log) > 200:
             self.log = self.log[-150:]
         try:
-            conn = self.state._stats_db()
-            conn.execute(
-                "INSERT INTO traffic_log (ts, client, target, status, upstream, bytes_in, bytes_out, duration) "
-                "VALUES (?,?,?,?,?,?,?,?)",
+            self.state._queue_traffic_log(
                 (entry["ts"], entry["client"], target, status, upstream,
                  bytes_in, bytes_out, round(duration, 3)))
-            conn.commit()
-            conn.close()
         except Exception:
             logger.debug("suppressed", exc_info=True)
 

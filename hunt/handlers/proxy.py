@@ -18,7 +18,11 @@ class ProxyHandlers:
         self.server = server
 
     async def _handle_proxy_status(self, raw_path, body):
-        return json.dumps(self.server.proxy.get_status()), 200, "application/json"
+        # get_status enriches switch history with a traffic_log aggregation
+        # that can take seconds on a large DB — run it off the event loop so
+        # the UI keeps responding while it works.
+        status = await asyncio.to_thread(self.server.proxy.get_status)
+        return json.dumps(status), 200, "application/json"
 
     async def _handle_proxy_alive(self, raw_path, body):
         # IP-blacklisted proxies are no longer a hard sentence: they can be

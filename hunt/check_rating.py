@@ -23,13 +23,10 @@ class CheckRatingMixin:
         if not buf:
             return
         try:
-            conn = self._stats_db()
-            conn.executemany(
+            self._stats_writer().submit(
                 "INSERT INTO proxy_checks (address, ts, latency, speed, ok) VALUES (?,?,?,?,?)",
-                buf,
+                list(buf),
             )
-            conn.commit()
-            conn.close()
         except Exception as e:
             logger.error("record proxy check: %s", e)
         finally:

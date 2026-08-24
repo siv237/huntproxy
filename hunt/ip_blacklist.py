@@ -21,9 +21,11 @@ class IPBlacklistMixin:
                 for key, reason, net, is_host in entries:
                     if self._add_ipbl_entry(key, reason, source_id, source_name):
                         if is_host:
-                            self.ip_blacklist_exact.add(str(net.network_address))
+                            self.ip_blacklist_exact.add(key)
                         else:
-                            self.ip_blacklist_networks.append(net)
+                            lo = int(net.network_address)
+                            hi = int(net.broadcast_address)
+                            self.ip_blacklist_networks.append((lo, hi, key))
                         added += 1
                     parsed.append((key, reason))
             if persist and parsed:
@@ -80,10 +82,12 @@ class IPBlacklistMixin:
             if ip in self.ip_blacklist_exact:
                 matches.extend(self.ip_blacklist_entries.get(ip, []))
             try:
-                addr = ipaddress.ip_address(ip)
-                for net in self.ip_blacklist_networks:
-                    if addr in net:
-                        matches.extend(self.ip_blacklist_entries.get(str(net), []))
+                addr_int = int(ipaddress.ip_address(ip))
+                for lo, hi, entry in self.ip_blacklist_networks:
+                    if lo <= addr_int <= hi:
+                        matches.extend(self.ip_blacklist_entries.get(entry, []))
+            except ValueError:
+                pass
             except Exception:
                 logger.debug("suppressed", exc_info=True)
             # Deduplicate by source_id in case an IP matches both an exact entry and a network.
@@ -136,6 +140,37 @@ class IPBlacklistMixin:
             except Exception as e:
                 logger.error("load_ip_blacklist db check: %s", e)
 
+    @staticmethod
+    def _fast_cidr_range(entry: str):
+        """(lo, hi) integer range for an IPv4 CIDR, ~10x faster than
+        ipaddress.ip_network. Falls back to ipaddress for anything the fast
+        parser does not understand (IPv6, weird input)."""
+        try:
+            ip_part, _, plen = entry.partition("/")
+            if ip_part.count(".") != 3:
+                raise ValueError(entry)
+            plen = int(plen) if plen else 32
+            if not 0 <= plen <= 32:
+                return None
+            val = 0
+            for octet in ip_part.split("."):
+                if not octet.isdigit():
+                    raise ValueError(entry)
+                n = int(octet)
+                if n > 255:
+                    raise ValueError(entry)
+                val = (val << 8) | n
+            mask = (0xFFFFFFFF << (32 - plen)) & 0xFFFFFFFF
+            lo = val & mask
+            return lo, lo | (~mask & 0xFFFFFFFF)
+        except ValueError:
+            try:
+                net = ipaddress.ip_network(entry, strict=False)
+                return int(net.network_address), int(net.broadcast_address)
+            except Exception:
+                logger.debug("suppressed", exc_info=True)
+                return None
+
     def _load_ip_blacklist_from_db(self, accumulate: bool = False):
             """Load all persisted IP blacklist entries from SQLite into memory."""
             if not accumulate:
@@ -153,15 +188,15 @@ class IPBlacklistMixin:
                     existing = self.ip_blacklist_entries.get(entry)
                     if existing is None:
                         self.ip_blacklist_entries[entry] = [meta]
-                        try:
-                            net = ipaddress.ip_network(entry, strict=False)
-                            is_host = net.prefixlen == (32 if isinstance(net, ipaddress.IPv4Network) else 128)
-                            if is_host:
-                                self.ip_blacklist_exact.add(str(net.network_address))
+                        rng = self._fast_cidr_range(entry)
+                        if rng is None:
+                            self.ip_blacklist_exact.add(entry)
+                        else:
+                            lo, hi = rng
+                            if lo == hi:
+                                self.ip_blacklist_exact.add(entry)
                             else:
-                                self.ip_blacklist_networks.append(net)
-                        except Exception:
-                            logger.debug("suppressed", exc_info=True)
+                                self.ip_blacklist_networks.append((lo, hi, entry))
                     elif not any(m["source_id"] == meta["source_id"] for m in existing):
                         existing.append(meta)
             except Exception as e:

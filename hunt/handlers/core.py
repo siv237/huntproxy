@@ -35,7 +35,8 @@ class CoreHandlers:
         return WEB_HTML, 200, "text/html; charset=utf-8"
 
     async def _handle_snapshot(self, raw_path, body):
-        return json.dumps(self.state.get_snapshot()), 200, "application/json"
+        snapshot = await asyncio.to_thread(self.state.get_snapshot)
+        return json.dumps(snapshot), 200, "application/json"
 
     async def _handle_events(self, raw_path, body):
         qs = _qs(raw_path)
@@ -53,7 +54,8 @@ class CoreHandlers:
         return json.dumps(new), 200, "application/json"
 
     async def _handle_countries(self, raw_path, body):
-        return json.dumps(self.state.get_countries()), 200, "application/json"
+        countries = await asyncio.to_thread(self.state.get_countries)
+        return json.dumps(countries), 200, "application/json"
 
     async def _handle_system(self, raw_path, body):
         return json.dumps(self.state._get_system()), 200, "application/json"
