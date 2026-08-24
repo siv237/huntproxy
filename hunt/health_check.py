@@ -173,7 +173,8 @@ class HealthCheckMixin:
                         ctx.fail_count += 1
                         self.failed = ctx.fail_count
                     self._update_rating(r.address, ok, country, http_latency, supports_connect,
-                                        mitm_suspect, egress, listen, speed, country_code=cc, ssl_supported=ssl_ok)
+                                        mitm_suspect, egress, listen, speed, country_code=cc,
+                                        ssl_supported=ssl_ok, fraud=merged.get("fraud") or {})
                     if self.checked % 10 == 0 or ok:
                         pct = int(100 * self.checked / max(1, self.checking_total))
                         self._emit(
@@ -187,9 +188,10 @@ class HealthCheckMixin:
     async def _gather_health_results(self, r):
         http_task = asyncio.create_task(self._check_proxy(r.address))
         ssl_task = asyncio.create_task(self._check_ssl(r.address))
+        fraud_task = asyncio.create_task(self._fetch_fraud_score(r.address))
         try:
             return await asyncio.wait_for(
-                asyncio.gather(http_task, ssl_task, return_exceptions=True),
+                asyncio.gather(http_task, ssl_task, fraud_task, return_exceptions=True),
                 timeout=self.effective_timeout + 5,
             )
         except asyncio.TimeoutError:
@@ -268,6 +270,7 @@ class HealthCheckMixin:
             results = await asyncio.gather(
                 asyncio.create_task(self._check_proxy(r.address)),
                 asyncio.create_task(self._check_ssl(r.address)),
+                asyncio.create_task(self._fetch_fraud_score(r.address)),
                 return_exceptions=True,
             )
             merged = self._merge_check_results(results, r.address)
@@ -296,7 +299,8 @@ class HealthCheckMixin:
                     ctx.fail_count += 1
                     self._fail_streak += 1
                 self._update_rating(r.address, ok, country, http_latency, supports_connect,
-                                    mitm_suspect, egress, listen, speed, country_code=cc, ssl_supported=ssl_ok)
+                                    mitm_suspect, egress, listen, speed, country_code=cc,
+                                    ssl_supported=ssl_ok, fraud=merged.get("fraud") or {})
 
     async def run_startup_cycle(self):
             """Run the startup check cycle as a background task.

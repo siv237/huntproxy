@@ -58,12 +58,14 @@ class CheckValidationMixin:
                 supports_connect = ssl_supports_connect
         if ok and not self._is_socks_addr(addr) and not supports_connect:
             ok = False
+        fraud = results[2] if len(results) > 2 and isinstance(results[2], dict) else {}
         return {
             "ok": ok, "country": country, "supports_connect": supports_connect,
             "mitm_suspect": mitm_suspect, "egress": egress, "listen": listen,
             "http_latency": http_latency, "cc": cc, "fast_fail": fast_fail,
             "ssl_ok": ssl_ok, "ssl_egress": ssl_egress,
             "ssl_supports_connect": ssl_supports_connect,
+            "fraud": fraud,
         }
 
     async def _validate_all(self, proxies: set):
@@ -162,6 +164,7 @@ class CheckValidationMixin:
                     results = await asyncio.gather(
                         asyncio.create_task(self._check_proxy(addr)),
                         asyncio.create_task(self._check_ssl(addr)),
+                        asyncio.create_task(self._fetch_fraud_score(addr)),
                         return_exceptions=True,
                     )
                     merged = self._merge_check_results(results, addr)
@@ -181,7 +184,7 @@ class CheckValidationMixin:
                     speed = await self._measure_check_speed(addr, ok, wid, _proto, country, cc, ssl_ok, supports_connect) if ok else 0.0
                     if await self._record_check_result(addr, ok, country, http_latency, supports_connect,
                                                         mitm_suspect, egress, listen, speed, cc, ssl_ok,
-                                                        lock, ctx, counted):
+                                                        lock, ctx, counted, merged.get("fraud") or {}):
                         return
                     counted = True
                     if await self._should_retry_after_result():
@@ -240,7 +243,7 @@ class CheckValidationMixin:
 
     async def _record_check_result(self, addr, ok, country, http_latency, supports_connect,
                                     mitm_suspect, egress, listen, speed, cc, ssl_ok,
-                                    lock, ctx, counted) -> bool:
+                                    lock, ctx, counted, fraud=None) -> bool:
         """Record check result under lock. Returns True if caller should return."""
         async with lock:
             if getattr(self, '_health_running', False):
@@ -268,7 +271,8 @@ class CheckValidationMixin:
                 self.failed = ctx.fail_count
                 self._fail_streak += 1
             self._update_rating(addr, ok, country, http_latency, supports_connect,
-                                mitm_suspect, egress, listen, speed, country_code=cc, ssl_supported=ssl_ok)
+                                mitm_suspect, egress, listen, speed, country_code=cc,
+                                ssl_supported=ssl_ok, fraud=fraud)
             if self.checked % 25 == 0 or ok:
                 pct = int(100 * self.checked / max(1, self.checking_total))
                 self._emit(

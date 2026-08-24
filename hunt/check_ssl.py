@@ -51,6 +51,7 @@ class CheckSslMixin:
                 "egress_country": data.get("country", ""),
                 "egress_hosting": bool(data.get("hosting")),
                 "egress_proxy": bool(data.get("proxy")),
+                "egress_mobile": bool(data.get("mobile")),
             }
             return True, country, country_code, egress, ssl_latency, supports_connect
 
@@ -72,7 +73,7 @@ class CheckSslMixin:
         if b"200" not in resp.split(b"\r\n")[0]:
             raise asyncio.IncompleteReadError(b"", None)
         req = (
-            "GET /json/?fields=query,city,isp,country,hosting,proxy HTTP/1.0\r\n"
+            "GET /json/?fields=query,city,isp,country,hosting,proxy,mobile HTTP/1.0\r\n"
             "Host: ip-api.com\r\n"
             "User-Agent: huntproxy\r\n"
             "Connection: close\r\n"
@@ -84,7 +85,7 @@ class CheckSslMixin:
 
     async def _ssl_get_request(self, reader, writer) -> bytes:
         req = (
-            "GET http://ip-api.com/json/?fields=query,city,isp,country,hosting,proxy HTTP/1.0\r\n"
+            "GET http://ip-api.com/json/?fields=query,city,isp,country,hosting,proxy,mobile HTTP/1.0\r\n"
             "Host: ip-api.com\r\n"
             "User-Agent: huntproxy\r\n"
             "Connection: close\r\n"

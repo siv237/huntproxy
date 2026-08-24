@@ -45,6 +45,8 @@ class ProxyRating:
     egress_http_country: str = ""
     fraud_hosting: bool = False  # egress-IP за дата-центром/хостингом (ip-api hosting)
     fraud_proxy: bool = False  # egress-IP помечен как прокси/VPN (ip-api proxy)
+    fraud_mobile: bool = False  # egress-IP мобильный оператор/CGNAT (ip-api mobile)
+    fraud_score_raw: int = -1  # риск 0-100 напрямую от proxycheck.io; -1 = нет
     fraud_checked_ts: float = 0.0  # когда в последний раз получали fraud-данные
     speed_sum: float = 0.0
     speed_count: int = 0
@@ -64,24 +66,33 @@ class ProxyRating:
 
     @property
     def fraud_score(self) -> int:
-        """Чистота egress-IP по флагам ip-api: 0 = чистый (резидент),
-        50 = дата-центр/хостинг, 100 = прокси/VPN, -1 = данных нет."""
+        """Риск egress-IP 0-100. Приоритет — необработанный риск-скор
+        proxycheck.io (fraud_score_raw). Если сервис недоступен —
+        оценка по флагам ip-api: +20 mobile, +40 hosting, +70 proxy.
+        -1 = данных нет."""
+        if self.fraud_score_raw >= 0:
+            return self.fraud_score_raw
         if not self.fraud_checked_ts:
             return -1
-        if self.fraud_proxy:
-            return 100
+        score = 0
+        if self.fraud_mobile:
+            score += 20
         if self.fraud_hosting:
-            return 50
-        return 0
+            score += 40
+        if self.fraud_proxy:
+            score += 70
+        return min(100, score)
 
     @property
     def fraud_verdict(self) -> str:
         s = self.fraud_score
         if s < 0:
             return "UNKNOWN"
-        if s == 0:
+        if s < 15:
             return "CLEAN"
-        if s == 50:
+        if s < 35:
+            return "MOBILE"
+        if s < 65:
             return "DC"
         return "PROXY"
 
@@ -212,6 +223,8 @@ class ProxyRating:
             "ssl_supported": self.ssl_supported,
             "fraud_hosting": self.fraud_hosting,
             "fraud_proxy": self.fraud_proxy,
+            "fraud_mobile": self.fraud_mobile,
+            "fraud_score_raw": self.fraud_score_raw,
             "fraud_score": self.fraud_score,
             "fraud_verdict": self.fraud_verdict,
             "fraud_checked_ts": self.fraud_checked_ts,
@@ -255,6 +268,8 @@ class ProxyRating:
             "ssl_supported": self.ssl_supported,
             "fraud_hosting": self.fraud_hosting,
             "fraud_proxy": self.fraud_proxy,
+            "fraud_mobile": self.fraud_mobile,
+            "fraud_score_raw": self.fraud_score_raw,
             "fraud_score": self.fraud_score,
             "fraud_verdict": self.fraud_verdict,
             "fraud_checked_ts": self.fraud_checked_ts,

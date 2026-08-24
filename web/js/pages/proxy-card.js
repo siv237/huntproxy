@@ -410,22 +410,28 @@ const proxyCard = {
     const fraudRow = ui.el('div', 'proxy-card-route-detail');
     fraudRow.appendChild(ui.el('div', 'proxy-card-route-detail-key', { text: 'Fraud' }));
     if (fs >= 0) {
-      const fColor = fv === 'CLEAN' ? '#22c55e' : fv === 'DC' ? '#f59e0b' : '#ef4444';
+      const fColor = fv === 'CLEAN' ? '#22c55e' : fv === 'MOBILE' ? '#3b82f6' : fv === 'DC' ? '#f59e0b' : '#ef4444';
       const badge = ui.el('div', 'proxy-card-route-detail-val', { text: `${fv} ${fs}/100` });
       badge.style.color = fColor;
       badge.style.fontWeight = '700';
+      badge.title = (typeof p.fraud_score_raw === 'number' && p.fraud_score_raw >= 0)
+        ? `risk ${p.fraud_score_raw}/100 (proxycheck.io)`
+        : 'estimate from ip-api flags';
       fraudRow.appendChild(badge);
+      if (p.fraud_checked_ts) {
+        fraudRow.appendChild(ui.el('div', 'proxy-card-route-detail-val', { text: ui.ago(p.fraud_checked_ts), style: 'color:var(--text-muted);font-size:9px' }));
+      }
       details.appendChild(fraudRow);
-      details.appendChild(this._routeDetail('Fraud flags', `hosting ${p.fraud_hosting ? 'yes' : 'no'} · proxy ${p.fraud_proxy ? 'yes' : 'no'}`));
+      details.appendChild(this._routeDetail('Fraud flags', `hosting ${p.fraud_hosting ? 'yes' : 'no'} · proxy ${p.fraud_proxy ? 'yes' : 'no'} · mobile ${p.fraud_mobile ? 'yes' : 'no'}`));
     } else {
       const val = ui.el('div', 'proxy-card-route-detail-val', { text: '— (not checked yet) ' });
-      const btn = ui.el('button', 'btn btn-xs btn-secondary', { text: 'Check' });
-      btn.style.cssText = 'padding:1px 6px;font-size:9px;margin-left:6px';
-      btn.addEventListener('click', () => this._fraudCheck(p.address));
-      val.appendChild(btn);
       fraudRow.appendChild(val);
       details.appendChild(fraudRow);
     }
+    const btn = ui.el('button', 'btn btn-xs btn-secondary', { text: fs >= 0 ? '↻ Re-check' : 'Check' });
+    btn.style.cssText = 'padding:1px 6px;font-size:9px;margin-left:6px';
+    btn.addEventListener('click', () => this._fraudCheck(p.address, true));
+    fraudRow.appendChild(btn);
     section.appendChild(details);
 
     return section;
@@ -438,9 +444,9 @@ const proxyCard = {
     return row;
   },
 
-  async _fraudCheck(addr) {
+  async _fraudCheck(addr, force = false) {
     try {
-      await api.proxyFraud(addr);
+      await api.proxyFraud(addr, force);
     } catch (e) {
       app.toast(t('common.error', { message: e.message }), 'error');
     }

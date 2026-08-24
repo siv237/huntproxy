@@ -19,6 +19,7 @@ import logging
 logger = logging.getLogger(__name__)
 from hunt.check_geo import CheckGeoMixin
 from hunt.check_rating import CheckRatingMixin
+from hunt.fraudscore import FraudScoreMixin
 from hunt.state_persistence import StatePersistenceMixin
 from hunt.state_download import StateDownloadMixin
 from hunt.constants import DATA_DIR, logger
@@ -39,7 +40,7 @@ from hunt.snapshot import SnapshotMixin
 from pathlib import Path
 from typing import Optional
 
-class HuntState(DbMixin, EventsMixin, SnapshotMixin, HuntControlMixin, HuntCycleMixin, CanaryMixin, HealthLoopsMixin, HealthCheckMixin, CheckValidationMixin, CheckProxyMixin, CheckSslMixin, CheckSpeedMixin, CheckMitmMixin, CheckGeoMixin, CheckRatingMixin, BlacklistMixin, IPBlacklistMixin, ProxySourcesMixin, IPBlacklistSourcesMixin, BlocklistsMixin, RoutingMixin, CustomProxiesMixin, ChannelMixin, ActionsMixin, BackupMixin, FavoritesMixin, StatePersistenceMixin, StateDownloadMixin):
+class HuntState(DbMixin, EventsMixin, SnapshotMixin, HuntControlMixin, HuntCycleMixin, CanaryMixin, HealthLoopsMixin, HealthCheckMixin, CheckValidationMixin, CheckProxyMixin, CheckSslMixin, CheckSpeedMixin, CheckMitmMixin, CheckGeoMixin, FraudScoreMixin, CheckRatingMixin, BlacklistMixin, IPBlacklistMixin, ProxySourcesMixin, IPBlacklistSourcesMixin, BlocklistsMixin, RoutingMixin, CustomProxiesMixin, ChannelMixin, ActionsMixin, BackupMixin, FavoritesMixin, StatePersistenceMixin, StateDownloadMixin):
     PHASE_IDLE = "idle"
 
     PHASE_DOWNLOAD = "downloading"

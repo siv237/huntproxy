@@ -161,49 +161,63 @@ class ProxyHandlers:
 
     async def _handle_proxy_fraud(self, raw_path, body):
         """Принудительная fraud-проверка одного прокси (без ожидания health-цикла).
-
-        Ходит через сам прокси (CONNECT ip-api), обновляет fraud-поля рейтинга.
-        Свежий результат (<10 мин) возвращается из кэша.
+        Ходит через сам прокси (ip-api + риск-скор proxycheck.io). Свежий
+        результат (<10 мин) — из кэша; ?force=1 выполняет реальную перепроверку.
         """
         qs = _qs(raw_path)
         addr = qs.get("addr", "")
+        force = qs.get("force") in ("1", "true")
         if not addr:
             return json.dumps({"ok": False, "error": "no addr"}), 400, "application/json"
         r = self.state.ratings.get(addr)
         if r is None:
             return json.dumps({"ok": False, "error": "not found"}), 404, "application/json"
         now = time.time()
-        if r.fraud_checked_ts and now - r.fraud_checked_ts < 600:
-            return json.dumps({"ok": True, "cached": True,
-                               "fraud_score": r.fraud_score, "fraud_verdict": r.fraud_verdict,
-                               "fraud_hosting": r.fraud_hosting, "fraud_proxy": r.fraud_proxy,
-                               "fraud_checked_ts": r.fraud_checked_ts}), 200, "application/json"
+        if not force and r.fraud_checked_ts and now - r.fraud_checked_ts < 600:
+            return json.dumps(self._fraud_response(r, cached=True)), 200, "application/json"
         try:
             results = await asyncio.gather(
                 asyncio.create_task(self.state._check_proxy(addr)),
                 asyncio.create_task(self.state._check_ssl(addr)),
+                asyncio.create_task(self.state._fetch_fraud_score(addr)),
                 return_exceptions=True,
             )
             merged = self.state._merge_check_results(results, addr)
             ok = bool(merged.get("ok"))
             egress = merged.get("egress") or {}
+            fraud = merged.get("fraud") or {}
         except Exception as exc:
             logger.warning("fraud check %s: %s", addr, str(exc)[:200])
-            ok, egress = False, {}
+            ok, egress, fraud = False, {}, {}
         if "egress_hosting" not in egress:
             logger.warning("fraud check %s: egress без fraud-данных (ok=%s)", addr, ok)
         if "egress_hosting" in egress:
             r.fraud_hosting = bool(egress.get("egress_hosting"))
             r.fraud_proxy = bool(egress.get("egress_proxy"))
+            r.fraud_mobile = bool(egress.get("egress_mobile"))
+            touched = True
+        else:
+            touched = False
+        score = fraud.get("score")
+        if isinstance(score, int) and 0 <= score <= 100:
+            r.fraud_score_raw = score
+            touched = True
+        if touched:
             r.fraud_checked_ts = now
             self.state._dirty_ratings.add(addr)
             self.state._save_dirty_ratings()
-            return json.dumps({"ok": True, "cached": False,
-                               "fraud_score": r.fraud_score, "fraud_verdict": r.fraud_verdict,
-                               "fraud_hosting": r.fraud_hosting, "fraud_proxy": r.fraud_proxy,
-                               "fraud_checked_ts": r.fraud_checked_ts}), 200, "application/json"
+            return json.dumps(self._fraud_response(r, cached=False)), 200, "application/json"
         return json.dumps({"ok": False, "error": "check failed",
                            "fraud_score": r.fraud_score, "fraud_verdict": r.fraud_verdict}), 200, "application/json"
+
+    @staticmethod
+    def _fraud_response(r, cached: bool) -> dict:
+        return {"ok": True, "cached": cached,
+                "fraud_score": r.fraud_score, "fraud_score_raw": r.fraud_score_raw,
+                "fraud_verdict": r.fraud_verdict,
+                "fraud_hosting": r.fraud_hosting, "fraud_proxy": r.fraud_proxy,
+                "fraud_mobile": r.fraud_mobile,
+                "fraud_checked_ts": r.fraud_checked_ts}
 
     async def _handle_proxy_detail(self, raw_path, body):
         path = raw_path.split("?", 1)[0]

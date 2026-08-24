@@ -40,7 +40,7 @@ class CheckRatingMixin:
                             supports_connect: bool = False, mitm_suspect: bool = False,
                             egress: dict = None, listen: dict = None,
                             speed: float = 0.0, country_code: str = "",
-                            ssl_supported: bool = False):
+                            ssl_supported: bool = False, fraud: dict = None):
             r = self.ratings.get(addr)
             if not r:
                 r = self._create_rating(addr, country, country_code)
@@ -51,7 +51,7 @@ class CheckRatingMixin:
             if ok:
                 self._apply_ok_result(r, country, country_code, latency, speed,
                                       supports_connect, ssl_supported, mitm_suspect,
-                                      egress or {}, listen or {})
+                                      egress or {}, listen or {}, fraud or {})
             else:
                 r.last_status = "failed"
                 r.consecutive_fails += 1
@@ -112,7 +112,7 @@ class CheckRatingMixin:
     def _apply_ok_result(self, r: ProxyRating, country: str, country_code: str,
                          latency: float, speed: float, supports_connect: bool,
                          ssl_supported: bool, mitm_suspect: bool,
-                         egress: dict, listen: dict):
+                         egress: dict, listen: dict, fraud: dict):
         r.checks_ok += 1
         r.latency_sum += latency
         r.latency_count += 1
@@ -130,6 +130,19 @@ class CheckRatingMixin:
             self._apply_egress(r, egress)
         if listen:
             self._apply_listen(r, listen)
+        if fraud:
+            self._apply_fraud(r, fraud)
+
+    def _apply_fraud(self, r: ProxyRating, fraud: dict):
+        """Apply a full 0-100 risk score from proxycheck.io (additive:
+        only overwrites when the service actually returned a score)."""
+        score = fraud.get("score")
+        if isinstance(score, int) and 0 <= score <= 100:
+            r.fraud_score_raw = score
+            r.fraud_checked_ts = time.time()
+        proxy_flag = fraud.get("proxy")
+        if isinstance(proxy_flag, bool):
+            r.fraud_proxy = r.fraud_proxy or proxy_flag
 
     def _apply_speed(self, r: ProxyRating, speed: float):
         if speed > 0:
@@ -158,6 +171,7 @@ class CheckRatingMixin:
         if "egress_hosting" in egress or "egress_proxy" in egress:
             r.fraud_hosting = bool(egress.get("egress_hosting"))
             r.fraud_proxy = bool(egress.get("egress_proxy"))
+            r.fraud_mobile = bool(egress.get("egress_mobile"))
             r.fraud_checked_ts = time.time()
 
     def _apply_listen(self, r: ProxyRating, listen: dict):

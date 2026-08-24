@@ -61,7 +61,7 @@ const api = {
     return this.request(`/api/proxies?${q}`);
   },
   proxyDetail(addr) { return this.request(`/api/proxy/${encodeURIComponent(addr)}`); },
-  proxyFraud(addr) { return this.request(`/api/proxy/fraud?addr=${encodeURIComponent(addr)}`, 'POST'); },
+  proxyFraud(addr, force = false) { return this.request(`/api/proxy/fraud?addr=${encodeURIComponent(addr)}${force ? '&force=1' : ''}`, 'POST'); },
   proxyChecks(addr, limit = 30) { return this.request(`/api/proxy-checks/${encodeURIComponent(addr)}?limit=${limit}`); },
   proxyHeatmap(hours = 72) { return this.request(`/api/proxy-heatmap?hours=${hours}`); },
   blacklist(params = {}) {

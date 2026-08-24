@@ -389,9 +389,10 @@ router.register('proxy-pool', (container) => {
       const v = p.fraud_verdict || 'UNKNOWN';
       const s = typeof p.fraud_score === 'number' ? p.fraud_score : -1;
       if (s < 0) return '<span style="color:var(--text-muted);font-size:9px">—</span>';
-      const color = v === 'CLEAN' ? 'var(--success)' : v === 'DC' ? 'var(--warning)' : 'var(--danger)';
-      const bg = v === 'CLEAN' ? 'rgba(34,197,94,.12)' : v === 'DC' ? 'rgba(245,158,11,.12)' : 'rgba(239,68,68,.12)';
-      return `<span title="fraud: ${v} (${s}/100)" style="display:inline-flex;align-items:center;justify-content:center;min-width:40px;padding:1px 4px;border-radius:var(--radius-xs);background:${bg};color:${color};font-weight:700;font-size:9px">${v} ${s}</span>`;
+      const raw = (typeof p.fraud_score_raw === 'number' && p.fraud_score_raw >= 0) ? ` · risk ${p.fraud_score_raw} (proxycheck.io)` : ' · estimate (ip-api)';
+      const color = v === 'CLEAN' ? 'var(--success)' : v === 'MOBILE' ? '#3b82f6' : v === 'DC' ? 'var(--warning)' : 'var(--danger)';
+      const bg = v === 'CLEAN' ? 'rgba(34,197,94,.12)' : v === 'MOBILE' ? 'rgba(59,130,246,.12)' : v === 'DC' ? 'rgba(245,158,11,.12)' : 'rgba(239,68,68,.12)';
+      return `<span title="fraud: ${v} (${s}/100${raw})" style="display:inline-flex;align-items:center;justify-content:center;min-width:40px;padding:1px 4px;border-radius:var(--radius-xs);background:${bg};color:${color};font-weight:700;font-size:9px">${v} ${s}</span>`;
     }
 
     function blacklistBadge(p) {

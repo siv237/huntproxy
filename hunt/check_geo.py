@@ -104,7 +104,7 @@ class CheckGeoMixin:
         return True
 
     async def _egress_http_get(self, w, r) -> bytes:
-        w.write(b"GET /json/?fields=query,city,isp,country,hosting,proxy HTTP/1.0\r\nHost: ip-api.com\r\nUser-Agent: huntproxy\r\nConnection: close\r\n\r\n")
+        w.write(b"GET /json/?fields=query,city,isp,country,hosting,proxy,mobile HTTP/1.0\r\nHost: ip-api.com\r\nUser-Agent: huntproxy\r\nConnection: close\r\n\r\n")
         await asyncio.wait_for(w.drain(), timeout=8)
         buf = b""
         while True:
@@ -136,5 +136,6 @@ class CheckGeoMixin:
             "egress_country": data.get("country", ""),
             "egress_hosting": bool(data.get("hosting")),
             "egress_proxy": bool(data.get("proxy")),
+            "egress_mobile": bool(data.get("mobile")),
         }
 
