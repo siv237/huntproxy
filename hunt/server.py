@@ -74,50 +74,65 @@ class HuntServer:
             await self._server.wait_closed()
 
     async def _handle(self, reader, writer):
+        # HTTP/1.1 keep-alive: browsers open up to 6 connections per host and
+        # reuse them. With the previous one-request-per-connection loop every
+        # script/css/api call paid a full TCP handshake and requests crawled
+        # in waves — page boot spent ~0.7s purely on connection churn.
         try:
-            line = await asyncio.wait_for(reader.readline(), timeout=10)
-        except Exception:
-            writer.close(); return
-        if not line:
-            writer.close(); return
-        try:
-            parts = line.split()
-            if len(parts) < 2:
-                writer.close(); return
-            method = parts[0].decode().upper()
-            raw_path = parts[1].decode()
-            path = raw_path.split("?", 1)[0]
-        except Exception:
-            writer.close(); return
+            while True:
+                try:
+                    line = await asyncio.wait_for(reader.readline(), timeout=120)
+                except Exception:
+                    return
+                if not line:
+                    return
+                try:
+                    parts = line.split()
+                    if len(parts) < 2:
+                        return
+                    method = parts[0].decode().upper()
+                    raw_path = parts[1].decode()
+                    path = raw_path.split("?", 1)[0]
+                except Exception:
+                    return
 
-        headers = {}
-        while True:
-            try:
-                hl = await asyncio.wait_for(reader.readline(), timeout=5)
-            except Exception:
-                break
-            if hl in (b"\r\n", b"\n", b""):
-                break
-            if b":" in hl:
-                k, v = hl.decode(errors="replace").split(":", 1)
-                headers[k.strip().lower()] = v.strip()
+                headers = {}
+                while True:
+                    try:
+                        hl = await asyncio.wait_for(reader.readline(), timeout=5)
+                    except Exception:
+                        return
+                    if hl in (b"\r\n", b"\n", b""):
+                        break
+                    if b":" in hl:
+                        k, v = hl.decode(errors="replace").split(":", 1)
+                        headers[k.strip().lower()] = v.strip()
 
-        cl = int(headers.get("content-length", 0))
-        body = b""
-        if cl > 0:
+                cl = int(headers.get("content-length", 0))
+                body = b""
+                if cl > 0:
+                    try:
+                        body = await asyncio.wait_for(reader.readexactly(cl), timeout=10)
+                    except Exception:
+                        logger.debug("suppressed", exc_info=True)
+                        return
+
+                close_after = headers.get("connection", "").lower() == "close"
+                try:
+                    response, status, ct = await self._route(method, path, raw_path, body)
+                except Exception:
+                    logger.debug("unhandled route error", exc_info=True)
+                    return
+                await self._write(writer, status, response, ct, close=close_after)
+                if close_after:
+                    return
+        finally:
             try:
-                body = await asyncio.wait_for(reader.readexactly(cl), timeout=10)
+                writer.close()
             except Exception:
                 logger.debug("suppressed", exc_info=True)
 
-        response, status, ct = await self._route(method, path, raw_path, body)
-        await self._write(writer, status, response, ct)
-        try:
-            writer.close()
-        except Exception:
-            logger.debug("suppressed", exc_info=True)
-
-    async def _write(self, writer, status, body, ct="application/json", cache_control=None):
+    async def _write(self, writer, status, body, ct="application/json", cache_control=None, close=False):
         if isinstance(body, str):
             body = body.encode()
         if cache_control is None:
@@ -134,7 +149,7 @@ class HuntServer:
             f"Content-Type: {ct}\r\n"
             f"Content-Length: {len(body)}\r\n"
             f"Cache-Control: {cache_control}\r\n"
-            f"Connection: close\r\n\r\n"
+            f"Connection: {'close' if close else 'keep-alive'}\r\n\r\n"
         ).encode() + body
         writer.write(resp)
         try:

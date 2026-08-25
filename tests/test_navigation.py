@@ -108,11 +108,19 @@ class TestNavigationConsistency:
             for m in re.findall(r"router\.register\(['\"]([^'\"]+)", src):
                 route_to_script[m] = js.stem
         missing = sorted(r for r in routes if r not in route_to_script)
-        # Verify the script file is actually included in index.html
+        # Page scripts ship as one generated bundle (see
+        # scripts/build_js_bundle.py); its presence in index.html covers all
+        # of them, and test_js_bundle.py keeps the bundle fresh.
+        html = (WEB_DIR / "index.html").read_text(encoding="utf-8")
+        if "/js/pages.bundle.js" in html:
+            included = set(route_to_script.values())
+        else:
+            # Fallback for unbundled layout: each script must be tagged.
+            included = {s for s in scripts}
         not_included = sorted(
             route_to_script[r]
             for r in routes
-            if r in route_to_script and route_to_script[r] not in scripts
+            if r in route_to_script and route_to_script[r] not in included
         )
         assert not missing, f"Routes without a page script: {missing}"
         assert not not_included, (

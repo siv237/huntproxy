@@ -37,6 +37,6 @@ export default [
   },
   {
     // Vendored/third-party or generated files — skip.
-    ignores: ["web/js/components.js", "node_modules/**", ".venv/**"],
+    ignores: ["web/js/components.js", "web/js/pages.bundle.js", "node_modules/**", ".venv/**"],
   },
 ];

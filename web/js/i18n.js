@@ -4,18 +4,46 @@ const i18n = {
   _translations: {},
   _loaded: {},
   _listeners: [],
+  _LOCALE_V: '?v=31',
 
   get lang() { return this._lang; },
 
+  // Kick off every locale download at script-eval time, in parallel. The
+  // old chain (index -> lang -> fallback) ran after DOMContentLoaded and
+  // delayed first paint of translated UI by several round-trips.
+  _prefetchJobs: null,
+  _startPrefetch() {
+    if (this._prefetchJobs) return this._prefetchJobs;
+    const jobs = {
+      index: fetch(`/locales/index.json${this._LOCALE_V}`)
+        .then(r => r.ok ? r.json() : null).catch(() => null),
+    };
+    for (const l of ['en', 'de', 'es', 'fr', 'ru', 'zh']) {
+      jobs[l] = fetch(`/locales/${l}.json${this._LOCALE_V}`)
+        .then(r => r.ok ? r.json() : null).catch(() => null);
+    }
+    this._prefetchJobs = jobs;
+    return jobs;
+  },
+
   async init() {
-    await this._discoverLangs();
+    const jobs = this._startPrefetch();
+    this._knownLangs = await jobs.index;
+    if (!Array.isArray(this._knownLangs)) this._knownLangs = null;
     const saved = localStorage.getItem('lang');
     const browser = navigator.language.split('-')[0];
     this._lang = saved || (this._isSupported(browser) ? browser : 'en');
-    await this.loadLang(this._lang);
-    if (this._lang !== this._fallback && !this._loaded[this._fallback]) {
-      await this.loadLang(this._fallback);
-    }
+    const want = [this._lang];
+    if (this._lang !== this._fallback && !want.includes(this._fallback)) want.push(this._fallback);
+    await Promise.all(want.map(async lang => {
+      const data = await jobs[lang];
+      if (data) {
+        this._translations[lang] = data;
+        this._loaded[lang] = true;
+      } else {
+        await this.loadLang(lang);
+      }
+    }));
     document.documentElement.lang = this._lang;
     this._notify();
   },
@@ -33,7 +61,7 @@ const i18n = {
   async loadLang(lang) {
     if (this._loaded[lang]) return;
     try {
-      const res = await fetch(`/locales/${lang}.json?v=31`);
+      const res = await fetch(`/locales/${lang}.json${this._LOCALE_V}`);
       if (!res.ok) throw new Error(res.status);
       this._translations[lang] = await res.json();
       this._loaded[lang] = true;
@@ -46,38 +74,21 @@ const i18n = {
   _knownLangs: null,
 
   _isSupported(lang) {
-    if (!this._knownLangs) return ['en', 'de', 'es', 'fr', 'ru', 'zh'].includes(lang);
-    return this._knownLangs.some(l => l.code === lang);
+    const langs = this._knownLangs || this._FALLBACK_LANGS;
+    return langs.some(l => l.code === lang);
   },
 
-  async _discoverLangs() {
-    if (this._knownLangs) return;
-    try {
-      const res = await fetch('/locales/index.json?v=31');
-      if (res.ok) {
-        this._knownLangs = await res.json();
-        return;
-      }
-    } catch (e) {}
-    this._knownLangs = [
-      { code: 'en', name: 'English', native: 'English' },
-      { code: 'de', name: 'German', native: 'Deutsch' },
-      { code: 'es', name: 'Spanish', native: 'Español' },
-      { code: 'fr', name: 'French', native: 'Français' },
-      { code: 'ru', name: 'Russian', native: 'Русский' },
-      { code: 'zh', name: 'Chinese', native: '中文' },
-    ];
-  },
+  _FALLBACK_LANGS: [
+    { code: 'en', name: 'English', native: 'English' },
+    { code: 'de', name: 'German', native: 'Deutsch' },
+    { code: 'es', name: 'Spanish', native: 'Español' },
+    { code: 'fr', name: 'French', native: 'Français' },
+    { code: 'ru', name: 'Russian', native: 'Русский' },
+    { code: 'zh', name: 'Chinese', native: '中文' },
+  ],
 
   getSupportedLangs() {
-    return this._knownLangs || [
-      { code: 'en', name: 'English', native: 'English' },
-      { code: 'de', name: 'German', native: 'Deutsch' },
-      { code: 'es', name: 'Spanish', native: 'Español' },
-      { code: 'fr', name: 'French', native: 'Français' },
-      { code: 'ru', name: 'Russian', native: 'Русский' },
-      { code: 'zh', name: 'Chinese', native: '中文' },
-    ];
+    return this._knownLangs || this._FALLBACK_LANGS;
   },
 
   t(key, params) {

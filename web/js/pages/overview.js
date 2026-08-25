@@ -1083,6 +1083,7 @@ router.register('overview', (container) => {
 
       // Update stat cards
       const c = s.counts || {};
+      try { localStorage.setItem('overview.counts', JSON.stringify({ t: Date.now(), c })); } catch (e) {}
       updateSparklineBuffers(c);
       const total = c.ratings || 0;
       const alive = c.alive || 0;
@@ -1328,6 +1329,20 @@ router.register('overview', (container) => {
       console.error('overview poll', e);
     }
   }
+
+  // Stale-while-revalidate: paint the last known counters immediately so
+  // the cards are never empty while the first poll is in flight.
+  try {
+    const cached = JSON.parse(localStorage.getItem('overview.counts') || 'null');
+    if (cached && Date.now() - cached.t < 300000) {
+      const cc = cached.c || {};
+      const el0 = id => document.getElementById(id);
+      if (el0('stat-val-total')) el0('stat-val-total').textContent = (cc.ratings || 0).toLocaleString();
+      if (el0('stat-val-alive')) el0('stat-val-alive').textContent = (cc.alive || 0).toLocaleString();
+      if (el0('stat-val-dead')) el0('stat-val-dead').textContent = (cc.dead || 0).toLocaleString();
+      if (el0('stat-val-blacklisted')) el0('stat-val-blacklisted').textContent = (cc.blacklist || 0).toLocaleString();
+    }
+  } catch (e) {}
 
   poll();
   const id = setInterval(poll, 2000);
