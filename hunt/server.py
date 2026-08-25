@@ -267,6 +267,7 @@ class HuntServer:
         self._router.add("GET", "/api/traffic", t._handle_traffic)
         self._router.add_prefix("GET", "/api/requests", t._handle_requests)
         self._router.add_prefix("GET", "/api/clients", t._handle_clients)
+        self._router.add_prefix("GET", "/api/clients/", t._handle_client_detail)
         self._router.add_prefix("GET", "/api/domains", t._handle_domains)
         self._router.add_prefix("GET", "/api/errors", t._handle_errors)
         self._router.add_prefix("GET", "/api/traffic/routes", t._handle_traffic_routes)

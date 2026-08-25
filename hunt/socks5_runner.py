@@ -148,7 +148,7 @@ class Socks5Runner:
         return await pr._connect_upstream(host, port)
 
     def _log(self, peer, target, status, upstream="", bytes_in=0, bytes_out=0, duration=0.0):
-        entry = {"ts": time.time(), "client": f"{peer[0]}:{peer[1]}" if peer else "?", "target": target, "status": status, "upstream": upstream, "bytes_in": bytes_in, "bytes_out": bytes_out, "duration": round(duration, 3)}
+        entry = {"ts": time.time(), "client": peer[0] if peer else "?", "target": target, "status": status, "upstream": upstream, "bytes_in": bytes_in, "bytes_out": bytes_out, "duration": round(duration, 3)}
         self.log.append(entry)
         if len(self.log) > 200:
             self.log = self.log[-150:]

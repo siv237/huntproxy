@@ -129,7 +129,7 @@ class TestApiTraffic:
 
         resp = await http_client("GET", "/api/clients")
         data = _json_response(resp)
-        assert any(c["client"] == "1.2.3.4:12345" for c in data["clients"])
+        assert any(c["client"] == "1.2.3.4" for c in data["clients"])
 
     @pytest.mark.asyncio
     async def test_api_domains_reads_stats_db(self, http_client, api_server):
@@ -181,7 +181,7 @@ class TestTrafficMemFallback:
     def _mem_entry(self, upstream, status="ok", bin_=100, bout=200, dur=0.1):
         return {
             "ts": time.time(),
-            "client": "1.2.3.4:12345",
+            "client": "1.2.3.4",
             "target": "http://example.com",
             "status": status,
             "upstream": upstream,

@@ -250,4 +250,78 @@ const ui = {
     if (route.startsWith('proxy:')) return '<span style="color:var(--info);font-weight:600">' + ui.escHtml(route) + '</span>';
     return '<span style="color:var(--text-muted)">' + ui.escHtml(route) + '</span>';
   },
+
+  hostOf(target) {
+    if (!target) return '';
+    try {
+      return target.startsWith('http') ? new URL(target).hostname : target.split(':')[0].split('/')[0];
+    } catch (e) {
+      return target;
+    }
+  },
+
+  hostColor(str) {
+    let h = 0;
+    const s = String(str || '');
+    for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+    return `hsl(${h % 360}, 62%, 52%)`;
+  },
+
+  hostAvatar(host, size = 28) {
+    const ch = (host || '?').replace(/^www\./, '').charAt(0).toUpperCase();
+    const color = ui.hostColor(host);
+    return `<span class="obj-ava" style="width:${size}px;height:${size}px;background:color-mix(in srgb, ${color} 15%, transparent);color:${color};font-size:${Math.round(size * 0.45)}px">${ui.escHtml(ch)}</span>`;
+  },
+
+  personAvatar(str, size = 26) {
+    const color = ui.hostColor(str);
+    const svg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:60%;height:60%"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>';
+    return `<span class="obj-ava" style="width:${size}px;height:${size}px;background:color-mix(in srgb, ${color} 15%, transparent);color:${color}">${svg}</span>`;
+  },
+
+  routeTypeOf(upstream) {
+    if (!upstream || upstream === '?' || upstream === 'unknown') return 'other';
+    if (upstream === 'direct' || upstream.startsWith('direct')) return 'direct';
+    if (upstream.startsWith('proxy:')) return 'proxy';
+    if (upstream.startsWith('pool:')) return 'pool';
+    if (upstream.startsWith('custom:')) return 'custom';
+    return 'other';
+  },
+
+  routeTypeClass(type) {
+    return { direct: 'route-direct', proxy: 'route-proxy', pool: 'route-pool', custom: 'route-custom', other: 'route-unknown' }[type] || 'route-unknown';
+  },
+
+  routeBadge(upstream) {
+    if (!upstream || upstream === '?' || upstream === 'unknown') {
+      return `<span class="route-badge route-unknown" title="${ui.escHtml(t('page.proxyControl.routeUnknown'))}">${ui.escHtml(t('page.proxyControl.routeUnknown'))}</span>`;
+    }
+    const parts = upstream.split(' → ');
+    return parts.map(p => {
+      if (p === 'direct') return '<span class="route-badge route-direct">DIRECT</span>';
+      if (p.startsWith('pool:')) {
+        const addr = p.slice(5);
+        return `<span class="route-badge route-pool" title="${ui.escHtml(addr)}">POOL <span class="route-addr">${ui.escHtml(addr)}</span></span>`;
+      }
+      if (p.startsWith('proxy:')) {
+        const addr = p.slice(6);
+        return `<span class="route-badge route-proxy" title="${ui.escHtml(addr)}">PROXY <span class="route-addr">${ui.escHtml(addr)}</span></span>`;
+      }
+      if (p.startsWith('custom:')) {
+        const name = p.slice(7);
+        return `<span class="route-badge route-custom" title="${ui.escHtml(name)}">CUSTOM <span class="route-addr">${ui.escHtml(name)}</span></span>`;
+      }
+      return `<span class="route-badge route-unknown">${ui.escHtml(p)}</span>`;
+    }).join('<span class="route-arrow">→</span>');
+  },
+
+  statusPill(status) {
+    const st = (status || '').toString();
+    const isOk = st === 'ok' || st === '200';
+    const is502 = st.startsWith('502');
+    const code = isOk ? '200' : is502 ? '502' : (st || 'ERR').slice(0, 8);
+    const cls = isOk ? 'ok' : is502 ? 'warn' : 'err';
+    const title = isOk ? t('page.proxyControl.statusOk') : is502 ? t('page.proxyControl.statusBadGateway') : t('page.proxyControl.statusFailed');
+    return `<span class="st-pill ${cls}" title="${ui.escHtml(title)}"><span class="st-pill-dot"></span>${ui.escHtml(code)}</span>`;
+  },
 };

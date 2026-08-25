@@ -192,6 +192,7 @@ class DbMixin:
                 ).fetchone()
                 if not row:
                     self._init_stats_db(conn)
+                self._migrate_traffic_clients(conn)
             except Exception:
                 logger.debug("suppressed", exc_info=True)
 
@@ -326,6 +327,28 @@ class DbMixin:
             conn.commit()
             if close_after:
                 conn.close()
+
+    def _migrate_traffic_clients(self, conn: sqlite3.Connection):
+        """One-shot: strip :port from legacy traffic_log.client values.
+
+        A client is identified by IP only — every connection from the same
+        address is the same client. Legacy rows store "ip:port"; new rows
+        (proxy/socks5/transparent runners) store the bare IP. Gated by
+        PRAGMA user_version so the scan runs at most once per DB file.
+        Rows with 2+ colons (IPv6 addresses) are left untouched.
+        """
+        try:
+            ver = conn.execute("PRAGMA user_version").fetchone()[0]
+            if ver >= 1:
+                return
+            conn.execute(
+                "UPDATE traffic_log SET client = substr(client, 1, instr(client, ':') - 1) "
+                "WHERE client GLOB '*[0-9]:[0-9]*' AND client NOT GLOB '*:*:*'"
+            )
+            conn.execute("PRAGMA user_version = 1")
+            conn.commit()
+        except Exception:
+            logger.debug("suppressed", exc_info=True)
 
     def _init_state_db(self, conn: sqlite3.Connection | None = None):
             close_after = conn is None

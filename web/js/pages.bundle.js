@@ -1174,6 +1174,267 @@ router.register('blocklists', (container) => {
 });
 
 
+/* ==== js/pages/client-card.js ==== */
+const clientCard = {
+  _timer: null,
+
+  async show(client, hours = 24) {
+    this.close();
+    const overlay = ui.el('div', 'client-card-overlay');
+    const modal = ui.el('div', 'client-card');
+    modal.innerHTML = `<div style="padding:48px;text-align:center;color:var(--text-muted)">${t('common.loading')}</div>`;
+    overlay.appendChild(modal);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) this.close(); });
+    document.body.appendChild(overlay);
+    this._onKey = (e) => { if (e.key === 'Escape') this.close(); };
+    document.addEventListener('keydown', this._onKey);
+    await this._load(modal, client, hours);
+    this._timer = setInterval(() => {
+      if (!document.body.contains(modal)) { this.close(); return; }
+      this._load(modal, client, this._hours, true);
+    }, 5000);
+  },
+
+  close() {
+    if (this._timer) { clearInterval(this._timer); this._timer = null; }
+    if (this._onKey) { document.removeEventListener('keydown', this._onKey); this._onKey = null; }
+    const overlay = document.querySelector('.client-card-overlay');
+    if (overlay) overlay.remove();
+  },
+
+  async _load(modal, client, hours, silent = false) {
+    this._hours = hours;
+    try {
+      const data = await api.clientDetail(client, hours);
+      if (!document.body.contains(modal)) return;
+      this._render(modal, data, hours);
+    } catch (e) {
+      if (!silent) modal.innerHTML = `<div style="padding:48px;color:var(--danger)">${t('common.error', { message: ui.escHtml(e.message) })}</div>`;
+    }
+  },
+
+  _render(modal, data, hours) {
+    const s = data.summary || {};
+    modal.innerHTML = '';
+    modal.appendChild(this._header(modal, s, hours));
+    const content = ui.el('div', 'client-card-content');
+    modal.appendChild(content);
+
+    content.appendChild(this._kpiRow(s, data));
+    content.appendChild(this._activity(data.hourly || []));
+
+    const cols = ui.el('div', 'client-card-cols');
+    cols.appendChild(this._history(data.recent || []));
+    cols.appendChild(this._sidePanel(s, data));
+    content.appendChild(cols);
+  },
+
+  _header(modal, s, hours) {
+    const bar = ui.el('div', 'client-card-header');
+    const left = ui.el('div', 'client-card-id');
+    left.appendChild(ui.el('div', 'client-card-ava', { html: this._svg('user') }));
+    const idText = ui.el('div', 'client-card-idtext');
+    const nameRow = ui.el('div', 'client-card-namerow');
+    nameRow.appendChild(ui.el('div', 'client-card-name', { text: s.client || '—' }));
+    const online = (Date.now() / 1000 - (s.last_seen || 0)) < 300;
+    nameRow.appendChild(ui.el('span', 'client-card-state' + (online ? ' on' : ''), {
+      html: `<span class="pulse${online ? '' : ' off'}"></span>${online ? t('clientCard.online') : t('clientCard.offline')}`,
+    }));
+    idText.appendChild(nameRow);
+    const subParts = [];
+    if (s.client === '127.0.0.1' || s.client === '::1' || s.client === 'localhost') subParts.push(t('clientCard.local'));
+    subParts.push(t('clientCard.subtitle', { last: ui.ago(s.last_seen || 0) }));
+    idText.appendChild(ui.el('div', 'client-card-sub', { text: subParts.join(' · ') }));
+    left.appendChild(idText);
+    bar.appendChild(left);
+
+    const right = ui.el('div', 'client-card-headright');
+    const tabs = ui.el('div', 'client-card-tabs');
+    [['24h', 24, t('clientCard.period24h')], ['7d', 168, t('clientCard.period7d')], ['30d', 720, t('clientCard.period30d')]].forEach(([, h, label]) => {
+      const tab = ui.el('button', 'client-card-tab' + (h === hours ? ' active' : ''), { text: label });
+      tab.addEventListener('click', () => this._load(modal, s.client, h, true));
+      tabs.appendChild(tab);
+    });
+    right.appendChild(tabs);
+    const closeBtn = ui.el('button', 'client-card-close', { html: this._svg('x') });
+    closeBtn.addEventListener('click', () => this.close());
+    right.appendChild(closeBtn);
+    bar.appendChild(right);
+    return bar;
+  },
+
+  _kpiRow(s, data) {
+    const grid = ui.el('div', 'client-card-kpis');
+    const tiles = [
+      { icon: 'zap', color: 'var(--accent)', value: (s.requests || 0).toLocaleString(), label: t('clientCard.kpiRequests'), sub: '≈ ' + ui.fmtBytes(s.total_bytes || 0) },
+      { icon: 'download', color: 'var(--info)', value: ui.fmtBytes(s.total_bytes || 0), label: t('clientCard.kpiTraffic'), sub: `↓ ${ui.fmtBytes(s.bytes_out || 0)} · ↑ ${ui.fmtBytes(s.bytes_in || 0)}` },
+      { icon: 'clock', color: 'var(--warning)', value: s.avg_duration ? ui.fmtLatency(s.avg_duration) : '—', label: t('clientCard.kpiAvgTime'), sub: t('clientCard.kpiAvgTimeSub') },
+      { icon: 'route', color: '#8a2be2', value: String((data.routes || []).length), label: t('clientCard.kpiRoutes'), sub: t('clientCard.kpiRoutesSub') },
+      { icon: 'globe', color: 'var(--success)', value: String((data.domains || []).length), label: t('clientCard.kpiDomains'), sub: t('clientCard.kpiDomainsSub') },
+    ];
+    tiles.forEach(tl => {
+      const tile = ui.el('div', 'cc-tile');
+      tile.innerHTML = `<div class="cc-tile-icon" style="color:${tl.color};background:color-mix(in srgb, ${tl.color} 12%, transparent)">${this._svg(tl.icon)}</div>` +
+        `<div class="cc-tile-body"><div class="cc-tile-value">${ui.escHtml(tl.value)}</div><div class="cc-tile-label">${ui.escHtml(tl.label)}</div><div class="cc-tile-sub">${ui.escHtml(tl.sub)}</div></div>`;
+      grid.appendChild(tile);
+    });
+    return grid;
+  },
+
+  _activity(hourly) {
+    const card = ui.el('div', 'client-card-section');
+    const head = ui.el('div', 'cc-sec-head');
+    head.appendChild(ui.el('div', 'cc-sec-title', { text: t('clientCard.activity') }));
+    const legend = ui.el('div', 'cc-legend');
+    legend.innerHTML = `<span class="cc-legend-item"><span class="cc-legend-dot" style="background:var(--accent)"></span>${t('clientCard.legendRequests')}</span>` +
+      `<span class="cc-legend-item"><span class="cc-legend-dot" style="background:var(--warning)"></span>${t('clientCard.legendTraffic')}</span>`;
+    head.appendChild(legend);
+    card.appendChild(head);
+
+    const wrap = ui.el('div', 'cc-bars');
+    const maxReq = Math.max(...hourly.map(h => h.requests || 0), 1);
+    const maxBytes = Math.max(...hourly.map(h => h.bytes || 0), 1);
+    hourly.forEach(h => {
+      const d = new Date(h.ts * 1000);
+      const col = ui.el('div', 'cc-bar-col');
+      const reqH = Math.round((h.requests || 0) / maxReq * 64);
+      const byH = Math.round((h.bytes || 0) / maxBytes * 64);
+      const title = `${d.getHours()}:00 — ${h.requests} ${t('page.proxyControl.requests')} · ${ui.fmtBytes(h.bytes)}`;
+      col.appendChild(ui.el('div', 'cc-bar cc-bar-bytes', { style: `height:${Math.max(byH, h.bytes ? 2 : 0)}px`, title }));
+      col.appendChild(ui.el('div', 'cc-bar cc-bar-reqs', { style: `height:${Math.max(reqH, h.requests ? 2 : 0)}px`, title }));
+      col.appendChild(ui.el('div', 'cc-bar-label', { text: d.getHours().toString().padStart(2, '0') }));
+      wrap.appendChild(col);
+    });
+    card.appendChild(wrap);
+    return card;
+  },
+
+  _history(recent) {
+    const card = ui.el('div', 'client-card-section client-card-hist');
+    card.appendChild(ui.el('div', 'cc-sec-title', { text: t('clientCard.history') }));
+    if (!recent.length) {
+      card.appendChild(ui.el('div', 'empty', { text: t('page.proxyControl.noRecentRequests') }));
+      return card;
+    }
+    const list = ui.el('div', 'cc-hist-list');
+    recent.forEach(r => {
+      const host = ui.hostOf(r.target);
+      const item = ui.el('div', 'cc-hist-item');
+      const row = ui.el('div', 'cc-hist-row');
+      row.innerHTML = ui.hostAvatar(host, 30) +
+        `<div class="cc-hist-main"><div class="cc-hist-host">${ui.escHtml(host || '—')}</div>` +
+        `<div class="cc-hist-path" title="${ui.escHtml(r.target)}">${ui.escHtml(r.target.length > 70 ? r.target.slice(0, 68) + '…' : r.target)}</div></div>` +
+        `<div class="cc-hist-meta"><span class="cc-hist-time">${ui.fmtTime(r.ts).split(' ')[0]}</span>` +
+        `<span class="cc-hist-size">${ui.fmtBytes((r.bytes_in || 0) + (r.bytes_out || 0))}</span>` +
+        `<span class="cc-hist-dur">${r.duration != null ? r.duration.toFixed(2) + 's' : '—'}</span>` +
+        ui.statusPill(r.status) + ui.routeBadge(r.upstream) +
+        `<span class="cc-hist-chevron">${this._svg('chevron')}</span></div>`;
+      const details = ui.el('div', 'cc-hist-details');
+      details.innerHTML = `<div class="cc-hist-detail"><span>${t('page.proxyControl.route')}</span><b>${ui.routeBadge(r.upstream)}</b></div>` +
+        `<div class="cc-hist-detail"><span>${t('page.proxyControl.download')} / ${t('page.proxyControl.upload')}</span><b>↓ ${ui.fmtBytes(r.bytes_out)} · ↑ ${ui.fmtBytes(r.bytes_in)}</b></div>` +
+        `<div class="cc-hist-detail"><span>${t('page.proxyControl.duration')}</span><b>${r.duration != null ? r.duration.toFixed(3) + 's' : '—'}</b></div>` +
+        `<div class="cc-hist-detail"><span>${t('page.proxyControl.time')}</span><b>${ui.fmtDateTime(r.ts)}</b></div>`;
+      details.style.display = 'none';
+      row.addEventListener('click', () => {
+        const open = details.style.display !== 'none';
+        details.style.display = open ? 'none' : '';
+        item.classList.toggle('open', !open);
+      });
+      item.appendChild(row);
+      item.appendChild(details);
+      list.appendChild(item);
+    });
+    card.appendChild(list);
+    return card;
+  },
+
+  _sidePanel(s, data) {
+    const panel = ui.el('div', 'client-card-side');
+
+    const info = ui.el('div', 'client-card-section');
+    info.appendChild(ui.el('div', 'cc-sec-title', { text: t('clientCard.info') }));
+    const rows = [
+      [t('clientCard.ip'), s.client || '—'],
+      [t('clientCard.firstSeen'), s.first_seen ? ui.fmtDateTime(s.first_seen) : '—'],
+      [t('clientCard.lastSeen'), s.last_seen ? ui.fmtDateTime(s.last_seen) : '—'],
+      [t('page.proxyControl.successRate'), (s.success_rate || 0) + '%'],
+      [t('clientCard.kpiAvgTime'), s.avg_duration ? ui.fmtLatency(s.avg_duration) : '—'],
+    ];
+    const infoList = ui.el('div', 'cc-info-list');
+    rows.forEach(([k, v]) => {
+      infoList.appendChild(ui.el('div', 'cc-info-row', { html: `<span>${ui.escHtml(k)}</span><b>${ui.escHtml(v)}</b>` }));
+    });
+    info.appendChild(infoList);
+    panel.appendChild(info);
+
+    const routes = data.routes || [];
+    const routesCard = ui.el('div', 'client-card-section');
+    routesCard.appendChild(ui.el('div', 'cc-sec-title', { text: t('clientCard.routes') }));
+    if (!routes.length) {
+      routesCard.appendChild(ui.el('div', 'empty', { text: t('page.proxyControl.noRouteData') }));
+    } else {
+      const donutWrap = ui.el('div', 'cc-donut-wrap');
+      const donutData = routes.slice(0, 4).map(r => ({
+        value: r.requests,
+        color: { direct: 'var(--success)', proxy: 'var(--info)', pool: '#8a2be2', custom: 'var(--warning)', other: 'var(--text-muted)' }[r.type] || 'var(--text-muted)',
+      }));
+      if (routes.length > 4) donutData.push({ value: routes.slice(4).reduce((a, r) => a + r.requests, 0), color: 'var(--border)' });
+      donutWrap.innerHTML = charts.donutChart(donutData, { size: 108, strokeWidth: 16, centerText: (s.requests || 0).toLocaleString(), centerLabel: t('page.proxyControl.requests') });
+      const legend = ui.el('div', 'cc-donut-legend');
+      routes.slice(0, 5).forEach(r => {
+        const color = { direct: 'var(--success)', proxy: 'var(--info)', pool: '#8a2be2', custom: 'var(--warning)', other: 'var(--text-muted)' }[r.type] || 'var(--text-muted)';
+        let upLabel = r.top_upstream || '';
+        upLabel = upLabel.replace(/^(proxy|pool|custom):/, '');
+        legend.appendChild(ui.el('div', 'cc-donut-row', {
+          html: `<span class="cc-donut-dot" style="background:${color}"></span><span class="cc-donut-name">${r.type.toUpperCase()}${upLabel && upLabel !== r.type ? ` <i title="${ui.escHtml(r.top_upstream)}">${ui.escHtml(upLabel.length > 22 ? upLabel.slice(0, 20) + '…' : upLabel)}</i>` : ''}</span><b>${r.pct}%</b>`,
+        }));
+      });
+      donutWrap.appendChild(legend);
+      routesCard.appendChild(donutWrap);
+    }
+    panel.appendChild(routesCard);
+
+    const domains = data.domains || [];
+    const domCard = ui.el('div', 'client-card-section');
+    domCard.appendChild(ui.el('div', 'cc-sec-title', { text: t('clientCard.topDomains') }));
+    if (!domains.length) {
+      domCard.appendChild(ui.el('div', 'empty', { text: t('page.proxyControl.noDomainData') }));
+    } else {
+      const list = ui.el('div', 'cc-dom-list');
+      const maxReq = Math.max(...domains.map(d => d.requests || 0), 1);
+      domains.slice(0, 6).forEach(d => {
+        const row = ui.el('div', 'cc-dom-row');
+        row.innerHTML = ui.hostAvatar(d.domain, 24) +
+          `<div class="cc-dom-main"><div class="cc-dom-name">${ui.escHtml(d.domain)}</div>` +
+          `<div class="cc-dom-bar"><div style="width:${(d.requests / maxReq * 100).toFixed(0)}%"></div></div></div>` +
+          `<b class="cc-dom-pct">${d.pct}%</b>`;
+        list.appendChild(row);
+      });
+      domCard.appendChild(list);
+    }
+    panel.appendChild(domCard);
+
+    return panel;
+  },
+
+  _svg(name) {
+    const icons = {
+      user: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
+      x: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
+      zap: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>',
+      download: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>',
+      clock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
+      route: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="19" r="3"/><path d="M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15"/><circle cx="18" cy="5" r="3"/></svg>',
+      globe: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>',
+      chevron: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>',
+    };
+    return icons[name] || '';
+  },
+};
+
+window.clientCard = clientCard;
+
+
 /* ==== js/pages/connectivity.js ==== */
 router.register('connectivity', (container) => {
   let canaryData = null;
@@ -6930,147 +7191,244 @@ window.proxyCard = proxyCard;
 router.register('proxy-control', (container) => {
   const els = {};
   let lastReqIds = new Set();
-  let pulseOn = false;
+  let autoRefresh = true;
+  let lastUpdate = 0;
+  let range = '1h';
+  let showAllStream = false;
+  let historyCache = [];
+
+  const RANGES = [
+    ['5m', 5, 'page.proxyControl.r5m'],
+    ['15m', 15, 'page.proxyControl.r15m'],
+    ['1h', 60, 'page.proxyControl.r1h'],
+    ['6h', 360, 'page.proxyControl.r6h'],
+    ['24h', 1440, 'page.proxyControl.r24h'],
+  ];
 
   function build() {
     container.innerHTML = '';
     container.style.display = 'flex';
     container.style.flexDirection = 'column';
-    container.style.gap = '10px';
+    container.style.gap = '14px';
     container.style.minHeight = '0';
     container.style.flex = '1';
+    container.style.overflowY = 'auto';
+    container.style.padding = '14px 16px 10px';
 
-    // Row 1: Summary tiles (4)
-    const row1 = ui.el('div', 'grid grid-4');
+    buildHeader();
+    buildKpis();
+    buildStreamAndRoutes();
+    buildTopsRow();
+    buildBottomRow();
+    buildFooter();
+  }
+
+  // ── Page header: period tabs + auto-refresh + refresh ──
+  function buildHeader() {
+    const head = ui.el('div', 'pc-head');
+    const right = ui.el('div', 'pc-head-right');
+
+    const tabs = ui.el('div', 'pc-range');
+    RANGES.forEach(([key, , locKey]) => {
+      const tab = ui.el('button', 'pc-range-btn' + (key === range ? ' active' : ''), { text: t(locKey) });
+      tab.addEventListener('click', () => {
+        range = key;
+        tabs.querySelectorAll('.pc-range-btn').forEach(b => b.classList.remove('active'));
+        tab.classList.add('active');
+        updateTimeChart();
+      });
+      tabs.appendChild(tab);
+    });
+    right.appendChild(tabs);
+
+    const auto = ui.el('button', 'pc-auto-pill on');
+    auto.innerHTML = `<span class="pulse"></span><span class="pc-auto-text">${t('page.proxyControl.autoOn')}</span>`;
+    auto.addEventListener('click', () => {
+      autoRefresh = !autoRefresh;
+      auto.classList.toggle('on', autoRefresh);
+      auto.querySelector('.pulse').classList.toggle('off', !autoRefresh);
+      auto.querySelector('.pc-auto-text').textContent = autoRefresh ? t('page.proxyControl.autoOn') : t('page.proxyControl.autoOff');
+    });
+    right.appendChild(auto);
+
+    const refresh = ui.el('button', 'pc-icon-btn', { html: pcSvg('refresh'), title: t('common.refresh') });
+    refresh.addEventListener('click', () => poll());
+    right.appendChild(refresh);
+
+    head.appendChild(right);
+    container.appendChild(head);
+  }
+
+  // ── KPI row: 6 tiles ──
+  function buildKpis() {
+    const row = ui.el('div', 'pc-kpis');
     const tiles = [
-      { id: 'tile-req', label: t('page.proxyControl.req24h'), icon: '↻', color: 'var(--accent)' },
-      { id: 'tile-sr', label: t('page.proxyControl.successRate'), icon: '✓', color: 'var(--success)', title: t('page.proxyControl.successRateOverall') },
-      { id: 'tile-bw', label: t('page.proxyControl.bandwidth24h'), icon: '↕', color: 'var(--info)' },
-      { id: 'tile-routes', label: t('page.proxyControl.activeRoutes'), icon: '⇄', color: 'var(--warning)', title: t('page.proxyControl.activeRoutesHint') },
+      { id: 'tile-clients', icon: 'users', color: 'var(--accent)' },
+      { id: 'tile-req', icon: 'zap', color: 'var(--info)', spark: true },
+      { id: 'tile-dl', icon: 'download', color: 'var(--info)', spark: true },
+      { id: 'tile-ul', icon: 'upload', color: 'var(--warning)', spark: true },
+      { id: 'tile-rt', icon: 'clock', color: '#8a2be2', spark: true },
+      { id: 'tile-sr', icon: 'check', color: 'var(--success)' },
     ];
     tiles.forEach(ti => {
-      const card = ui.el('div', 'card tm-tile');
+      const card = ui.el('div', 'card pc-kpi');
       card.id = ti.id;
-      if (ti.title) card.title = ti.title;
-      card.innerHTML = `<div class="tm-tile-icon" style="color:${ti.color}">${ti.icon}</div>` +
-        `<div class="tm-tile-body"><div class="tm-tile-value">—</div><div class="tm-tile-label">${ti.label}</div></div>`;
-      els[ti.id] = card;
-      row1.appendChild(card);
+      card.innerHTML =
+        `<div class="pc-kpi-icon" style="color:${ti.color};background:color-mix(in srgb, ${ti.color} 10%, transparent)">${pcSvg(ti.icon)}</div>` +
+        `<div class="pc-kpi-body">` +
+          `<div class="pc-kpi-label"></div>` +
+          `<div class="pc-kpi-value">—</div>` +
+          `<div class="pc-kpi-sub"></div>` +
+        `</div>` +
+        (ti.spark ? `<div class="pc-kpi-spark" id="spark-${ti.id}"></div>` : '');
+      row.appendChild(card);
     });
-    container.appendChild(row1);
+    container.appendChild(row);
+  }
 
-    // Row 2: Live Traffic Stream (full width, tall — the star)
-    const streamCard = ui.card(t('page.proxyControl.liveStream'));
+  // ── Live stream (2/3) + Route distribution donut (1/3) ──
+  function buildStreamAndRoutes() {
+    const row = ui.el('div', 'pc-row pc-row-stream');
+
+    const streamCard = ui.el('div', 'card pc-card');
     streamCard.id = 'card-stream';
-    streamCard.style.flex = '1';
-    streamCard.style.minHeight = '0';
-    streamCard.style.display = 'flex';
-    streamCard.style.flexDirection = 'column';
-    streamCard.style.overflow = 'hidden';
+    const sh = ui.el('div', 'pc-card-head');
+    sh.appendChild(ui.el('div', 'pc-card-title', { text: t('page.proxyControl.liveStream') }));
+    const showAll = ui.el('button', 'pc-link', { text: t('common.viewAll') });
+    showAll.addEventListener('click', () => {
+      showAllStream = !showAllStream;
+      showAll.textContent = showAllStream ? t('page.proxyControl.showLess') : t('common.viewAll');
+      updateStream(lastStreamData);
+    });
+    sh.appendChild(showAll);
     const pulseEl = ui.el('div', 'tm-live-pulse');
     pulseEl.innerHTML = '<span class="pulse"></span> ' + t('page.proxyControl.live');
-    const streamHeader = streamCard.querySelector('.card-header');
-    if (streamHeader) streamHeader.appendChild(pulseEl);
-    els.stream = streamCard;
-    container.appendChild(streamCard);
+    sh.appendChild(pulseEl);
+    streamCard.appendChild(sh);
+    const streamBody = ui.el('div', 'pc-stream-body');
+    streamCard.appendChild(streamBody);
+    els.streamBody = streamBody;
+    row.appendChild(streamCard);
 
-    // Row 3: Route Distribution + Top Destinations
-    const row3 = ui.el('div', 'grid grid-2 row-stretch');
-    const routeCard = ui.card(t('page.proxyControl.routeDistribution'));
+    const routeCard = ui.el('div', 'card pc-card');
     routeCard.id = 'card-routes';
-    routeCard.style.overflow = 'hidden';
-    routeCard.style.display = 'flex';
-    routeCard.style.flexDirection = 'column';
-    els.routes = routeCard;
-    row3.appendChild(routeCard);
+    const rh = ui.el('div', 'pc-card-head');
+    rh.appendChild(ui.el('div', 'pc-card-title', { text: t('page.proxyControl.routeDistribution') }));
+    routeCard.appendChild(rh);
+    const donutBody = ui.el('div', 'pc-donut-body');
+    routeCard.appendChild(donutBody);
+    els.donutBody = donutBody;
+    row.appendChild(routeCard);
 
-    const domCard = ui.card(t('page.proxyControl.topDestinations'));
-    domCard.id = 'card-domains';
-    domCard.style.overflow = 'hidden';
-    domCard.style.display = 'flex';
-    domCard.style.flexDirection = 'column';
-    els.domains = domCard;
-    row3.appendChild(domCard);
-    container.appendChild(row3);
+    container.appendChild(row);
+  }
 
-    // Row 4: Current Upstream + Traffic Consumer + Bandwidth
-    const row4 = ui.el('div', 'grid grid-3 row-stretch');
-    const upCard = ui.card(t('page.proxyControl.currentUpstream'), t('page.proxyControl.changeProxy'));
-    upCard.id = 'card-upstream';
-    upCard.style.overflow = 'hidden';
-    const upAction = upCard.querySelector('.card-action');
-    if (upAction) upAction.addEventListener('click', () => router.navigate('proxy-pool'));
-    els.upstream = upCard;
-    row4.appendChild(upCard);
+  // ── Tops row: destinations / clients / time chart ──
+  function buildTopsRow() {
+    const row = ui.el('div', 'pc-row pc-row-3');
 
-    const consumerCard = ui.card(t('page.proxyControl.trafficConsumer'));
-    consumerCard.id = 'card-consumer';
-    consumerCard.style.overflow = 'hidden';
-    consumerCard.style.display = 'flex';
-    consumerCard.style.flexDirection = 'column';
-    const consumerHeader = consumerCard.querySelector('.card-header');
-    if (consumerHeader) {
-      const periodTabs = ui.el('div', 'card-tabs');
-      const periodLabels = { day: t('page.proxyControl.period_day'), week: t('page.proxyControl.period_week'), month: t('page.proxyControl.period_month') };
-      ['day', 'week', 'month'].forEach((p, i) => {
-        const tab = ui.el('button', 'card-tab' + (i === 0 ? ' active' : ''), { text: periodLabels[p], 'data-period': p });
-        tab.addEventListener('click', () => {
-          consumerCard.querySelectorAll('.card-tab').forEach(b => b.classList.remove('active'));
-          tab.classList.add('active');
-          els._consumerPeriod = p;
-        });
-        periodTabs.appendChild(tab);
+    const domCard = ui.el('div', 'card pc-card');
+    const dh = ui.el('div', 'pc-card-head');
+    dh.appendChild(ui.el('div', 'pc-card-title', { text: t('page.proxyControl.topDestinations') }));
+    domCard.appendChild(dh);
+    els.domains = ui.el('div', 'pc-list');
+    domCard.appendChild(els.domains);
+    row.appendChild(domCard);
+
+    const clCard = ui.el('div', 'card pc-card');
+    const ch = ui.el('div', 'pc-card-head');
+    ch.appendChild(ui.el('div', 'pc-card-title', { text: t('page.proxyControl.topClients') }));
+    clCard.appendChild(ch);
+    els.clients = ui.el('div', 'pc-list');
+    clCard.appendChild(els.clients);
+    row.appendChild(clCard);
+
+    const timeCard = ui.el('div', 'card pc-card');
+    const th = ui.el('div', 'pc-card-head');
+    th.appendChild(ui.el('div', 'pc-card-title', { text: t('page.proxyControl.trafficOverTime') }));
+    const legend = ui.el('div', 'pc-chart-legend');
+    legend.innerHTML = `<span><span class="pc-dot" style="background:var(--info)"></span>${t('page.proxyControl.download')}</span>` +
+      `<span><span class="pc-dot" style="background:var(--warning)"></span>${t('page.proxyControl.upload')}</span>`;
+    th.appendChild(legend);
+    timeCard.appendChild(th);
+    els.timeBody = ui.el('div', 'pc-time-body');
+    timeCard.appendChild(els.timeBody);
+    row.appendChild(timeCard);
+
+    container.appendChild(row);
+  }
+
+  // ── Bottom row: upstream / consumer / bandwidth 24h ──
+  function buildBottomRow() {
+    const row = ui.el('div', 'pc-row pc-row-3');
+
+    const upCard = ui.el('div', 'card pc-card');
+    const uh = ui.el('div', 'pc-card-head');
+    uh.appendChild(ui.el('div', 'pc-card-title', { text: t('page.proxyControl.currentUpstream') }));
+    const btn = ui.el('button', 'pc-link', { text: t('page.proxyControl.changeProxy') });
+    btn.addEventListener('click', () => router.navigate('proxy-pool'));
+    uh.appendChild(btn);
+    upCard.appendChild(uh);
+    els.upstream = ui.el('div', 'pc-list');
+    upCard.appendChild(els.upstream);
+    row.appendChild(upCard);
+
+    const consumerCard = ui.el('div', 'card pc-card');
+    const ch2 = ui.el('div', 'pc-card-head');
+    ch2.appendChild(ui.el('div', 'pc-card-title', { text: t('page.proxyControl.trafficConsumer') }));
+    const periodTabs = ui.el('div', 'pc-mini-tabs');
+    const periodLabels = { day: t('page.proxyControl.period_day'), week: t('page.proxyControl.period_week'), month: t('page.proxyControl.period_month') };
+    ['day', 'week', 'month'].forEach((p, i) => {
+      const tab = ui.el('button', 'pc-mini-tab' + (i === 0 ? ' active' : ''), { text: periodLabels[p] });
+      tab.addEventListener('click', () => {
+        consumerCard.querySelectorAll('.pc-mini-tab').forEach(b => b.classList.remove('active'));
+        tab.classList.add('active');
+        els._consumerPeriod = p;
+        if (lastSummaryData) updateConsumer(lastSummaryData);
       });
-      consumerHeader.appendChild(periodTabs);
-    }
-    els.consumer = consumerCard;
-    els._consumerPeriod = 'day';
-    row4.appendChild(consumerCard);
+      periodTabs.appendChild(tab);
+    });
+    ch2.appendChild(periodTabs);
+    consumerCard.appendChild(ch2);
+    els.consumer = ui.el('div', 'pc-list');
+    consumerCard.appendChild(els.consumer);
+    row.appendChild(consumerCard);
 
-    const bwCard = ui.card(t('page.proxyControl.bandwidth24h'));
-    bwCard.id = 'card-bandwidth';
-    bwCard.style.overflow = 'hidden';
-    bwCard.style.display = 'flex';
-    bwCard.style.flexDirection = 'column';
-    els.bandwidth = bwCard;
-    row4.appendChild(bwCard);
-    container.appendChild(row4);
+    const bwCard = ui.el('div', 'card pc-card');
+    const bh = ui.el('div', 'pc-card-head');
+    bh.appendChild(ui.el('div', 'pc-card-title', { text: t('page.proxyControl.bandwidth24h') }));
+    bwCard.appendChild(bh);
+    els.bandwidth = ui.el('div', 'pc-list');
+    bwCard.appendChild(els.bandwidth);
+    row.appendChild(bwCard);
+
+    container.appendChild(row);
   }
 
-  build();
-
-  // --- Helpers ---
-  function routeBadge(upstream) {
-    if (!upstream || upstream === '?' || upstream === 'unknown') {
-      return `<span class="route-badge route-unknown" title="${ui.escHtml(t('page.proxyControl.routeUnknown'))}">${ui.escHtml(t('page.proxyControl.routeUnknown'))}</span>`;
-    }
-    const parts = upstream.split(' → ');
-    return parts.map(p => {
-      if (p === 'direct') return '<span class="route-badge route-direct">DIRECT</span>';
-      if (p.startsWith('pool:')) {
-        const addr = p.slice(5);
-        return `<span class="route-badge route-pool" title="${ui.escHtml(addr)}">POOL <span class="route-addr">${ui.escHtml(addr)}</span></span>`;
-      }
-      if (p.startsWith('proxy:')) {
-        const addr = p.slice(6);
-        return `<span class="route-badge route-proxy" title="${ui.escHtml(addr)}">PROXY <span class="route-addr">${ui.escHtml(addr)}</span></span>`;
-      }
-      if (p.startsWith('custom:')) {
-        const name = p.slice(7);
-        return `<span class="route-badge route-custom" title="${ui.escHtml(name)}">CUSTOM <span class="route-addr">${ui.escHtml(name)}</span></span>`;
-      }
-      if (p.includes('(disabled)')) return `<span class="route-badge route-unknown">${ui.escHtml(p)}</span>`;
-      return `<span class="route-badge route-unknown">${ui.escHtml(p)}</span>`;
-    }).join('<span class="route-arrow">→</span>');
+  // ── Footer status bar ──
+  function buildFooter() {
+    const footer = ui.el('div', 'pc-footer');
+    footer.innerHTML =
+      `<span class="pc-foot-item"><span class="pulse"></span><span id="pcf-update"></span></span>` +
+      `<span class="pc-foot-item"><span class="pulse" id="pcf-dot"></span><span id="pcf-auto"></span></span>` +
+      `<span class="pc-foot-right">` +
+        `<span id="pcf-clients"></span><span class="pc-foot-sep"></span>` +
+        `<span id="pcf-routes"></span>` +
+      `</span>`;
+    container.appendChild(footer);
   }
 
-  function routeTypeLabel(type) {
-    const map = { direct: t('route.direct'), proxy: t('route.proxy'), pool: t('route.pool'), custom: t('route.custom'), other: t('page.proxyControl.other') };
-    return map[type] || type;
-  }
-
-  function routeTypeClass(type) {
-    return { direct: 'route-direct', proxy: 'route-proxy', pool: 'route-pool', custom: 'route-custom', other: 'route-unknown' }[type] || 'route-unknown';
+  function pcSvg(name) {
+    const icons = {
+      users: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
+      zap: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>',
+      check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>',
+      download: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>',
+      upload: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>',
+      clock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
+      refresh: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>',
+    };
+    return icons[name] || '';
   }
 
   function fmtBytes(b) {
@@ -7081,290 +7439,314 @@ router.register('proxy-control', (container) => {
     return b + ' B';
   }
 
-  // --- Updaters ---
-  function updateTiles(reqs, routes, bw) {
-    const totalReq = reqs ? reqs.length : 0;
-    const okCount = reqs ? reqs.filter(r => (r.status || '') === 'ok').length : 0;
-    const sr = totalReq ? (okCount / totalReq * 100).toFixed(1) + '%' : '—';
-    const totalBw = bw ? (bw.total || ((bw.download || 0) + (bw.upload || 0))) : 0;
-    const routeCount = routes ? routes.length : 0;
-
-    const setVal = (id, v) => {
-      const el = document.getElementById(id);
-      if (el) {
-        const val = el.querySelector('.tm-tile-value');
-        if (val) val.textContent = v;
-      }
+  function routeTypeLabel(type) {
+    const map = {
+      direct: t('route.direct'),
+      proxy: t('route.proxy'),
+      pool: t('route.pool'),
+      custom: t('route.custom', { name: '' }).replace(/[: ]*$/, ''),
+      other: t('page.proxyControl.other'),
     };
-    setVal('tile-req', totalReq.toLocaleString());
-    setVal('tile-sr', sr);
-    setVal('tile-bw', fmtBytes(totalBw));
-    setVal('tile-routes', routeCount.toString());
+    return map[type] || type;
   }
 
-  function updateStream(card, requests) {
-    const list = requests && requests.requests ? requests.requests : [];
+  // ── Updaters ──
+  function updateKpis(reqs, clients, bw, history) {
+    const list = reqs ? reqs.requests || [] : [];
+    const totalReq = list.length;
+    const okCount = list.filter(r => (r.status || '') === 'ok').length;
+    const sr = totalReq ? (okCount / totalReq * 100) : null;
+    const durations = list.filter(r => r.duration != null).map(r => r.duration);
+    const avgDur = durations.length ? durations.reduce((a, b) => a + b, 0) / durations.length : null;
+    const nowSec = Date.now() / 1000;
+    const activeClients = clients ? clients.filter(c => (nowSec - (c.last_seen || 0)) < 600).length : 0;
+    const totalClients = clients ? clients.length : 0;
+    const download = bw ? (bw.download || 0) : 0;
+    const upload = bw ? (bw.upload || 0) : 0;
+
+    const set = (id, label, value, sub, valueColor) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.querySelector('.pc-kpi-label').textContent = label;
+      const v = el.querySelector('.pc-kpi-value');
+      v.textContent = value;
+      v.style.color = valueColor || 'var(--text-primary)';
+      el.querySelector('.pc-kpi-sub').textContent = sub || '';
+    };
+
+    set('tile-clients', t('page.proxyControl.kpiClients'), activeClients.toLocaleString(), t('page.proxyControl.kpiOfTotal', { total: totalClients }));
+    set('tile-req', t('page.proxyControl.req24h'), totalReq.toLocaleString(), `${okCount.toLocaleString()} ✓`);
+    set('tile-dl', t('page.proxyControl.download'), fmtBytes(download), '↓ 24h');
+    set('tile-ul', t('page.proxyControl.upload'), fmtBytes(upload), '↑ 24h');
+    set('tile-rt', t('page.proxyControl.kpiAvgResponse'), avgDur != null ? ui.fmtLatency(avgDur) : '—', '');
+    set('tile-sr', t('page.proxyControl.successRate'),
+      sr === null ? '—' : sr.toFixed(1) + '%',
+      totalReq ? `${okCount}/${totalReq}` : '',
+      sr === null ? 'var(--text-primary)' : sr >= 80 ? 'var(--success)' : sr >= 50 ? 'var(--warning)' : 'var(--danger)');
+
+    const pts = history && history.length ? history.slice(-60) : [];
+    const spark = (id, data, color) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.innerHTML = data && data.length >= 2 ? charts.sparkline(data, color, 88, 38) : '';
+    };
+    spark('spark-tile-req', pts.map(p => p.requests || 0), 'var(--info)');
+    spark('spark-tile-dl', pts.map(p => p.bandwidth_out || 0), 'var(--info)');
+    spark('spark-tile-ul', pts.map(p => p.bandwidth_in || 0), 'var(--warning)');
+    spark('spark-tile-rt', pts.filter(p => p.avg_latency > 0).map(p => p.avg_latency), '#8a2be2');
+  }
+
+  let lastStreamData = null;
+  function updateStream(requests) {
+    if (requests) lastStreamData = requests;
+    const body = els.streamBody;
+    const list = lastStreamData && lastStreamData.requests ? lastStreamData.requests : [];
+    body.innerHTML = '';
     if (!list.length) {
-      const body = card.querySelector('.tm-stream-body');
-      if (body) body.remove();
-      if (!card.querySelector('.empty')) {
-        card.appendChild(ui.el('div', 'empty', { text: t('page.proxyControl.noRecentRequests'), style: 'flex:1;display:flex;align-items:center;justify-content:center' }));
-      }
+      body.appendChild(ui.el('div', 'pc-empty', { text: t('page.proxyControl.noRecentRequests') }));
       return;
     }
 
-    let body = card.querySelector('.tm-stream-body');
-    if (!body) {
-      body = ui.el('div', 'tm-stream-body');
-      card.appendChild(body);
-    }
-
-    // Detect new requests for flash animation
     const newIds = new Set();
     list.forEach(r => { newIds.add(r.ts + '|' + r.client + '|' + r.target); });
 
-    body.innerHTML = '';
-    const headers = [
-      { label: t('page.proxyControl.time'), width: '55px' },
-      { label: t('page.proxyControl.client'), width: '110px' },
-      { label: t('page.proxyControl.target'), width: 'auto' },
-      { label: t('page.proxyControl.route'), width: 'auto' },
-      { label: t('page.proxyControl.status'), width: '56px', align: 'center' },
-      { label: t('page.proxyControl.duration'), width: '70px', align: 'right' },
-      { label: t('page.proxyControl.size'), width: '92px', align: 'right' },
-    ];
-    const totalRows = list.length;
-    const rows = list.slice(0, 40).map(r => {
-      const st = (r.status || '').toString();
-      const isOk = st === 'ok' || st === '200';
-      const is502 = st.startsWith('502');
+    const limit = showAllStream ? 40 : 8;
+    const shown = list.slice(0, limit);
+    const rows = shown.map(r => {
+      const id = r.ts + '|' + r.client + '|' + r.target;
+      const isNew = !lastReqIds.has(id) ? ' tm-row-new' : '';
       const dur = r.duration != null ? r.duration.toFixed(2) + 's' : '—';
       const sz = fmtBytes((r.bytes_in || 0) + (r.bytes_out || 0));
-      const id = r.ts + '|' + r.client + '|' + r.target;
-      const isNew = !lastReqIds.has(id);
-      const cls = isNew ? 'tm-row-new' : '';
       const target = r.target || '—';
-      const targetShort = target.length > 40 ? target.slice(0, 38) + '…' : target;
-      const statusTitle = isOk ? t('page.proxyControl.statusOk') : is502 ? t('page.proxyControl.statusBadGateway') : t('page.proxyControl.statusFailed');
-      const statusSym = isOk ? '✓' : is502 ? '502' : '✗';
-      return [
-        `<span class="${cls}">${ui.fmtTime(r.ts || 0).split(' ')[0]}</span>`,
-        `<span class="${cls}" style="font-family:monospace;font-size:11px">${ui.escHtml(r.client || '—')}</span>`,
-        `<span class="${cls}" style="font-family:monospace;font-size:12px;color:var(--text-primary)" title="${ui.escHtml(target)}">${ui.escHtml(targetShort)}</span>`,
-        `<span class="${cls}">${routeBadge(r.upstream)}</span>`,
-        `<span class="${cls}" style="color:${isOk ? 'var(--success)' : is502 ? 'var(--warning)' : 'var(--danger)'};font-weight:600" title="${ui.escHtml(statusTitle)}">${statusSym}</span>`,
-        `<span class="${cls}" style="font-size:11px;color:var(--text-secondary)">${dur}</span>`,
-        `<span class="${cls}" style="font-size:11px;color:var(--text-secondary);white-space:nowrap">${sz}</span>`,
-      ];
+      const host = ui.hostOf(target);
+      const targetShort = target.length > 34 ? target.slice(0, 32) + '…' : target;
+      const client = r.client || '—';
+      return `<tr${isNew ? ' class="tm-row-new"' : ''}>` +
+        `<td class="pc-td-time">${ui.fmtTime(r.ts || 0).split(' ')[0]}</td>` +
+        `<td><span class="pc-client" data-client="${ui.escHtml(client)}">${ui.personAvatar(client, 22)}<span class="pc-client-addr">${ui.escHtml(client)}</span></span></td>` +
+        `<td><span class="pc-target">${ui.hostAvatar(host, 22)}<span title="${ui.escHtml(target)}">${ui.escHtml(targetShort)}</span></span></td>` +
+        `<td>${ui.routeBadge(r.upstream)}</td>` +
+        `<td style="text-align:center">${ui.statusPill(r.status)}</td>` +
+        `<td class="pc-td-num">${dur}</td>` +
+        `<td class="pc-td-num">${sz}</td>` +
+      `</tr>`;
+    }).join('');
+
+    body.innerHTML =
+      `<div class="table-wrap pc-stream-wrap"><table class="table pc-stream">` +
+        `<thead><tr>` +
+          `<th>${t('page.proxyControl.time')}</th>` +
+          `<th>${t('page.proxyControl.client')}</th>` +
+          `<th>${t('page.proxyControl.target')}</th>` +
+          `<th>${t('page.proxyControl.route')}</th>` +
+          `<th style="text-align:center">${t('page.proxyControl.status')}</th>` +
+          `<th style="text-align:right">${t('page.proxyControl.duration')}</th>` +
+          `<th style="text-align:right">${t('page.proxyControl.size')}</th>` +
+        `</tr></thead>` +
+        `<tbody>${rows}</tbody>` +
+      `</table></div>` +
+      (list.length > limit ? `<div class="pc-stream-more">${t('page.proxyControl.showingNofM', { shown: limit, total: list.length })}</div>` : '');
+
+    body.querySelectorAll('.pc-client').forEach(el => {
+      el.addEventListener('click', () => window.clientCard.show(el.dataset.client));
     });
-    const tblWrap = ui.el('div', 'table-wrap', { style: 'flex:1;min-height:0;overflow-y:auto' });
-    tblWrap.appendChild(ui.table(headers, rows));
-    body.appendChild(tblWrap);
-
-    if (totalRows > rows.length) {
-      body.appendChild(ui.el('div', 'tm-stream-count', { text: t('page.proxyControl.showingNofM', { shown: rows.length, total: totalRows }) }));
-    }
-
     lastReqIds = newIds;
   }
 
-  function updateRoutes(card, routes) {
-    card.innerHTML = '';
-    const header = ui.el('div', 'card-header');
-    header.appendChild(ui.el('div', 'card-title', { text: t('page.proxyControl.routeDistribution') }));
-    card.appendChild(header);
-
+  function updateRoutes(routes) {
+    const body = els.donutBody;
     const list = routes && routes.routes ? routes.routes : [];
+    body.innerHTML = '';
     if (!list.length) {
-      card.appendChild(ui.el('div', 'empty', { text: t('page.proxyControl.noRouteData'), style: 'flex:1;display:flex;align-items:center;justify-content:center' }));
+      body.appendChild(ui.el('div', 'pc-empty', { text: t('page.proxyControl.noRouteData') }));
       return;
     }
-
     const totalReq = list.reduce((s, r) => s + (r.requests || 0), 0) || 1;
+    const palette = { direct: 'var(--success)', proxy: 'var(--info)', pool: '#8a2be2', custom: 'var(--warning)', other: '#9CA3AF' };
 
-    const wrap = ui.el('div', '', { style: 'flex:1;min-height:0;overflow-y:auto;padding:2px 0' });
-    list.forEach(r => {
-      const pct = (r.requests / totalReq * 100);
-      const row = ui.el('div', 'tm-route-row');
-      const top = ui.el('div', 'tm-route-top');
-      const badge = ui.el('span', `route-badge ${routeTypeClass(r.type)}`, { text: routeTypeLabel(r.type).toUpperCase() });
-      top.appendChild(badge);
-      top.appendChild(ui.el('span', 'tm-route-count', { text: r.requests.toLocaleString() }));
-      const bar = ui.el('div', 'tm-route-bar');
-      bar.appendChild(ui.el('div', '', { style: `width:${pct}%;height:100%;background:var(--${routeTypeClass(r.type).replace('route-', '')});border-radius:2px;transition:width .3s` }));
-      top.appendChild(bar);
-      top.appendChild(ui.el('span', 'tm-route-pct', { text: pct.toFixed(1) + '%' }));
-      top.appendChild(ui.el('span', 'tm-route-sr', { text: r.success_rate + '% OK', style: `color:${r.success_rate >= 80 ? 'var(--success)' : r.success_rate >= 50 ? 'var(--warning)' : 'var(--danger)'};font-size:11px;font-weight:600` }));
-      row.appendChild(top);
-
-      const meta = ui.el('div', 'tm-route-meta');
-      meta.appendChild(ui.el('span', '', { text: '↓ ' + fmtBytes(r.bytes_out), style: 'color:var(--text-secondary)' }));
-      meta.appendChild(ui.el('span', '', { text: '↑ ' + fmtBytes(r.bytes_in), style: 'color:var(--text-secondary)' }));
-      meta.appendChild(ui.el('span', '', { text: r.avg_duration + 's avg', style: 'color:var(--text-secondary)' }));
-      if (r.upstreams && r.upstreams.length > 1) {
-        const ups = ui.el('span', 'tm-route-ups');
-        r.upstreams.slice(0, 3).forEach(u => {
-          ups.appendChild(ui.el('span', 'tm-route-up', { text: u.upstream, title: u.upstream }));
-        });
-        if (r.upstreams.length > 3) {
-          ups.appendChild(ui.el('span', 'tm-route-up', { text: '+' + (r.upstreams.length - 3) }));
-        }
-        meta.appendChild(ups);
-      }
-      row.appendChild(meta);
-
-      wrap.appendChild(row);
+    const donutData = list.slice(0, 4).map(r => ({ value: r.requests, color: palette[r.type] || palette.other }));
+    if (list.length > 4) donutData.push({ value: list.slice(4).reduce((a, r) => a + r.requests, 0), color: 'var(--border)' });
+    const donut = ui.el('div', 'pc-donut', {
+      html: charts.donutChart(donutData, { size: 150, strokeWidth: 22, centerText: totalReq.toLocaleString(), centerLabel: t('page.proxyControl.requests') }),
     });
-    card.appendChild(wrap);
+    body.appendChild(donut);
+
+    const legend = ui.el('div', 'pc-donut-legend');
+    list.slice(0, 5).forEach(r => {
+      const pct = (r.requests / totalReq * 100);
+      const color = palette[r.type] || palette.other;
+      const row = ui.el('div', 'pc-donut-row');
+      row.innerHTML = `<span class="pc-dot" style="background:${color}"></span>` +
+        `<span class="pc-donut-name" title="${ui.escHtml(routeTypeLabel(r.type))}">${ui.escHtml(routeTypeLabel(r.type))}</span>` +
+        `<b class="pc-donut-pct">${pct.toFixed(1)}%</b>` +
+        `<span class="pc-donut-count">(${r.requests.toLocaleString()})</span>`;
+      legend.appendChild(row);
+    });
+    if (list.length > 5) {
+      const restPct = list.slice(5).reduce((a, r) => a + r.requests, 0) / totalReq * 100;
+      legend.appendChild(ui.el('div', 'pc-donut-row', {
+        html: `<span class="pc-dot" style="background:var(--border)"></span><span class="pc-donut-name">${t('page.proxyControl.other')}</span><b class="pc-donut-pct">${restPct.toFixed(1)}%</b><span class="pc-donut-count"></span>`,
+      }));
+    }
+    body.appendChild(legend);
   }
 
-  function updateDomains(card, requests) {
-    card.innerHTML = '';
-    const header = ui.el('div', 'card-header');
-    header.appendChild(ui.el('div', 'card-title', { text: t('page.proxyControl.topDestinations') }));
-    card.appendChild(header);
-
+  function updateDomains(requests) {
     const list = requests && requests.requests ? requests.requests : [];
+    els.domains.innerHTML = '';
     if (!list.length) {
-      card.appendChild(ui.el('div', 'empty', { text: t('page.proxyControl.noDomainData'), style: 'flex:1;display:flex;align-items:center;justify-content:center' }));
+      els.domains.appendChild(ui.el('div', 'pc-empty', { text: t('page.proxyControl.noDomainData') }));
       return;
     }
-
     const domains = {};
     list.forEach(r => {
       const target = r.target || '';
       if (!target || target === '?') return;
-      let h;
-      try { h = target.startsWith('http') ? new URL(target).hostname : target.split(':')[0]; } catch (e) { h = target; }
+      const h = ui.hostOf(target);
       if (!h) return;
-      if (!domains[h]) domains[h] = { domain: h, requests: 0, bytes: 0, routes: {} };
+      if (!domains[h]) domains[h] = { domain: h, requests: 0, bytes: 0 };
       domains[h].requests++;
       domains[h].bytes += (r.bytes_in || 0) + (r.bytes_out || 0);
-      const up = r.upstream || 'unknown';
-      const upType = up === 'direct' ? 'direct' : up.startsWith('proxy:') ? 'proxy' : up.startsWith('pool:') ? 'pool' : up.startsWith('custom:') ? 'custom' : 'other';
-      domains[h].routes[upType] = (domains[h].routes[upType] || 0) + 1;
     });
-
-    const top = Object.values(domains).sort((a, b) => b.requests - a.requests).slice(0, 12);
+    const top = Object.values(domains).sort((a, b) => b.requests - a.requests).slice(0, 6);
     const total = top.reduce((s, d) => s + d.requests, 0) || 1;
+    const maxReq = top[0].requests || 1;
 
-    const wrap = ui.el('div', '', { style: 'flex:1;min-height:0;overflow-y:auto' });
     top.forEach(d => {
-      const row = ui.el('div', 'tm-domain-row');
-      const left = ui.el('div', 'tm-domain-left');
-      left.appendChild(ui.el('div', 'tm-domain-name', { text: d.domain, title: d.domain }));
-      const bar = ui.el('div', 'tm-domain-bar');
-      bar.appendChild(ui.el('div', '', { style: `width:${(d.requests / total * 100)}%;height:100%;background:var(--accent);border-radius:2px` }));
-      left.appendChild(bar);
-      row.appendChild(left);
-
-      const right = ui.el('div', 'tm-domain-right');
-      const routeTypes = Object.entries(d.routes).sort((a, b) => b[1] - a[1]);
-      right.appendChild(ui.el('span', 'tm-domain-stat', { html: `<b>${d.requests}</b> req · <span style="color:var(--text-secondary)">${fmtBytes(d.bytes)}</span>` }));
-      const badges = ui.el('span', 'tm-domain-routes');
-      routeTypes.forEach(([type, count]) => {
-        badges.appendChild(ui.el('span', `route-badge-sm ${routeTypeClass(type)}`, { text: routeTypeLabel(type), title: count + ' requests' }));
-      });
-      right.appendChild(badges);
-      row.appendChild(right);
-
-      wrap.appendChild(row);
+      const row = ui.el('div', 'pc-top-row');
+      row.innerHTML = ui.hostAvatar(d.domain, 26) +
+        `<div class="pc-top-main">` +
+          `<div class="pc-top-namerow"><span class="pc-top-name" title="${ui.escHtml(d.domain)}">${ui.escHtml(d.domain)}</span><span class="pc-top-pct">${(d.requests / total * 100).toFixed(1)}%</span></div>` +
+          `<div class="pc-top-bar"><span style="width:${(d.requests / maxReq * 100).toFixed(0)}%;background:var(--accent)"></span></div>` +
+        `</div>` +
+        `<div class="pc-top-right"><b>${d.requests.toLocaleString()}</b><span>${fmtBytes(d.bytes)}</span></div>`;
+      els.domains.appendChild(row);
     });
-    card.appendChild(wrap);
   }
 
-  function updateUpstream(card, ps) {
-    card.innerHTML = '';
-    const header = ui.el('div', 'card-header');
-    header.appendChild(ui.el('div', 'card-title', { text: t('page.proxyControl.currentUpstream') }));
-    const btn = ui.el('button', 'btn btn-sm btn-secondary', { text: t('page.proxyControl.changeProxy') });
-    btn.addEventListener('click', () => router.navigate('proxy-pool'));
-    header.appendChild(btn);
-    card.appendChild(header);
+  function updateClients(clients) {
+    const list = clients && clients.clients ? clients.clients : [];
+    els.clients.innerHTML = '';
+    if (!list.length) {
+      els.clients.appendChild(ui.el('div', 'pc-empty', { text: t('page.proxyControl.noClientData') }));
+      return;
+    }
+    const top = list.slice(0, 6);
+    const maxReq = top[0].requests || 1;
+    const total = top.reduce((s, c) => s + c.requests, 0) || 1;
+    const nowSec = Date.now() / 1000;
 
+    top.forEach(c => {
+      const online = (nowSec - (c.last_seen || 0)) < 600;
+      const row = ui.el('div', 'pc-top-row');
+      row.style.cursor = 'pointer';
+      row.innerHTML = ui.personAvatar(c.client, 26) +
+        `<div class="pc-top-main">` +
+          `<div class="pc-top-namerow"><span class="pc-top-name pc-mono">${ui.escHtml(c.client)}</span><span class="pc-top-pct">${(c.requests / total * 100).toFixed(1)}%</span></div>` +
+          `<div class="pc-top-bar"><span style="width:${(c.requests / maxReq * 100).toFixed(0)}%;background:#8a2be2"></span></div>` +
+        `</div>` +
+        `<div class="pc-top-right"><b>${c.requests.toLocaleString()}</b><span class="${online ? 'pc-online' : ''}">${ui.ago(c.last_seen)}</span></div>`;
+      row.addEventListener('click', () => window.clientCard.show(c.client));
+      els.clients.appendChild(row);
+    });
+  }
+
+  function updateTimeChart() {
+    const minutes = (RANGES.find(r => r[0] === range) || [null, 60])[1];
+    const pts = historyCache.slice(-minutes);
+    els.timeBody.innerHTML = '';
+    if (pts.length < 2) {
+      els.timeBody.appendChild(ui.el('div', 'pc-empty', { text: t('page.proxyControl.noTrafficData') }));
+      return;
+    }
+    const labels = pts.map(p => {
+      const d = new Date(p.ts * 1000);
+      return `${d.getHours()}:${d.getMinutes().toString().padStart(2, '0')}`;
+    });
+    const toMb = v => (v || 0) / (1024 * 1024);
+    els.timeBody.innerHTML = charts.multiLineChart([
+      { data: pts.map(p => toMb(p.bandwidth_out)), color: 'var(--info)', label: t('page.proxyControl.download'), fillArea: true },
+      { data: pts.map(p => toMb(p.bandwidth_in)), color: 'var(--warning)', label: t('page.proxyControl.upload'), fillArea: true },
+    ], { width: 460, height: 210, labels, responsive: true });
+  }
+
+  function updateUpstream(ps) {
+    els.upstream.innerHTML = '';
     const ap = ps && ps.active_proxy;
     const directMode = ps && ps.direct_mode;
 
     if (directMode) {
-      const direct = ui.el('div', 'tm-upstream-mode');
-      direct.innerHTML = '<span class="route-badge route-direct">DIRECT MODE</span><div style="font-size:12px;color:var(--text-secondary);margin-top:8px">' + t('page.proxyControl.directModeDesc') + '</div>';
-      card.appendChild(direct);
+      els.upstream.innerHTML = '<div class="pc-upstream-mode"><span class="route-badge route-direct">DIRECT MODE</span><div class="pc-upstream-note">' + t('page.proxyControl.directModeDesc') + '</div></div>';
       return;
     }
-
     if (!ap) {
-      card.appendChild(ui.el('div', 'empty', { text: t('page.proxyControl.noActiveProxy'), style: 'flex:1;display:flex;align-items:center;justify-content:center' }));
+      els.upstream.appendChild(ui.el('div', 'pc-empty', { text: t('page.proxyControl.noActiveProxy') }));
       return;
     }
 
-    const top = ui.el('div', 'tm-upstream-top');
-    const addrLink = ui.el('div', 'tm-upstream-addr');
-    addrLink.innerHTML = `<span style="font-family:monospace;font-size:15px;font-weight:700;color:var(--accent);cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px">${ui.escHtml(ap.address)}</span>`;
-    addrLink.querySelector('span').addEventListener('click', () => { if (window.proxyCard) window.proxyCard.show(ap.address); });
-    top.appendChild(addrLink);
+    const top = ui.el('div', 'pc-upstream-top');
+    const addr = ui.el('span', 'pc-upstream-addr', { text: ap.address, title: t('proxyCard.title') });
+    addr.addEventListener('click', () => { if (window.proxyCard) window.proxyCard.show(ap.address); });
+    top.appendChild(addr);
     top.appendChild(ui.badge(ap.last_status === 'ok' ? t('page.proxyControl.healthy') : t('page.proxyControl.unhealthy'), ap.last_status === 'ok' ? 'green' : 'red'));
     if (ap.country_code) top.appendChild(ui.el('span', 'flag', { text: ui.flag(ap.country_code) }));
-    card.appendChild(top);
+    els.upstream.appendChild(top);
 
-    const grid = ui.el('div', 'grid grid-4');
+    const grid = ui.el('div', 'pc-stat-grid');
     const items = [
-      { label: t('page.proxyControl.latency'), value: ui.fmtLatency(ap.last_latency), color: 'var(--text-primary)' },
+      { label: t('page.proxyControl.latency'), value: ui.fmtLatency(ap.last_latency) },
       { label: t('page.proxyControl.successRate'), value: ui.fmtPct(ap.success_rate), color: 'var(--success)' },
       { label: t('page.proxyControl.speed'), value: ap.speed_avg ? ap.speed_avg.toFixed(0) + ' KB/s' : '—', color: 'var(--info)' },
-      { label: t('page.proxyControl.protocol'), value: (ap.protocol || 'HTTP').toUpperCase(), color: 'var(--text-secondary)' },
+      { label: t('page.proxyControl.protocol'), value: (ap.protocol || 'HTTP').toUpperCase() },
     ];
     items.forEach(item => {
-      const cell = ui.el('div', 'tm-stat-cell');
-      cell.appendChild(ui.el('div', 'tm-stat-label', { text: item.label }));
-      cell.appendChild(ui.el('div', 'tm-stat-value', { text: item.value, style: `color:${item.color}` }));
+      const cell = ui.el('div', 'pc-stat-cell');
+      cell.appendChild(ui.el('div', 'pc-stat-label', { text: item.label }));
+      const v = ui.el('div', 'pc-stat-value', { text: item.value });
+      if (item.color) v.style.color = item.color;
+      cell.appendChild(v);
       grid.appendChild(cell);
     });
-    card.appendChild(grid);
+    els.upstream.appendChild(grid);
   }
 
-  function updateBandwidth(card, bw, history) {
-    card.innerHTML = '';
-    const header = ui.el('div', 'card-header');
-    header.appendChild(ui.el('div', 'card-title', { text: t('page.proxyControl.bandwidth24h') }));
-    card.appendChild(header);
-
+  function updateBandwidth(bw) {
+    els.bandwidth.innerHTML = '';
     const download = bw ? (bw.download || 0) : 0;
     const upload = bw ? (bw.upload || 0) : 0;
 
-    const stats = ui.el('div', 'grid grid-2', { style: 'flex-shrink:0;margin-bottom:8px' });
-    const dlCell = ui.el('div', 'tm-bw-cell');
-    dlCell.innerHTML = `<div class="tm-bw-label">↓ ${t('page.proxyControl.download')}</div><div class="tm-bw-value">${fmtBytes(download)}</div>`;
-    stats.appendChild(dlCell);
-    const upCell = ui.el('div', 'tm-bw-cell');
-    upCell.innerHTML = `<div class="tm-bw-label">↑ ${t('page.proxyControl.upload')}</div><div class="tm-bw-value">${fmtBytes(upload)}</div>`;
-    stats.appendChild(upCell);
-    card.appendChild(stats);
+    const boxes = ui.el('div', 'pc-bw-boxes');
+    const dl = ui.el('div', 'pc-bw-box');
+    dl.innerHTML = `<div class="pc-bw-label">↓ ${t('page.proxyControl.download')}</div><div class="pc-bw-value">${fmtBytes(download)}</div>`;
+    boxes.appendChild(dl);
+    const up = ui.el('div', 'pc-bw-box');
+    up.innerHTML = `<div class="pc-bw-label">↑ ${t('page.proxyControl.upload')}</div><div class="pc-bw-value">${fmtBytes(upload)}</div>`;
+    boxes.appendChild(up);
+    els.bandwidth.appendChild(boxes);
 
-    const pts = history && history.length ? history.slice(-48) : [];
+    const pts = historyCache.slice(-48);
     if (pts.length >= 2) {
-      const data = pts.map(p => (p.bandwidth_in || 0) + (p.bandwidth_out || 0));
+      const data = pts.map(p => ((p.bandwidth_in || 0) + (p.bandwidth_out || 0)) / (1024 * 1024));
       const labels = pts.map(p => {
         const d = new Date(p.ts * 1000);
         return `${d.getHours()}:${d.getMinutes().toString().padStart(2, '0')}`;
       });
-      const chartWrap = ui.el('div', '', { style: 'flex:1;min-height:0;display:flex', html: charts.lineChart(data, { width: 400, height: 170, labels, color: 'var(--accent)', fillArea: true, responsive: true }) });
-      card.appendChild(chartWrap);
+      const wrap = ui.el('div', 'pc-bw-chart', { html: charts.lineChart(data, { width: 440, height: 160, labels, color: 'var(--accent)', fillArea: true, responsive: true }) });
+      els.bandwidth.appendChild(wrap);
     } else {
-      card.appendChild(ui.el('div', 'empty', { text: t('page.proxyControl.noTrafficData'), style: 'flex:1;display:flex;align-items:center;justify-content:center' }));
+      els.bandwidth.appendChild(ui.el('div', 'pc-empty', { text: t('page.proxyControl.noTrafficData') }));
     }
   }
 
-  function updateConsumer(card, summary) {
+  let lastSummaryData = null;
+  function updateConsumer(summary) {
+    if (summary) lastSummaryData = summary;
     const period = els._consumerPeriod || 'day';
-    const data = summary && summary[period] ? summary[period] : null;
-
-    // Preserve header + tabs, only update body
-    const header = card.querySelector('.card-header');
-    card.innerHTML = '';
-    if (header) card.appendChild(header);
+    const data = lastSummaryData && lastSummaryData[period] ? lastSummaryData[period] : null;
+    els.consumer.innerHTML = '';
 
     if (!data || (data.requests || 0) === 0) {
-      card.appendChild(ui.el('div', 'empty', { text: t('page.proxyControl.noTrafficData'), style: 'flex:1;display:flex;align-items:center;justify-content:center' }));
+      els.consumer.appendChild(ui.el('div', 'pc-empty', { text: t('page.proxyControl.noTrafficData') }));
       return;
     }
 
@@ -7374,64 +7756,76 @@ router.register('proxy-control', (container) => {
     const dlPct = total ? (download / total * 100) : 0;
     const sr = data.success_rate || 0;
 
-    // Compact header: total on the left, request stats on the right
-    const head = ui.el('div', 'tm-consumer-head');
-    head.innerHTML = `<div class="tm-consumer-total"><span class="tm-consumer-total-value">${fmtBytes(total)}</span><span class="tm-consumer-total-label">${t('page.proxyControl.totalTraffic')}</span></div>` +
-      `<div class="tm-consumer-reqs"><span>${data.requests.toLocaleString()} ${t('page.proxyControl.requests')}</span><span style="color:var(--text-secondary)">${data.success.toLocaleString()} ✓ / ${data.failed.toLocaleString()} ✗</span><span style="color:${sr >= 80 ? 'var(--success)' : sr >= 50 ? 'var(--warning)' : 'var(--danger)'};font-weight:600">${sr}%</span></div>`;
-    card.appendChild(head);
+    const head = ui.el('div', 'pc-consumer-head');
+    head.innerHTML = `<div class="pc-consumer-total"><span class="pc-consumer-value">${fmtBytes(total)}</span><span class="pc-consumer-label">${t('page.proxyControl.totalTraffic')}</span></div>` +
+      `<div class="pc-consumer-reqs"><span>${data.requests.toLocaleString()} ${t('page.proxyControl.requests')}</span><span style="color:${sr >= 80 ? 'var(--success)' : sr >= 50 ? 'var(--warning)' : 'var(--danger)'};font-weight:600">${sr}%</span></div>`;
+    els.consumer.appendChild(head);
 
-    // Download / Upload split bar
-    const split = ui.el('div', 'tm-consumer-split');
-    split.innerHTML = `<div class="tm-split-bar"><div class="tm-split-dl" style="width:${dlPct}%"></div><div class="tm-split-ul" style="width:${100 - dlPct}%"></div></div>`;
-    const splitLabels = ui.el('div', 'tm-consumer-split-labels');
-    splitLabels.innerHTML = `<span class="tm-split-dl-label">↓ ${t('page.proxyControl.download')} ${fmtBytes(download)} (${dlPct.toFixed(0)}%)</span><span class="tm-split-ul-label">↑ ${t('page.proxyControl.upload')} ${fmtBytes(upload)} (${(100 - dlPct).toFixed(0)}%)</span>`;
-    card.appendChild(split);
-    card.appendChild(splitLabels);
+    const split = ui.el('div', 'pc-split');
+    split.innerHTML = `<div class="pc-split-bar"><span class="pc-split-dl" style="width:${dlPct}%"></span><span class="pc-split-ul" style="width:${100 - dlPct}%"></span></div>` +
+      `<div class="pc-split-labels"><span style="color:var(--success)">↓ ${fmtBytes(download)} · ${dlPct.toFixed(0)}%</span><span style="color:var(--accent)">↑ ${fmtBytes(upload)} · ${(100 - dlPct).toFixed(0)}%</span></div>`;
+    els.consumer.appendChild(split);
 
-    // Top routes
     if (data.top_routes && data.top_routes.length) {
-      const routesWrap = ui.el('div', 'tm-consumer-routes');
-      const title = ui.el('div', 'tm-consumer-routes-title', { text: t('page.proxyControl.topRoutes') });
-      routesWrap.appendChild(title);
       const maxBytes = Math.max(...data.top_routes.map(r => r.bytes), 1);
-      data.top_routes.slice(0, 5).forEach(r => {
-        const row = ui.el('div', 'tm-consumer-route-row');
-        const pct = (r.bytes / maxBytes * 100);
-        row.innerHTML = `<span class="route-badge-sm ${routeTypeClass(r.type)}">${routeTypeLabel(r.type)}</span><div class="tm-consumer-route-bar"><div style="width:${pct}%;height:100%;background:var(--accent);border-radius:2px"></div></div><span style="font-size:11px;color:var(--text-secondary);min-width:60px;text-align:right">${fmtBytes(r.bytes)}</span><span style="font-size:11px;color:var(--text-muted);min-width:40px;text-align:right">${r.requests}</span>`;
-        routesWrap.appendChild(row);
+      data.top_routes.slice(0, 4).forEach(r => {
+        const row = ui.el('div', 'pc-top-row pc-top-row-sm');
+        row.innerHTML = `<div class="pc-top-main">` +
+            `<div class="pc-top-namerow"><span class="route-badge-sm ${ui.routeTypeClass(r.type)}">${routeTypeLabel(r.type)}</span><span class="pc-top-pct">${fmtBytes(r.bytes)}</span></div>` +
+            `<div class="pc-top-bar"><span style="width:${(r.bytes / maxBytes * 100).toFixed(0)}%;background:var(--accent)"></span></div>` +
+          `</div><div class="pc-top-right"><b>${r.requests.toLocaleString()}</b></div>`;
+        els.consumer.appendChild(row);
       });
-      card.appendChild(routesWrap);
     }
   }
 
-  // --- Polling ---
+  function updateFooter() {
+    const upd = document.getElementById('pcf-update');
+    if (upd) upd.textContent = t('page.proxyControl.lastUpdate', { time: lastUpdate ? new Date(lastUpdate).toLocaleTimeString() : '—' });
+    const auto = document.getElementById('pcf-auto');
+    if (auto) auto.textContent = autoRefresh ? t('page.proxyControl.autoOn') : t('page.proxyControl.autoOff');
+    const dot = document.getElementById('pcf-dot');
+    if (dot) dot.classList.toggle('off', !autoRefresh);
+  }
+
+  // ── Polling ──
   async function poll() {
     try {
-      // Fire all requests in parallel: serial awaits made page open time
-      // equal to the SUM of endpoint latencies instead of the max.
-      const [ps, requests, routes, bw, summary, history] = await Promise.all([
+      const [ps, requests, routes, bw, summary, history, clients] = await Promise.all([
         api.proxyStatus().catch(() => ({})),
         api.requests().catch(() => ({})),
         api.trafficRoutes().catch(() => ({})),
         api.bandwidth().catch(() => ({})),
         api.trafficSummary().catch(() => ({})),
         api.history('24h').catch(() => []),
+        api.clients().catch(() => ({})),
       ]);
 
-      try { updateTiles(requests.requests || [], routes.routes || [], bw); } catch (e) { console.error('tiles', e); }
-      try { updateStream(els.stream, requests); } catch (e) { console.error('stream', e); }
-      try { updateRoutes(els.routes, routes); } catch (e) { console.error('routes', e); }
-      try { updateDomains(els.domains, requests); } catch (e) { console.error('domains', e); }
-      try { updateUpstream(els.upstream, ps); } catch (e) { console.error('upstream', e); }
-      try { updateConsumer(els.consumer, summary); } catch (e) { console.error('consumer', e); }
-      try { updateBandwidth(els.bandwidth, bw, history); } catch (e) { console.error('bandwidth', e); }
+      historyCache = history || [];
+      try { updateKpis(requests.requests || [], clients.clients || [], bw, historyCache); } catch (e) { console.error('tiles', e); }
+      try { updateStream(requests); } catch (e) { console.error('stream', e); }
+      try { updateRoutes(routes); } catch (e) { console.error('routes', e); }
+      try { updateDomains(requests); } catch (e) { console.error('domains', e); }
+      try { updateClients(clients); } catch (e) { console.error('clients', e); }
+      try { updateTimeChart(); } catch (e) { console.error('time', e); }
+      try { updateUpstream(ps); } catch (e) { console.error('upstream', e); }
+      try { updateConsumer(summary); } catch (e) { console.error('consumer', e); }
+      try { updateBandwidth(bw); } catch (e) { console.error('bandwidth', e); }
+
+      lastUpdate = Date.now();
+      const cl = document.getElementById('pcf-clients');
+      if (cl) cl.textContent = t('page.proxyControl.footerClients', { count: (clients.clients || []).length });
+      const rt = document.getElementById('pcf-routes');
+      if (rt) rt.textContent = t('page.proxyControl.footerRoutes', { count: (routes.routes || []).length });
+      updateFooter();
     } catch (e) {
       console.error('proxy-control poll', e);
     }
   }
 
+  build();
   poll();
-  const id = setInterval(poll, 2000);
+  const id = setInterval(() => { if (autoRefresh) poll(); }, 2000);
   if (window._pageIntervals) window._pageIntervals.push(id);
   else window._pageIntervals = [id];
 });

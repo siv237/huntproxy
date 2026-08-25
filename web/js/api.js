@@ -83,6 +83,7 @@ const api = {
   trafficLive() { return this.request('/api/traffic/live'); },
   requests() { return this.request('/api/requests'); },
   clients() { return this.request('/api/clients'); },
+  clientDetail(client, hours = 24) { return this.request(`/api/clients/${encodeURIComponent(client)}?hours=${hours}`); },
   domains() { return this.request('/api/domains'); },
   errors() { return this.request('/api/errors'); },
   bandwidth() { return this.request('/api/bandwidth'); },

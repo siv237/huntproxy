@@ -7,9 +7,10 @@ Also owns the in-memory traffic helpers ``_mem_traffic``, ``_route_type`` and
 import asyncio
 import json
 import time
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
 from hunt.constants import logger
+from hunt.handlers import _int_param, _qs
 
 # Memoize /api/traffic/summary for this long. It scans traffic_log three times
 # per request and the dashboard polls it every couple of seconds; the data is
@@ -127,6 +128,121 @@ class TrafficHandlers:
                 clients[c]["requests"] += 1
                 clients[c]["last_seen"] = max(clients[c]["last_seen"], entry.get("ts", 0))
         return {"clients": sorted(clients.values(), key=lambda x: x["requests"], reverse=True)[:20]}
+
+    async def _handle_client_detail(self, raw_path, body):
+        path = raw_path.split("?", 1)[0]
+        client = unquote(path[len("/api/clients/"):])
+        if not client:
+            return json.dumps({"error": "client required"}), 400, "application/json"
+        hours = _int_param(_qs(raw_path), "hours", 24)
+        hours = max(1, min(hours, 24 * 30))
+        payload = await asyncio.to_thread(self._client_detail_payload, client, hours)
+        return json.dumps(payload), 200, "application/json"
+
+    def _client_detail_payload(self, client: str, hours: int) -> dict:
+        """Per-client dashboard: summary, hourly activity, routes, domains, recent."""
+        now = time.time()
+        cutoff = now - hours * 3600
+        rows = []
+        try:
+            conn = self.state._stats_db()
+            rows = conn.execute(
+                "SELECT ts, target, status, upstream, bytes_in, bytes_out, duration "
+                "FROM traffic_log WHERE client = ? AND ts > ? ORDER BY ts DESC LIMIT 20000",
+                (client, cutoff)
+            ).fetchall()
+            conn.close()
+            rows = [dict(r) for r in rows]
+        except Exception:
+            logger.debug("suppressed", exc_info=True)
+        if not rows:
+            rows = [e for e in self._mem_traffic(cutoff) if e.get("client") == client]
+            rows.sort(key=lambda e: e.get("ts", 0) or 0, reverse=True)
+
+        summary = {
+            "client": client, "hours": hours, "requests": len(rows),
+            "bytes_in": 0, "bytes_out": 0, "ok": 0, "failed": 0,
+            "success_rate": 0.0, "avg_duration": 0.0,
+            "first_seen": 0, "last_seen": 0,
+        }
+        routes: dict = {}
+        domains: dict = {}
+        buckets: dict = {}
+        dur_sum = 0.0
+        for e in rows:
+            ts = e.get("ts", 0) or 0
+            bin_ = int(e.get("bytes_in", 0) or 0)
+            bout = int(e.get("bytes_out", 0) or 0)
+            dur = float(e.get("duration", 0) or 0)
+            ok = (e.get("status") or "") == "ok"
+            summary["bytes_in"] += bin_
+            summary["bytes_out"] += bout
+            summary["ok" if ok else "failed"] += 1
+            dur_sum += dur
+            summary["first_seen"] = min(filter(None, (summary["first_seen"], ts))) if summary["first_seen"] else ts
+            summary["last_seen"] = max(summary["last_seen"], ts)
+
+            up = e.get("upstream") or ""
+            if not up or up == "?":
+                up = "unknown"
+            rtype = self._route_type(up)
+            rt = routes.setdefault(rtype, {"type": rtype, "requests": 0, "bytes": 0, "upstreams": {}})
+            rt["requests"] += 1
+            rt["bytes"] += bin_ + bout
+            rt["upstreams"][up] = rt["upstreams"].get(up, 0) + 1
+
+            target = e.get("target") or ""
+            try:
+                host = urlparse(target if target.startswith("http") else f"http://{target}").hostname or target
+            except Exception:
+                host = target
+            if host:
+                d = domains.setdefault(host, {"domain": host, "requests": 0, "bytes": 0})
+                d["requests"] += 1
+                d["bytes"] += bin_ + bout
+
+            hour = int(ts // 3600)
+            b = buckets.setdefault(hour, {"requests": 0, "bytes": 0})
+            b["requests"] += 1
+            b["bytes"] += bin_ + bout
+
+        if summary["requests"]:
+            summary["success_rate"] = round(summary["ok"] / summary["requests"] * 100, 1)
+            summary["avg_duration"] = round(dur_sum / summary["requests"], 3)
+        summary["total_bytes"] = summary["bytes_in"] + summary["bytes_out"]
+
+        route_list = sorted(routes.values(), key=lambda r: r["requests"], reverse=True)
+        for rt in route_list:
+            rt["pct"] = round(rt["requests"] / summary["requests"] * 100, 1) if summary["requests"] else 0
+            rt["top_upstream"] = max(rt["upstreams"], key=rt["upstreams"].get) if rt["upstreams"] else ""
+
+        top_domains = sorted(domains.values(), key=lambda d: d["requests"], reverse=True)[:10]
+        for d in top_domains:
+            d["pct"] = round(d["requests"] / summary["requests"] * 100, 1) if summary["requests"] else 0
+
+        hour_now = int(now // 3600)
+        hourly = []
+        for h in range(hour_now - 23, hour_now + 1):
+            b = buckets.get(h, {"requests": 0, "bytes": 0})
+            hourly.append({"ts": h * 3600, "requests": b["requests"], "bytes": b["bytes"]})
+
+        recent = [{
+            "ts": e.get("ts", 0) or 0,
+            "target": e.get("target") or "",
+            "status": e.get("status") or "",
+            "upstream": e.get("upstream") or "",
+            "bytes_in": int(e.get("bytes_in", 0) or 0),
+            "bytes_out": int(e.get("bytes_out", 0) or 0),
+            "duration": float(e.get("duration", 0) or 0),
+        } for e in rows[:40]]
+
+        return {
+            "summary": summary,
+            "routes": route_list,
+            "domains": top_domains,
+            "hourly": hourly,
+            "recent": recent,
+        }
 
     async def _handle_domains(self, raw_path, body):
         # GROUP BY over the full traffic_log — keep it off the event loop.
