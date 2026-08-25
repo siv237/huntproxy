@@ -188,11 +188,9 @@ class HealthCheckMixin:
     async def _gather_health_results(self, r):
         http_task = asyncio.create_task(self._check_proxy(r.address))
         ssl_task = asyncio.create_task(self._check_ssl(r.address))
-        fraud_task = asyncio.create_task(self._fetch_fraud_score(r.address))
-        # Only the protocol probes are bounded by the tight check timeout;
-        # the fraud probe (tunnel + TLS + round-trip through the proxy) is
-        # the slowest child and used to be killed by that outer deadline,
-        # silently losing fresh anti-fraud data on every slow check.
+        # Only the protocol probes are bounded by the tight check timeout.
+        # Anti-fraud (ip-api egress flags) rides inside these probes —
+        # no separate round-trip is needed.
         pair = asyncio.gather(http_task, ssl_task, return_exceptions=True)
         try:
             http_res, ssl_res = await asyncio.wait_for(
@@ -201,12 +199,7 @@ class HealthCheckMixin:
             http_task.cancel()
             ssl_task.cancel()
             http_res, ssl_res = asyncio.TimeoutError(), asyncio.TimeoutError()
-        try:
-            fraud_res = await asyncio.wait_for(
-                fraud_task, timeout=self.effective_timeout + 45)
-        except asyncio.TimeoutError:
-            fraud_res = {}
-        return [http_res, ssl_res, fraud_res]
+        return [http_res, ssl_res]
 
     async def _measure_health_speed(self, r, ok, _proto, country, cc, ssl_ok, supports_connect) -> float:
         if not ok:
@@ -279,10 +272,9 @@ class HealthCheckMixin:
             results = await asyncio.gather(
                 asyncio.create_task(self._check_proxy(r.address)),
                 asyncio.create_task(self._check_ssl(r.address)),
-                asyncio.create_task(self._fetch_fraud_score(r.address)),
                 return_exceptions=True,
             )
-            merged = self._merge_check_results(results, r.address)
+            merged = self._merge_check_results(list(results) + [{}], r.address)
             ok, country, supports_connect, mitm_suspect, egress, listen, http_latency, cc, ssl_ok, _, _ = (
                 merged["ok"], merged["country"], merged["supports_connect"],
                 merged["mitm_suspect"], merged["egress"], merged["listen"],

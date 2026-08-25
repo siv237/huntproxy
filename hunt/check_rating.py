@@ -72,13 +72,15 @@ class CheckRatingMixin:
         Unlike _update_rating, this does NOT run a full check (geo/mitm/speed)
         — it only nudges consecutive_fails and last_status so the proxy sinks
         in the score ranking as it fails real user requests, without waiting
-        for the next health-check cycle. Batching/saving mirrors _update_rating.
+        for the next health-check cycle. The increment itself is throttled
+        (see ProxyRating.record_traffic_fail): one user page load producing
+        several connection errors must not count as independent failures.
+        Batching/saving mirrors _update_rating.
         """
         r = self.ratings.get(addr)
         if not r:
             return
         r.last_status = "failed"
-        r.consecutive_fails += 1
         r.record_traffic_fail()
         r.last_check = time.time()
         self._dirty_ratings.add(addr)
@@ -136,22 +138,22 @@ class CheckRatingMixin:
             self._apply_fraud(r, fraud)
         elif fraud is not None:
             # The fraud probe ran but produced nothing (refused, quota,
-            # timeout). Stamp the attempt so the proxy drops into the
-            # unverified bucket immediately instead of riding the old
-            # verdict until it expires. A missing argument means no
-            # probe was made at all — leave the status untouched.
+            # timeout). Stamp the attempt for diagnostics; scoring already
+            # treats the proxy as unverified via the fail-closed default.
             r.fraud_attempt_ts = time.time()
 
     def _apply_fraud(self, r: ProxyRating, fraud: dict):
-        """Apply a full 0-100 risk score from proxycheck.io (additive:
-        only overwrites when the service actually returned a score)."""
+        """Store the raw proxycheck.io risk score as INFORMATION ONLY.
+
+        proxycheck answers "is this IP a proxy" (always yes here), not
+        "how dirty is the network behind it" — it must never write into
+        the ip-api flag fields that drive fraud_score."""
         score = fraud.get("score")
         if isinstance(score, int) and 0 <= score <= 100:
             r.fraud_score_raw = score
-            r.fraud_checked_ts = time.time()
-        proxy_flag = fraud.get("proxy")
-        if isinstance(proxy_flag, bool):
-            r.fraud_proxy = r.fraud_proxy or proxy_flag
+            now = time.time()
+            r.fraud_checked_ts = now
+            r.fraud_raw_ts = now
 
     def _apply_speed(self, r: ProxyRating, speed: float):
         if speed > 0:

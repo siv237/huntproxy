@@ -183,3 +183,13 @@ class TestUpdateRating:
         state = hunt.HuntState({"ip_blacklists": {"enabled": False}})
         state._record_traffic_fail("9.9.9.9:9999")
         assert "9.9.9.9:9999" not in state.ratings
+
+    def test_traffic_fail_burst_throttled(self, tmp_data_dir):
+        state = hunt.HuntState({"ip_blacklists": {"enabled": False}})
+        state._update_rating(
+            "1.2.3.4:8080", ok=True, country="US", latency=0.5, speed=100.0,
+        )
+        r = state.ratings["1.2.3.4:8080"]
+        for _ in range(20):
+            state._record_traffic_fail("1.2.3.4:8080")
+        assert r.consecutive_fails == 1

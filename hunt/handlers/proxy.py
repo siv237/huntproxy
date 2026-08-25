@@ -146,10 +146,9 @@ class ProxyHandlers:
         results = await asyncio.gather(
             asyncio.create_task(self.state._check_proxy(address)),
             asyncio.create_task(self.state._check_ssl(address)),
-            asyncio.create_task(self.state._fetch_fraud_score(address)),
             return_exceptions=True,
         )
-        merged = self.state._merge_check_results(results, address)
+        merged = self.state._merge_check_results(list(results) + [{}], address)
         ok, country, supports_connect, mitm_suspect, egress, listen, http_latency, cc, ssl_ok, _, _ = (
             merged["ok"], merged["country"], merged["supports_connect"],
             merged["mitm_suspect"], merged["egress"], merged["listen"],
@@ -202,7 +201,7 @@ class ProxyHandlers:
             results = await asyncio.gather(
                 asyncio.create_task(self.state._check_proxy(addr)),
                 asyncio.create_task(self.state._check_ssl(addr)),
-                asyncio.create_task(self.state._fetch_fraud_score(addr)),
+                asyncio.create_task(self.state._fetch_fraud_score(addr, r.egress_ip)),
                 return_exceptions=True,
             )
             merged = self.state._merge_check_results(results, addr)
@@ -223,7 +222,7 @@ class ProxyHandlers:
             touched = False
         score = fraud.get("score")
         if isinstance(score, int) and 0 <= score <= 100:
-            r.fraud_score_raw = score
+            self.state._apply_fraud(r, fraud)
             touched = True
         if touched:
             r.fraud_checked_ts = now
@@ -252,6 +251,7 @@ class ProxyHandlers:
         r = self.state.ratings.get(addr)
         if r:
             d = r.to_dict()
+            d["score_breakdown"] = r.score_breakdown()
             d["source_ids"] = self.state._addr_sources.get(r.address, [])
             total_sources = len(self.state.get_proxy_sources())
             d["sources_total"] = total_sources

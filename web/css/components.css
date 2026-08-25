@@ -1474,6 +1474,19 @@
   color: var(--text-muted);
 }
 
+.proxy-card-score-formula {
+  margin-top: clamp(4px, 0.5cqi, 8px);
+  padding: clamp(3px, 0.4cqi, 6px) clamp(5px, 0.7cqi, 10px);
+  border-radius: var(--radius-xs);
+  background: var(--bg-secondary, rgba(127,127,127,.08));
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: clamp(8px, 0.9cqi, 11px);
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .proxy-card-score-total {
   display: flex;
   align-items: center;

@@ -83,6 +83,7 @@ class StatePersistenceMixin:
             fraud_mobile=d.get("fraud_mobile", False),
             fraud_score_raw=d.get("fraud_score_raw", -1),
             fraud_checked_ts=d.get("fraud_checked_ts", 0.0),
+            fraud_raw_ts=d.get("fraud_raw_ts", 0.0),
             fraud_attempt_ts=d.get("fraud_attempt_ts", 0.0),
             sr_ewma=d.get("sr_ewma", -1.0),
             latency_ewma=d.get("latency_ewma", -1.0),

@@ -452,9 +452,22 @@ router.register('overview', (container) => {
   function proxyMarkers(p) {
     const markers = [];
     const proto = (p.protocol || 'http').toUpperCase();
-    markers.push(`<span style="color:var(--text-muted);font-weight:600;font-size:9px">${proto}</span>`);
+    const hasHttpsMarker = p.supports_connect;
+    if (!(hasHttpsMarker && proto === 'HTTP')) {
+      markers.push(`<span style="color:var(--text-muted);font-weight:600;font-size:9px">${proto}</span>`);
+    }
     if (p.ssl_supported) markers.push('<span style="color:#06b6d4;font-weight:600;font-size:9px">SSL</span>');
     if (p.supports_connect) markers.push('<span style="color:var(--success);font-weight:600;font-size:9px">HTTPS</span>');
+    const fs = typeof p.fraud_score === 'number' ? p.fraud_score : null;
+    const fv = p.fraud_verdict || 'FAILCHECK';
+    const flags = `hosting ${p.fraud_hosting ? 'yes' : 'no'} · proxy ${p.fraud_proxy ? 'yes' : 'no'} · mobile ${p.fraud_mobile ? 'yes' : 'no'}`;
+    if (p.fraud_failcheck || fs === null) {
+      markers.push(`<span title="FAILCHECK — no fresh measurement (${flags})" style="display:inline-flex;align-items:center;padding:1px 4px;border-radius:var(--radius-xs);background:rgba(107,114,128,.15);color:var(--text-muted);font-weight:700;font-size:9px">FC</span>`);
+    } else {
+      const fColor = fv === 'CLEAN' ? 'var(--success)' : fv === 'MOBILE' ? '#3b82f6' : fv === 'DC' ? 'var(--warning)' : 'var(--danger)';
+      const fBg = fv === 'CLEAN' ? 'rgba(34,197,94,.12)' : fv === 'MOBILE' ? 'rgba(59,130,246,.12)' : fv === 'DC' ? 'rgba(245,158,11,.12)' : 'rgba(239,68,68,.12)';
+      markers.push(`<span title="${fv}: risk ${fs}/100 · ${flags}" style="display:inline-flex;align-items:center;padding:1px 4px;border-radius:var(--radius-xs);background:${fBg};color:${fColor};font-weight:700;font-size:9px">F:${fs}</span>`);
+    }
     if (p.mitm_suspect) markers.push('<span style="color:var(--danger);font-weight:700;font-size:9px">MITM!</span>');
     if (p.in_grace) markers.push('<span style="color:var(--warning);font-weight:600;font-size:9px">GRACE</span>');
     const bl = blacklistBadge(p);

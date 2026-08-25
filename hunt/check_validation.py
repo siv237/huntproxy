@@ -164,10 +164,9 @@ class CheckValidationMixin:
                     results = await asyncio.gather(
                         asyncio.create_task(self._check_proxy(addr)),
                         asyncio.create_task(self._check_ssl(addr)),
-                        asyncio.create_task(self._fetch_fraud_score(addr)),
                         return_exceptions=True,
                     )
-                    merged = self._merge_check_results(results, addr)
+                    merged = self._merge_check_results(list(results) + [{}], addr)
                     if merged["fast_fail"] and not merged["ok"] and not merged["ssl_ok"]:
                         if await self._handle_fast_fail(addr, lock, ctx, counted):
                             return

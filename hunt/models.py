@@ -16,17 +16,24 @@ class ProxyRating:
     # and recovered ones climb back within a few health cycles instead of
     # keeping lifetime averages forever.
     EWMA_ALPHA = 0.25
-    # Anti-fraud is dynamic: a verdict (clean or accusation) older than this
-    # no longer counts as verified. Fraud is re-fetched on every proxy
-    # re-check; once the window lapses without a fresh confirmation the
-    # proxy drops into the unverified bucket instead of riding an old
-    # verdict for weeks.
+    # A fraud reading older than this no longer counts as fresh; while
+    # there is no fresh reading the proxy sits in FAILCHECK (worst case,
+    # marked — see fraud_failcheck).
     FRAUD_FRESH_SECONDS = 6 * 3600.0
-    # Score multiplier while fraud status is unverified: never checked,
-    # expired window, or the last attempt produced no data (refused /
-    # timed out). Sits below any confirmed CLEAN proxy so unverified
-    # nodes cannot top the pool, but above confirmed accusations.
-    FRAUD_UNKNOWN_FACTOR = 0.9
+    # Fraud moves the base rating sharply in BOTH directions. The reading
+    # comes from ip-api egress flags captured during the regular scan
+    # (wiki: 0 = CLEAN resident, hosting -> DC, proxy -> PROXY):
+    #   multiplier = 1 - PER_POINT * (score - BOOST_CENTER), clamped.
+    # A clean resident exit raises the base (~x1.3 at 0), a flagged one
+    # sinks it (x0.9 at 40, x0.6 at 70, x0.3 at 100). Flags are captured
+    # on every pass of every candidate — no separate probe needed.
+    # proxycheck.io raw risk (when present) is informational only: it
+    # answers "is this IP a proxy" (always true here), not "how dirty
+    # is the network behind it".
+    FRAUD_PENALTY_PER_POINT = 0.01
+    FRAUD_BOOST_CENTER = 30
+    FRAUD_FACTOR_MIN = 0.10
+    FRAUD_FACTOR_MAX = 1.35
     # Real-traffic failures update the reliability EWMA at most once per this
     # interval: one user page load can produce several connection errors, and
     # each should not count as an independent failed check.
@@ -69,7 +76,8 @@ class ProxyRating:
     fraud_mobile: bool = False  # egress-IP мобильный оператор/CGNAT (ip-api mobile)
     fraud_score_raw: int = -1  # риск 0-100 напрямую от proxycheck.io; -1 = нет
     fraud_checked_ts: float = 0.0  # когда в последний раз получали fraud-данные
-    fraud_attempt_ts: float = 0.0  # когда последняя попытка проверки не дала данных
+    fraud_raw_ts: float = 0.0  # когда был получен именно raw-скор proxycheck
+    fraud_attempt_ts: float = 0.0  # когда последняя попытка проверки не дала данных (диагностика)
     speed_sum: float = 0.0
     speed_count: int = 0
     last_speed: float = 0.0
@@ -92,14 +100,12 @@ class ProxyRating:
 
     @property
     def fraud_score(self) -> int:
-        """Риск egress-IP 0-100. Приоритет — необработанный риск-скор
-        proxycheck.io (fraud_score_raw). Если сервис недоступен —
-        оценка по флагам ip-api: +20 mobile, +40 hosting, +70 proxy.
-        -1 = данных нет."""
-        if self.fraud_score_raw >= 0:
-            return self.fraud_score_raw
-        if not self.fraud_checked_ts:
-            return -1
+        """Точный риск 0-100 из свежего чтения флагов ip-api
+        (0 CLEAN / +20 mobile / +40 hosting / +70 proxy); пока чтения нет —
+        100 (худший случай), отличать от реального readings помогает
+        fraud_failcheck."""
+        if self.fraud_failcheck:
+            return 100
         score = 0
         if self.fraud_mobile:
             score += 20
@@ -110,10 +116,23 @@ class ProxyRating:
         return min(100, score)
 
     @property
+    def fraud_failcheck(self) -> bool:
+        """True when the worst-case default is in effect because the egress
+        flags have never been captured or went stale (failed scan). The 100
+        shown by fraud_score is a placeholder — UI renders FAILCHECK/FC."""
+        if not self.fraud_checked_ts:
+            return True
+        return time.time() - self.fraud_checked_ts > self.FRAUD_FRESH_SECONDS
+
+    @property
+    def fraud_verified(self) -> bool:
+        return not self.fraud_failcheck
+
+    @property
     def fraud_verdict(self) -> str:
+        if self.fraud_failcheck:
+            return "FAILCHECK"
         s = self.fraud_score
-        if s < 0:
-            return "UNKNOWN"
         if s < 15:
             return "CLEAN"
         if s < 35:
@@ -121,21 +140,6 @@ class ProxyRating:
         if s < 65:
             return "DC"
         return "PROXY"
-
-    @property
-    def fraud_confirmed(self) -> bool:
-        """True when fraud data is fresh AND the last attempt confirmed it.
-
-        A refusal (empty result) stamps fraud_attempt_ts, which instantly
-        demotes the proxy to unverified even while the previous verdict is
-        still inside the freshness window; the next successful check
-        restores confirmation because its checked_ts lands after the
-        failed attempt."""
-        if not self.fraud_checked_ts:
-            return False
-        if time.time() - self.fraud_checked_ts > self.FRAUD_FRESH_SECONDS:
-            return False
-        return self.fraud_attempt_ts <= self.fraud_checked_ts
 
     @property
     def success_rate(self) -> float:
@@ -173,10 +177,16 @@ class ProxyRating:
         self.speed_ewma = sp if prev < 0 else (1.0 - a) * prev + a * sp
 
     def record_traffic_fail(self):
-        """Throttled reliability hit from real user-traffic failures."""
+        """Throttled reliability hit from real user-traffic failures.
+
+        The throttle covers the whole penalty — consecutive_fails included:
+        a burst of connection errors within one page load is one failure,
+        not dozens, so a brief outage cannot instantly burn a proven
+        proxy's grace period."""
         now = time.time()
         if now - self.last_traffic_fail_ts >= self.TRAFFIC_FAIL_THROTTLE:
             self.last_traffic_fail_ts = now
+            self.consecutive_fails += 1
             self.update_reliability(False)
 
     @property
@@ -235,16 +245,61 @@ class ProxyRating:
         return pts
 
     def _modifier_factor(self) -> float:
-        f = 1.0
-        if self.fraud_confirmed:
-            f *= 1.0 - 0.006 * max(0, self.fraud_score - 15)
-        else:
-            f *= self.FRAUD_UNKNOWN_FACTOR
+        f = 1.0 - self.FRAUD_PENALTY_PER_POINT * (self.fraud_score - self.FRAUD_BOOST_CENTER)
+        f = max(self.FRAUD_FACTOR_MIN, min(self.FRAUD_FACTOR_MAX, f))
         if self.mitm_suspect:
             f *= 0.5
         if self.ip_blacklist_hits > 0:
             f *= max(0.25, 0.75 ** self.ip_blacklist_hits)
         return f
+
+    def score_breakdown(self) -> dict:
+        """Authoritative score decomposition for UI: base components,
+        multipliers and the exact formula — mirrors score()/helpers."""
+        sr = self.sr_ewma if self.sr_ewma >= 0 else (
+            self.success_rate if self.checks_total else 0.0)
+        lat = self.latency_ewma if self.latency_ewma >= 0 else self.latency_avg
+        sp = self.speed_ewma if self.speed_ewma >= 0 else self.speed_avg
+        if sp > 0:
+            speed_pts = 25.0 * (min(sp, 1600.0) / 1600.0) ** 0.5
+            if self.speed_fails > 0:
+                speed_pts *= max(0.0, 1.0 - 0.35 * self.speed_fails)
+        elif self._effective_socks():
+            speed_pts = 12.0
+        elif self.speed_fails == 0 and self.checks_ok < 5:
+            speed_pts = 12.5
+        else:
+            speed_pts = 0.0
+        base = [
+            {"key": "reliability", "value": round(sr * 40.0, 1), "max": 40},
+            {"key": "latency", "value": round(20.0 * max(0.0, 1.0 - lat / 10.0), 1), "max": 20},
+            {"key": "speed", "value": round(speed_pts, 1), "max": 25},
+            {"key": "ssl", "value": 5.0 if self.ssl_supported else 0.0, "max": 5},
+            {"key": "connect", "value": 5.0 if self.supports_connect else 0.0, "max": 5},
+            {"key": "socks", "value": 5.0 if self._effective_socks() else 0.0, "max": 5},
+        ]
+        base_sum = round(sum(row["value"] for row in base), 1)
+
+        f_fraud = 1.0 - self.FRAUD_PENALTY_PER_POINT * (self.fraud_score - self.FRAUD_BOOST_CENTER)
+        f_fraud = max(self.FRAUD_FACTOR_MIN, min(self.FRAUD_FACTOR_MAX, f_fraud))
+        if self.fraud_failcheck:
+            fraud_note = "FAILCHECK"
+        else:
+            fraud_note = f"{self.fraud_verdict} {self.fraud_score}"
+        mults = [
+            {"key": "fraud", "factor": round(f_fraud, 2), "note": fraud_note},
+            {"key": "mitm", "factor": 0.5 if self.mitm_suspect else 1.0,
+             "note": "" },
+            {"key": "ipbl", "factor": round(max(0.25, 0.75 ** self.ip_blacklist_hits), 2)
+             if self.ip_blacklist_hits else 1.0,
+             "note": f"{self.ip_blacklist_hits}x" if self.ip_blacklist_hits else ""},
+        ]
+        if self.last_status != "ok" and self.in_grace:
+            ratio = max(0.0, 1.0 - self.consecutive_fails / self.GRACE_FAILS)
+            mults.append({"key": "grace", "factor": round(0.3 * ratio, 2),
+                          "note": f"{self.consecutive_fails}"})
+        return {"base": base, "base_sum": base_sum,
+                "multipliers": mults, "final": round(self.score, 1)}
 
     def to_dict(self) -> dict:
         return {
@@ -299,7 +354,9 @@ class ProxyRating:
             "fraud_score_raw": self.fraud_score_raw,
             "fraud_score": self.fraud_score,
             "fraud_verdict": self.fraud_verdict,
+            "fraud_failcheck": self.fraud_failcheck,
             "fraud_checked_ts": self.fraud_checked_ts,
+            "fraud_raw_ts": self.fraud_raw_ts,
             "fraud_attempt_ts": self.fraud_attempt_ts,
         }
 
@@ -345,6 +402,8 @@ class ProxyRating:
             "fraud_score_raw": self.fraud_score_raw,
             "fraud_score": self.fraud_score,
             "fraud_verdict": self.fraud_verdict,
+            "fraud_failcheck": self.fraud_failcheck,
             "fraud_checked_ts": self.fraud_checked_ts,
+            "fraud_raw_ts": self.fraud_raw_ts,
             "fraud_attempt_ts": self.fraud_attempt_ts,
         }

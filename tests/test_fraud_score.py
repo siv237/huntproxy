@@ -1,6 +1,7 @@
 import asyncio
 import json
 import sqlite3
+import time
 
 import hunt
 from hunt.fraudscore import FraudScoreMixin
@@ -26,12 +27,6 @@ class TestParseFraudPayload:
         out = FraudScoreMixin._parse_fraud_payload(buf)
         assert out["score"] == 34
 
-    def test_risk_out_of_range_dropped(self):
-        buf = _http_body({"status": "ok", "1.2.3.4": {"risk": 150}})
-        out = FraudScoreMixin._parse_fraud_payload(buf)
-        assert "score" not in out
-        assert out["provider"] == "proxycheck"
-
     def test_error_status_empty(self):
         buf = _http_body({"status": "error", "message": "quota"})
         assert FraudScoreMixin._parse_fraud_payload(buf) == {}
@@ -39,26 +34,36 @@ class TestParseFraudPayload:
     def test_no_headers_empty(self):
         assert FraudScoreMixin._parse_fraud_payload(b"garbage") == {}
 
-    def test_invalid_json_empty(self):
-        buf = b"HTTP/1.1 200 OK\r\n\r\n{not json"
-        assert FraudScoreMixin._parse_fraud_payload(buf) == {}
+    def test_json_between_extra_noise(self):
+        buf = b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n" \
+              b"ff\r\n{\"status\": \"ok\", \"1.2.3.4\": {\"risk\": 88}}\r\n0\r\n\r\n"
+        out = FraudScoreMixin._parse_fraud_payload(buf)
+        assert out["score"] == 88
 
 
 class TestFraudScoreModel:
-    def test_raw_service_score_takes_priority(self):
-        r = hunt.ProxyRating(address="1.2.3.4:80")
-        r.fraud_checked_ts = 1.0
-        r.fraud_hosting = True
-        assert r.fraud_score == 40
-        r.fraud_score_raw = 66
-        assert r.fraud_score == 66
+    def test_exact_number_from_fresh_flags(self):
+        r = hunt.ProxyRating(address="1.2.3.4:80",
+                             fraud_checked_ts=time.time())
+        assert not r.fraud_failcheck
+        assert r.fraud_score == 0
+        assert r.fraud_verdict == "CLEAN"
 
-    def test_unknown_when_never_checked(self):
+    def test_failcheck_when_never_checked(self):
         r = hunt.ProxyRating(address="1.2.3.4:80")
-        assert r.fraud_score == -1
-        assert r.fraud_verdict == "UNKNOWN"
+        assert r.fraud_failcheck is True
+        assert r.fraud_score == 100
+        assert r.fraud_verdict == "FAILCHECK"
 
-    def test_fallback_flag_weights_gradations(self):
+    def test_failcheck_when_flags_stale(self):
+        stale = time.time() - hunt.ProxyRating.FRAUD_FRESH_SECONDS - 1
+        r = hunt.ProxyRating(address="1.2.3.4:80", fraud_proxy=True,
+                             fraud_checked_ts=stale)
+        assert r.fraud_failcheck
+        assert r.fraud_score == 100
+        assert r.fraud_verdict == "FAILCHECK"
+
+    def test_flag_weights_gradations(self):
         cases = [
             (dict(), 0, "CLEAN"),
             (dict(fraud_mobile=True), 20, "MOBILE"),
@@ -68,42 +73,37 @@ class TestFraudScoreModel:
             (dict(fraud_hosting=True, fraud_proxy=True), 100, "PROXY"),
         ]
         for flags, score, verdict in cases:
-            r = hunt.ProxyRating(address="1.2.3.4:80", fraud_checked_ts=1.0, **flags)
+            r = hunt.ProxyRating(address="1.2.3.4:80",
+                                 fraud_checked_ts=time.time(), **flags)
             assert r.fraud_score == score, flags
             assert r.fraud_verdict == verdict, flags
 
-    def test_verdict_bands_on_raw_scale(self):
-        bands = [(0, "CLEAN"), (14, "CLEAN"), (15, "MOBILE"), (34, "MOBILE"),
-                 (35, "DC"), (64, "DC"), (65, "PROXY"), (100, "PROXY")]
-        for score, verdict in bands:
-            r = hunt.ProxyRating(address="1.2.3.4:80", fraud_score_raw=score,
-                                 fraud_checked_ts=1.0)
-            assert r.fraud_score == score
-            assert r.fraud_verdict == verdict, score
-
 
 class TestApplyFraud:
-    def test_update_rating_applies_raw_score(self, tmp_data_dir):
+    def test_update_rating_egress_stamps_fresh_reading(self, tmp_data_dir):
         state = hunt.HuntState({"ip_blacklists": {"enabled": False}})
         state._update_rating(
             "1.2.3.4:8080", ok=True, country="US", latency=0.5,
-            fraud={"provider": "proxycheck", "score": 82, "proxy": True},
+            egress={"egress_ip": "5.6.7.8", "egress_hosting": False,
+                    "egress_proxy": False, "egress_mobile": False},
         )
         r = state.ratings["1.2.3.4:8080"]
-        assert r.fraud_score_raw == 82
-        assert r.fraud_score == 82
-        assert r.fraud_verdict == "PROXY"
-        assert r.fraud_proxy is True
+        assert not r.fraud_failcheck
+        assert r.fraud_score == 0
         assert r.fraud_checked_ts > 0
 
-    def test_apply_fraud_ignores_garbage(self, tmp_data_dir):
+    def test_apply_fraud_keeps_proxycheck_as_info_only(self, tmp_data_dir):
         state = hunt.HuntState({"ip_blacklists": {"enabled": False}})
         state._update_rating(
             "1.2.3.4:8080", ok=True, country="US", latency=0.5,
-            fraud={"provider": "proxycheck"},
+            egress={"egress_ip": "5.6.7.8", "egress_hosting": False,
+                    "egress_proxy": False, "egress_mobile": False},
+            fraud={"provider": "proxycheck", "score": 100, "proxy": True},
         )
         r = state.ratings["1.2.3.4:8080"]
-        assert r.fraud_score_raw == -1
+        assert r.fraud_score_raw == 100
+        assert r.fraud_score == 0
+        assert r.fraud_verdict == "CLEAN"
 
 
 class TestFraudPersistence:
@@ -113,14 +113,13 @@ class TestFraudPersistence:
             "1.2.3.4:8080", ok=True, country="US", latency=0.5,
             egress={"egress_ip": "5.6.7.8", "egress_hosting": True,
                     "egress_proxy": False, "egress_mobile": True},
-            fraud={"provider": "proxycheck", "score": 47},
         )
         state._save_state()
 
         restored = hunt.HuntState({"ip_blacklists": {"enabled": False}})
         r = restored.ratings["1.2.3.4:8080"]
-        assert r.fraud_score_raw == 47
-        assert r.fraud_score == 47
+        assert not r.fraud_failcheck
+        assert r.fraud_score == 60
         assert r.fraud_hosting is True
         assert r.fraud_mobile is True
         assert r.fraud_proxy is False
