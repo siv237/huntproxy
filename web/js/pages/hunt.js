@@ -625,9 +625,10 @@ router.register('hunt', (container) => {
   let lastEventSeq = 0;
   async function poll() {
     try {
-      let s = {}, ev = [];
-      try { s = await api.snapshot(); } catch (e) { console.error('snapshot', e); }
-      try { ev = await api.events(lastEventSeq); } catch (e) { console.error('events', e); }
+      const [s, ev] = await Promise.all([
+        api.snapshot().catch(e => { console.error('snapshot', e); return {}; }),
+        api.events(lastEventSeq).catch(e => { console.error('events', e); return []; }),
+      ]);
 
       updateStats(s);
       updatePipelineStrip(s);

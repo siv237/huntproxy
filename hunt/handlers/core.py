@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import time
 import yaml
 from urllib.parse import unquote
 
@@ -12,9 +13,14 @@ from hunt.web_legacy import WEB_HTML
 
 
 class CoreHandlers:
+    SNAPSHOT_TTL = 1.5
+
     def __init__(self, state, server=None):
         self.state = state
         self.server = server
+        self._snapshot_lock = asyncio.Lock()
+        self._snapshot_cache_ts = 0.0
+        self._snapshot_cache_data = None
 
     async def _handle_static(self, raw_path, body):
         path = raw_path.split("?", 1)[0]
@@ -35,7 +41,20 @@ class CoreHandlers:
         return WEB_HTML, 200, "text/html; charset=utf-8"
 
     async def _handle_snapshot(self, raw_path, body):
-        snapshot = await asyncio.to_thread(self.state.get_snapshot)
+        # get_snapshot folds 60k+ ratings into dicts — seconds of thread time
+        # while validation churns. Dashboard pages poll it every couple of
+        # seconds from several tabs; TTL + single-flight caps it at one
+        # computation per window and everyone shares the result.
+        cached = self._snapshot_cache_data
+        if cached is not None and time.monotonic() - self._snapshot_cache_ts < self.SNAPSHOT_TTL:
+            return json.dumps(cached), 200, "application/json"
+        async with self._snapshot_lock:
+            if self._snapshot_cache_data is not None and \
+                    time.monotonic() - self._snapshot_cache_ts < self.SNAPSHOT_TTL:
+                return json.dumps(self._snapshot_cache_data), 200, "application/json"
+            snapshot = await asyncio.to_thread(self.state.get_snapshot)
+            self._snapshot_cache_data = snapshot
+            self._snapshot_cache_ts = time.monotonic()
         return json.dumps(snapshot), 200, "application/json"
 
     async def _handle_events(self, raw_path, body):

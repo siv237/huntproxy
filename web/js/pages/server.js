@@ -342,12 +342,13 @@ router.register('server', (container) => {
 
   async function load() {
     try {
-      let ps = {}, ss = {}, ts = {}, rs = {}, ch = {};
-      try { ps = await api.proxyStatus(); } catch (e) { console.error('proxyStatus', e); }
-      try { ss = await api.socks5Status(); } catch (e) { console.error('socks5Status', e); }
-      try { ts = await api.transparentStatus(); } catch (e) { console.error('transparentStatus', e); }
-      try { rs = await api.routingStatus(); } catch (e) { console.error('routingStatus', e); }
-      try { ch = await api.channelStatus(); } catch (e) { console.error('channelStatus', e); }
+      const [ps, ss, ts, rs, ch] = await Promise.all([
+        api.proxyStatus().catch(e => { console.error('proxyStatus', e); return {}; }),
+        api.socks5Status().catch(e => { console.error('socks5Status', e); return {}; }),
+        api.transparentStatus().catch(e => { console.error('transparentStatus', e); return {}; }),
+        api.routingStatus().catch(e => { console.error('routingStatus', e); return {}; }),
+        api.channelStatus().catch(e => { console.error('channelStatus', e); return {}; }),
+      ]);
       updateProxyControl(ps, ss, ts);
       updateModeStatus(ps, !!(rs && rs.enabled));
       updateChannelStatus(ch);

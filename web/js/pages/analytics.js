@@ -204,9 +204,10 @@ router.register('analytics', (container) => {
       const lastIdx = _heatmapSegs - 1;
       _heatmapPolling = setInterval(async () => {
         const body = document.querySelector('#analytics-heatmap .proxy-heatmap');
-        let snap, hm;
-        try { snap = await api.snapshot(); } catch (e) { snap = null; }
-        try { hm = await api.proxyHeatmap(72); } catch (e) { hm = null; }
+        const [snap, hm] = await Promise.all([
+          api.snapshot().catch(() => null),
+          api.proxyHeatmap(72).catch(() => null),
+        ]);
         const activeAddrs = new Set();
         if (snap && snap.progress && Array.isArray(snap.progress.active_checks)) {
           for (const c of snap.progress.active_checks) if (c && c.addr) activeAddrs.add(c.addr);
@@ -302,9 +303,10 @@ router.register('analytics', (container) => {
   }
 
   async function load() {
-    let h24 = [], h6h = [];
-    try { h24 = await api.history('24h'); } catch (e) { console.error('history 24h', e); }
-    try { h6h = await api.history('6h'); } catch (e) { console.error('history 6h', e); }
+    const [h24, h6h] = await Promise.all([
+      api.history('24h').catch(e => { console.error('history 24h', e); return []; }),
+      api.history('6h').catch(e => { console.error('history 6h', e); return []; }),
+    ]);
     const pts = h24.length >= 2 ? h24 : h6h;
 
     const labels = pts.map(p => {

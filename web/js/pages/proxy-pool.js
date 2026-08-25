@@ -532,9 +532,10 @@ router.register('proxy-pool', (container) => {
   // --- Polling ---
   async function load() {
     try {
-      let ps = {}, proxies = [];
-      try { ps = await api.proxyStatus(); } catch (e) { console.error('proxyStatus', e); }
-      try { proxies = await api.proxyAlive(); } catch (e) { console.error('proxyAlive', e); }
+      const [ps, proxies] = await Promise.all([
+        api.proxyStatus().catch(e => { console.error('proxyStatus', e); return {}; }),
+        api.proxyAlive().catch(e => { console.error('proxyAlive', e); return []; }),
+      ]);
       state.selected = ps && ps.active_proxy ? ps.active_proxy.address : null;
       state.proxies = proxies;
       updateSelectedProxy(ps);

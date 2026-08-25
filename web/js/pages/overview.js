@@ -1072,11 +1072,14 @@ router.register('overview', (container) => {
 
   async function poll() {
     try {
-      let ps = {}, ss = {}, s = {}, ev = {};
-      try { ps = await api.proxyStatus(); } catch (e) { console.error('proxyStatus', e); }
-      try { ss = await api.socks5Status(); } catch (e) { console.error('socks5Status', e); }
-      try { s = await api.snapshot(); } catch (e) { console.error('snapshot', e); }
-      try { ev = await api.events(lastEventSeq); } catch (e) { console.error('events', e); }
+      // Parallel fetch: serial awaits made first data appear only after the
+      // SUM of endpoint latencies instead of the max.
+      const [ps, ss, s, ev] = await Promise.all([
+        api.proxyStatus().catch(e => { console.error('proxyStatus', e); return {}; }),
+        api.socks5Status().catch(e => { console.error('socks5Status', e); return {}; }),
+        api.snapshot().catch(e => { console.error('snapshot', e); return {}; }),
+        api.events(lastEventSeq).catch(e => { console.error('events', e); return []; }),
+      ]);
 
       // Update stat cards
       const c = s.counts || {};
