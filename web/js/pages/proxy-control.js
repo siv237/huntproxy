@@ -6,6 +6,28 @@ router.register('proxy-control', (container) => {
   let range = '1h';
   let showAllStream = false;
   let historyCache = [];
+  let filter = '';
+  let lastRequestsData = null;
+  let lastClientsData = null;
+
+  // Substring match across everything the row can show: client, its DNS
+  // name, target, upstream chain + geo (country/ISP), ingress type, status.
+  function rowMatches(r) {
+    if (!filter) return true;
+    const hay = [
+      r.client, clientHostnameMap[r.client], r.target, r.status, r.via,
+      r.upstream,
+    ];
+    const ups = (r.upstream || '').split(' → ');
+    ups.forEach(p => {
+      const m = p.match(/^(?:proxy|pool|custom):([^\s(]+)/);
+      if (m) {
+        const g = geoMap[m[1]];
+        if (g) hay.push(g.egress_country, g.egress_country_code, g.egress_isp, g.country, g.country_code, g.isp);
+      }
+    });
+    return hay.some(v => v && String(v).toLowerCase().includes(filter));
+  }
 
   const RANGES = [
     ['5m', 5, 'page.proxyControl.r5m'],
@@ -33,10 +55,27 @@ router.register('proxy-control', (container) => {
     buildFooter();
   }
 
-  // ── Page header: period tabs + auto-refresh + refresh ──
+  // ── Page header: period tabs + filter + auto-refresh + refresh ──
   function buildHeader() {
     const head = ui.el('div', 'pc-head');
     const right = ui.el('div', 'pc-head-right');
+
+    const searchWrap = ui.el('div', 'pc-search');
+    const searchIcon = ui.el('span', 'pc-search-icon', { html: pcSvg('search') });
+    const input = ui.el('input', 'pc-search-input', { type: 'text', placeholder: t('page.proxyControl.filterHint'), spellcheck: 'false' });
+    let debounce = null;
+    input.addEventListener('input', () => {
+      clearTimeout(debounce);
+      debounce = setTimeout(() => {
+        filter = input.value.toLowerCase().trim();
+        if (lastStreamData) updateStream(null);
+        if (lastRequestsData) updateDomains(lastRequestsData);
+        if (lastClientsData) updateClients(lastClientsData);
+      }, 120);
+    });
+    searchWrap.appendChild(searchIcon);
+    searchWrap.appendChild(input);
+    right.appendChild(searchWrap);
 
     const tabs = ui.el('div', 'pc-range');
     RANGES.forEach(([key, , locKey]) => {
@@ -230,6 +269,7 @@ router.register('proxy-control', (container) => {
 
   function pcSvg(name) {
     const icons = {
+      search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>',
       users: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
       zap: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>',
       check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>',
@@ -308,6 +348,7 @@ router.register('proxy-control', (container) => {
 
   let lastStreamData = null;
   let geoMap = {};
+  let clientHostnameMap = {};
   function buildGeoMap(alive, ps) {
     geoMap = {};
     (alive || []).forEach(p => { if (p && p.address) geoMap[p.address] = p; });
@@ -318,12 +359,13 @@ router.register('proxy-control', (container) => {
   function updateStream(requests) {
     if (requests) lastStreamData = requests;
     const body = els.streamBody;
-    const list = lastStreamData && lastStreamData.requests ? lastStreamData.requests : [];
+    const all = lastStreamData && lastStreamData.requests ? lastStreamData.requests : [];
+    const list = filter ? all.filter(rowMatches) : all;
     const prevWrap = body.querySelector('.pc-stream-wrap');
     const prevScroll = prevWrap ? prevWrap.scrollTop : 0;
     body.innerHTML = '';
     if (!list.length) {
-      body.appendChild(ui.el('div', 'pc-empty', { text: t('page.proxyControl.noRecentRequests') }));
+      body.appendChild(ui.el('div', 'pc-empty', { text: filter ? t('page.proxyControl.filterEmpty') : t('page.proxyControl.noRecentRequests') }));
       return;
     }
 
@@ -341,9 +383,10 @@ router.register('proxy-control', (container) => {
       const host = ui.hostOf(target);
       const targetShort = target.length > 34 ? target.slice(0, 32) + '…' : target;
       const client = r.client || '—';
+      const hostName = clientHostnameMap[client] || '';
       return `<tr${isNew ? ' class="tm-row-new"' : ''}>` +
         `<td class="pc-td-time">${ui.fmtTime(r.ts || 0).split(' ')[0]}</td>` +
-        `<td><span class="pc-client" data-client="${ui.escHtml(client)}">${ui.personAvatar(client, 22)}<span class="pc-client-addr">${ui.escHtml(client)}</span></span></td>` +
+        `<td><span class="pc-client" data-client="${ui.escHtml(client)}" title="${ui.escHtml(hostName ? client + ' (' + hostName + ')' : client)}">${ui.personAvatar(client, 22)}<span class="pc-client-addr">${ui.escHtml(client)}</span></span></td>` +
         `<td>${ui.viaBadge(r.via)}</td>` +
         `<td><span class="pc-target">${ui.hostAvatar(host, 22)}<span title="${ui.escHtml(target)}">${ui.escHtml(targetShort)}</span></span></td>` +
         `<td>${ui.routeBadge(r.upstream, geoMap)}</td>` +
@@ -416,7 +459,8 @@ router.register('proxy-control', (container) => {
   }
 
   function updateDomains(requests) {
-    const list = requests && requests.requests ? requests.requests : [];
+    if (requests) lastRequestsData = requests;
+    const list = lastRequestsData && lastRequestsData.requests ? lastRequestsData.requests : [];
     els.domains.innerHTML = '';
     if (!list.length) {
       els.domains.appendChild(ui.el('div', 'pc-empty', { text: t('page.proxyControl.noDomainData') }));
@@ -432,7 +476,13 @@ router.register('proxy-control', (container) => {
       domains[h].requests++;
       domains[h].bytes += (r.bytes_in || 0) + (r.bytes_out || 0);
     });
-    const top = Object.values(domains).sort((a, b) => b.requests - a.requests).slice(0, 6);
+    const top = Object.values(domains)
+      .filter(d => !filter || d.domain.toLowerCase().includes(filter))
+      .sort((a, b) => b.requests - a.requests).slice(0, 6);
+    if (!top.length) {
+      els.domains.appendChild(ui.el('div', 'pc-empty', { text: t('page.proxyControl.filterEmpty') }));
+      return;
+    }
     const total = top.reduce((s, d) => s + d.requests, 0) || 1;
     const maxReq = top[0].requests || 1;
 
@@ -449,13 +499,22 @@ router.register('proxy-control', (container) => {
   }
 
   function updateClients(clients) {
-    const list = clients && clients.clients ? clients.clients : [];
+    if (clients) lastClientsData = clients;
+    const list = lastClientsData && lastClientsData.clients ? lastClientsData.clients : [];
+    clientHostnameMap = {};
+    (list || []).forEach(c => { if (c.hostname) clientHostnameMap[c.client] = c.hostname; });
     els.clients.innerHTML = '';
     if (!list.length) {
       els.clients.appendChild(ui.el('div', 'pc-empty', { text: t('page.proxyControl.noClientData') }));
       return;
     }
-    const top = list.slice(0, 6);
+    const top = list.filter(c => !filter ||
+      c.client.toLowerCase().includes(filter) ||
+      (c.hostname || '').toLowerCase().includes(filter)).slice(0, 6);
+    if (!top.length) {
+      els.clients.appendChild(ui.el('div', 'pc-empty', { text: t('page.proxyControl.filterEmpty') }));
+      return;
+    }
     const maxReq = top[0].requests || 1;
     const total = top.reduce((s, c) => s + c.requests, 0) || 1;
     const nowSec = Date.now() / 1000;
@@ -464,9 +523,10 @@ router.register('proxy-control', (container) => {
       const online = (nowSec - (c.last_seen || 0)) < 600;
       const row = ui.el('div', 'pc-top-row');
       row.style.cursor = 'pointer';
+      const title = c.hostname ? `${c.client} (${c.hostname})` : c.client;
       row.innerHTML = ui.personAvatar(c.client, 26) +
         `<div class="pc-top-main">` +
-          `<div class="pc-top-namerow"><span class="pc-top-name pc-mono">${ui.escHtml(c.client)}</span><span class="pc-top-pct">${(c.requests / total * 100).toFixed(1)}%</span></div>` +
+          `<div class="pc-top-namerow"><span class="pc-top-name pc-mono" title="${ui.escHtml(title)}">${ui.escHtml(c.client)}${c.hostname ? ` <span class="pc-hostname">(${ui.escHtml(c.hostname)})</span>` : ''}</span><span class="pc-top-pct">${(c.requests / total * 100).toFixed(1)}%</span></div>` +
           `<div class="pc-top-bar"><span style="width:${(c.requests / maxReq * 100).toFixed(0)}%;background:#8a2be2"></span></div>` +
         `</div>` +
         `<div class="pc-top-right"><b>${c.requests.toLocaleString()}</b><span class="${online ? 'pc-online' : ''}">${ui.ago(c.last_seen)}</span></div>`;

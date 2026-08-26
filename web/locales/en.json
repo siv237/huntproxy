@@ -373,7 +373,10 @@
       "via": "Ingress",
       "viaHttp": "Entered via HTTP proxy",
       "viaSocks": "Entered via SOCKS proxy",
-      "viaTrans": "Entered via transparent proxy"
+      "viaTrans": "Entered via transparent proxy",
+      "filterHint": "Filter: domain, IP, provider, client…",
+      "filterEmpty": "No matches",
+      "filterHistory": "Filter requests…"
     },
     "proxyPool": {
       "title": "Proxy Pool",

@@ -373,7 +373,10 @@
       "via": "入口",
       "viaHttp": "通过 HTTP 代理接入",
       "viaSocks": "通过 SOCKS 代理接入",
-      "viaTrans": "通过透明代理接入"
+      "viaTrans": "通过透明代理接入",
+      "filterHint": "筛选：域名、IP、服务商、客户端…",
+      "filterEmpty": "无匹配",
+      "filterHistory": "筛选请求…"
     },
     "proxyPool": {
       "title": "代理池",

@@ -373,7 +373,10 @@
       "via": "Entrée",
       "viaHttp": "Entré via proxy HTTP",
       "viaSocks": "Entré via proxy SOCKS",
-      "viaTrans": "Entré via proxy transparent"
+      "viaTrans": "Entré via proxy transparent",
+      "filterHint": "Filtre : domaine, IP, fournisseur, client…",
+      "filterEmpty": "Aucun résultat",
+      "filterHistory": "Filtrer les requêtes…"
     },
     "proxyPool": {
       "title": "Pool de proxys",

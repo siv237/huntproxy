@@ -86,6 +86,7 @@ const clientCard = {
     const idText = ui.el('div', 'client-card-idtext');
     const nameRow = ui.el('div', 'client-card-namerow');
     nameRow.appendChild(ui.el('div', 'client-card-name', { text: s.client || '—' }));
+    if (s.hostname) nameRow.appendChild(ui.el('span', 'client-card-dns', { text: `(${s.hostname})`, title: s.hostname }));
     const online = (Date.now() / 1000 - (s.last_seen || 0)) < 300;
     nameRow.appendChild(ui.el('span', 'client-card-state' + (online ? ' on' : ''), {
       html: `<span class="pulse${online ? '' : ' off'}"></span>${online ? t('clientCard.online') : t('clientCard.offline')}`,
@@ -161,16 +162,43 @@ const clientCard = {
 
   _history(recent) {
     const card = ui.el('div', 'client-card-section client-card-hist');
-    card.appendChild(ui.el('div', 'cc-sec-title', { text: t('clientCard.history') }));
+    const head = ui.el('div', 'cc-sec-head');
+    head.appendChild(ui.el('div', 'cc-sec-title', { text: t('clientCard.history') }));
+    const searchWrap = ui.el('div', 'cc-search');
+    searchWrap.innerHTML = this._svg('search');
+    const input = ui.el('input', 'cc-search-input', { type: 'text', placeholder: t('page.proxyControl.filterHistory'), spellcheck: 'false' });
+    input.value = this._histFilter || '';
+    let debounce = null;
+    input.addEventListener('input', () => {
+      clearTimeout(debounce);
+      debounce = setTimeout(() => {
+        this._histFilter = input.value.toLowerCase().trim();
+        let visible = 0;
+        card.querySelectorAll('.cc-hist-item').forEach(item => {
+          const show = !this._histFilter || (item.dataset.search || '').includes(this._histFilter);
+          item.style.display = show ? '' : 'none';
+          if (show) visible++;
+        });
+        const empty = card.querySelector('.cc-filter-empty');
+        if (empty) empty.style.display = visible ? 'none' : '';
+      }, 120);
+    });
+    searchWrap.appendChild(input);
+    head.appendChild(searchWrap);
+    card.appendChild(head);
     if (!recent.length) {
       card.appendChild(ui.el('div', 'empty', { text: t('page.proxyControl.noRecentRequests') }));
       return card;
     }
     const list = ui.el('div', 'cc-hist-list');
+    let visible = 0;
     recent.forEach(r => {
       const host = ui.hostOf(r.target);
       const item = ui.el('div', 'cc-hist-item');
       item.dataset.key = (r.ts || 0) + '|' + (r.target || '');
+      item.dataset.search = [r.target, host, r.upstream, r.status, r.via].join(' ').toLowerCase();
+      if (this._histFilter && !item.dataset.search.includes(this._histFilter)) item.style.display = 'none';
+      else visible++;
       const row = ui.el('div', 'cc-hist-row');
       row.innerHTML = ui.hostAvatar(host, 30) +
         `<div class="cc-hist-main"><div class="cc-hist-host">${ui.escHtml(host || '—')}</div>` +
@@ -197,6 +225,9 @@ const clientCard = {
       list.appendChild(item);
     });
     card.appendChild(list);
+    const emptyMsg = ui.el('div', 'pc-empty cc-filter-empty', { text: t('page.proxyControl.filterEmpty') });
+    if (visible) emptyMsg.style.display = 'none';
+    card.appendChild(emptyMsg);
     return card;
   },
 
@@ -279,6 +310,7 @@ const clientCard = {
       route: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="19" r="3"/><path d="M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15"/><circle cx="18" cy="5" r="3"/></svg>',
       globe: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>',
       chevron: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>',
+      search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>',
     };
     return icons[name] || '';
   },

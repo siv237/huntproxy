@@ -6,6 +6,7 @@ Also owns the in-memory traffic helpers ``_mem_traffic``, ``_route_type`` and
 
 import asyncio
 import json
+import socket
 import time
 from urllib.parse import unquote, urlparse
 
@@ -17,6 +18,29 @@ from hunt.handlers import _int_param, _qs
 # only shown at second-grained resolution, so a short TTL is indistinguishable
 # to the user while killing the per-poll DB load.
 _SUMMARY_TTL = 10.0
+
+# Reverse-DNS cache: ip -> (resolved_at, hostname-or-""). Negative results are
+# cached too — most LAN IPs have no PTR record and re-resolving them on every
+# poll would hammer the resolver. Hostnames change (DHCP), hence the TTL.
+_DNS_TTL = 600.0
+_DNS_CACHE: dict = {}
+
+
+def _resolve_hostname(ip: str) -> str:
+    if not ip or ip == "?":
+        return ""
+    if ip.startswith("127.") or ip in ("::1", "localhost"):
+        return "localhost"
+    now = time.monotonic()
+    cached = _DNS_CACHE.get(ip)
+    if cached is not None and now - cached[0] < _DNS_TTL:
+        return cached[1]
+    try:
+        host = socket.gethostbyaddr(ip)[0]
+    except Exception:
+        host = ""
+    _DNS_CACHE[ip] = (now, host)
+    return host
 
 
 class TrafficHandlers:
@@ -127,7 +151,10 @@ class TrafficHandlers:
                     clients[c] = {"client": c, "requests": 0, "last_seen": entry.get("ts", 0)}
                 clients[c]["requests"] += 1
                 clients[c]["last_seen"] = max(clients[c]["last_seen"], entry.get("ts", 0))
-        return {"clients": sorted(clients.values(), key=lambda x: x["requests"], reverse=True)[:20]}
+        out = sorted(clients.values(), key=lambda x: x["requests"], reverse=True)[:20]
+        for c in out:
+            c["hostname"] = _resolve_hostname(c["client"])
+        return {"clients": out}
 
     async def _handle_client_detail(self, raw_path, body):
         path = raw_path.split("?", 1)[0]
@@ -177,6 +204,7 @@ class TrafficHandlers:
             "first_seen": float(row["first"]), "last_seen": float(row["last"]),
         }
         summary["total_bytes"] = summary["bytes_in"] + summary["bytes_out"]
+        summary["hostname"] = _resolve_hostname(client)
 
         routes: dict = {}
         for r in conn.execute(
@@ -246,6 +274,7 @@ class TrafficHandlers:
             "last_seen": max(ts_list) if ts_list else 0,
         }
         summary["total_bytes"] = summary["bytes_in"] + summary["bytes_out"]
+        summary["hostname"] = _resolve_hostname(client)
 
         routes: dict = {}
         domains: dict = {}
