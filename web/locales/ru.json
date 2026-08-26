@@ -369,7 +369,11 @@
       "r24h": "24Ч",
       "headClients": "Все клиенты",
       "headProxies": "Все прокси",
-      "showLess": "Свернуть"
+      "showLess": "Свернуть",
+      "via": "Вход",
+      "viaHttp": "Вход через HTTP-прокси",
+      "viaSocks": "Вход через SOCKS-прокси",
+      "viaTrans": "Вход через прозрачный прокси"
     },
     "proxyPool": {
       "title": "Пул прокси",

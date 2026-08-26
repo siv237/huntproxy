@@ -369,7 +369,11 @@
       "r24h": "24时",
       "headClients": "所有客户端",
       "headProxies": "所有代理",
-      "showLess": "收起"
+      "showLess": "收起",
+      "via": "入口",
+      "viaHttp": "通过 HTTP 代理接入",
+      "viaSocks": "通过 SOCKS 代理接入",
+      "viaTrans": "通过透明代理接入"
     },
     "proxyPool": {
       "title": "代理池",

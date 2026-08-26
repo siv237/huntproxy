@@ -28,8 +28,20 @@ const clientCard = {
   async _load(modal, client, hours, silent = false) {
     this._hours = hours;
     try {
-      const data = await api.clientDetail(client, hours);
+      const [data, alive] = await Promise.all([
+        api.clientDetail(client, hours),
+        api.proxyAlive().catch(() => []),
+      ]);
       if (!document.body.contains(modal)) return;
+      this._geo = {};
+      (alive || []).forEach(p => { if (p && p.address) this._geo[p.address] = p; });
+      const content = modal.querySelector('.client-card-content');
+      const list = modal.querySelector('.cc-hist-list');
+      this._uiState = {
+        contentScroll: content ? content.scrollTop : 0,
+        listScroll: list ? list.scrollTop : 0,
+        open: new Set(Array.from(modal.querySelectorAll('.cc-hist-item.open') || [], el => el.dataset.key || '')),
+      };
       this._render(modal, data, hours);
     } catch (e) {
       if (!silent) modal.innerHTML = `<div style="padding:48px;color:var(--danger)">${t('common.error', { message: ui.escHtml(e.message) })}</div>`;
@@ -50,6 +62,21 @@ const clientCard = {
     cols.appendChild(this._history(data.recent || []));
     cols.appendChild(this._sidePanel(s, data));
     content.appendChild(cols);
+
+    const st = this._uiState || {};
+    if (st.open && st.open.size) {
+      content.querySelectorAll('.cc-hist-item').forEach(item => {
+        if (st.open.has(item.dataset.key)) {
+          item.classList.add('open');
+          const d = item.querySelector('.cc-hist-details');
+          if (d) d.style.display = '';
+        }
+      });
+    }
+    const newList = content.querySelector('.cc-hist-list');
+    if (newList && st.listScroll) newList.scrollTop = st.listScroll;
+    content.scrollTop = st.contentScroll || 0;
+    this._uiState = null;
   },
 
   _header(modal, s, hours) {
@@ -143,6 +170,7 @@ const clientCard = {
     recent.forEach(r => {
       const host = ui.hostOf(r.target);
       const item = ui.el('div', 'cc-hist-item');
+      item.dataset.key = (r.ts || 0) + '|' + (r.target || '');
       const row = ui.el('div', 'cc-hist-row');
       row.innerHTML = ui.hostAvatar(host, 30) +
         `<div class="cc-hist-main"><div class="cc-hist-host">${ui.escHtml(host || '—')}</div>` +
@@ -150,10 +178,11 @@ const clientCard = {
         `<div class="cc-hist-meta"><span class="cc-hist-time">${ui.fmtTime(r.ts).split(' ')[0]}</span>` +
         `<span class="cc-hist-size">${ui.fmtBytes((r.bytes_in || 0) + (r.bytes_out || 0))}</span>` +
         `<span class="cc-hist-dur">${r.duration != null ? r.duration.toFixed(2) + 's' : '—'}</span>` +
-        ui.statusPill(r.status) + ui.routeBadge(r.upstream) +
+        ui.viaBadge(r.via) + ui.statusPill(r.status) + ui.routeBadge(r.upstream, this._geo) +
         `<span class="cc-hist-chevron">${this._svg('chevron')}</span></div>`;
       const details = ui.el('div', 'cc-hist-details');
-      details.innerHTML = `<div class="cc-hist-detail"><span>${t('page.proxyControl.route')}</span><b>${ui.routeBadge(r.upstream)}</b></div>` +
+      details.innerHTML = `<div class="cc-hist-detail"><span>${t('page.proxyControl.via')}</span><b>${ui.viaBadge(r.via)}</b></div>` +
+        `<div class="cc-hist-detail"><span>${t('page.proxyControl.route')}</span><b>${ui.routeBadge(r.upstream, this._geo)}</b></div>` +
         `<div class="cc-hist-detail"><span>${t('page.proxyControl.download')} / ${t('page.proxyControl.upload')}</span><b>↓ ${ui.fmtBytes(r.bytes_out)} · ↑ ${ui.fmtBytes(r.bytes_in)}</b></div>` +
         `<div class="cc-hist-detail"><span>${t('page.proxyControl.duration')}</span><b>${r.duration != null ? r.duration.toFixed(3) + 's' : '—'}</b></div>` +
         `<div class="cc-hist-detail"><span>${t('page.proxyControl.time')}</span><b>${ui.fmtDateTime(r.ts)}</b></div>`;

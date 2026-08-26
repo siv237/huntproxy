@@ -2089,6 +2089,14 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.route-badge .route-flag { font-size: 11px; line-height: 1; }
+.route-badge .route-geo {
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .route-arrow {
   color: var(--text-muted);
   font-size: 10px;
@@ -2985,6 +2993,66 @@
 .pc-client:hover .pc-client-addr { color: var(--accent); }
 .pc-client-addr { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px; }
 .pc-target { display: inline-flex; align-items: center; gap: 7px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11.5px; }
+
+/* Object avatar — letter circle for hosts/clients */
+.obj-ava {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-weight: 700;
+  flex-shrink: 0;
+  line-height: 1;
+  user-select: none;
+}
+
+/* Client link in tables */
+.tm-client-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  border-radius: var(--radius-xs);
+  padding: 1px 4px;
+  margin: -1px -4px;
+}
+.tm-client-link:hover { background: var(--accent-light); }
+.tm-client-link:hover .tm-client-addr { color: var(--accent); }
+.tm-client-addr { font-family: monospace; font-size: 11px; }
+
+.tm-target-cell { display: inline-flex; align-items: center; gap: 6px; }
+
+/* Status pill — green 200 / yellow 502 / red err */
+.st-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.st-pill-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+.st-pill.ok { background: var(--success-bg); color: var(--success); }
+.st-pill.warn { background: var(--warning-bg); color: var(--warning); }
+.st-pill.err { background: var(--danger-bg); color: var(--danger); }
+
+/* Ingress badge — how the client connected */
+.via-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border-radius: 4px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+.via-http { background: rgba(59,130,246,0.14); color: var(--info); }
+.via-socks { background: rgba(138,43,226,0.14); color: #8a2be2; }
+.via-trans { background: rgba(16,185,129,0.14); color: var(--success); }
+.via-unknown { background: var(--surface-raised); color: var(--text-muted); }
 
 /* Route distribution donut */
 .pc-donut-body {

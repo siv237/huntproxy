@@ -292,20 +292,36 @@ const ui = {
     return { direct: 'route-direct', proxy: 'route-proxy', pool: 'route-pool', custom: 'route-custom', other: 'route-unknown' }[type] || 'route-unknown';
   },
 
-  routeBadge(upstream) {
+  routeBadge(upstream, geo) {
     if (!upstream || upstream === '?' || upstream === 'unknown') {
       return `<span class="route-badge route-unknown" title="${ui.escHtml(t('page.proxyControl.routeUnknown'))}">${ui.escHtml(t('page.proxyControl.routeUnknown'))}</span>`;
     }
     const parts = upstream.split(' → ');
     return parts.map(p => {
       if (p === 'direct') return '<span class="route-badge route-direct">DIRECT</span>';
-      if (p.startsWith('pool:')) {
-        const addr = p.slice(5);
-        return `<span class="route-badge route-pool" title="${ui.escHtml(addr)}">POOL <span class="route-addr">${ui.escHtml(addr)}</span></span>`;
-      }
-      if (p.startsWith('proxy:')) {
-        const addr = p.slice(6);
-        return `<span class="route-badge route-proxy" title="${ui.escHtml(addr)}">PROXY <span class="route-addr">${ui.escHtml(addr)}</span></span>`;
+      const m = p.match(/^(proxy|pool|custom):([^\s(]+)/);
+      if (m) {
+        const type = m[1];
+        const addr = m[2];
+        const label = type.toUpperCase();
+        const g = geo ? geo[addr] : null;
+        if (g) {
+          const cc = g.egress_country_code || g.country_code || '';
+          const country = g.egress_country || g.country || '';
+          const isp = g.egress_isp || '';
+          const flag = ui.flag(cc);
+          const short = [cc, isp ? isp.slice(0, 16) : ''].filter(Boolean).join(' · ');
+          const title = [addr, country, isp].filter(Boolean).join(' · ');
+          return `<span class="route-badge route-${type}" title="${ui.escHtml(title)}">${label}` +
+            (flag ? ` <span class="route-flag">${flag}</span>` : '') +
+            (short ? ` <span class="route-geo">${ui.escHtml(short)}</span>` : ` <span class="route-addr">${ui.escHtml(addr)}</span>`) +
+            `</span>`;
+        }
+        if (type === 'custom') {
+          const name = p.slice(7);
+          return `<span class="route-badge route-custom" title="${ui.escHtml(name)}">CUSTOM <span class="route-addr">${ui.escHtml(name)}</span></span>`;
+        }
+        return `<span class="route-badge route-${type}" title="${ui.escHtml(addr)}">${label} <span class="route-addr">${ui.escHtml(addr)}</span></span>`;
       }
       if (p.startsWith('custom:')) {
         const name = p.slice(7);
@@ -323,5 +339,14 @@ const ui = {
     const cls = isOk ? 'ok' : is502 ? 'warn' : 'err';
     const title = isOk ? t('page.proxyControl.statusOk') : is502 ? t('page.proxyControl.statusBadGateway') : t('page.proxyControl.statusFailed');
     return `<span class="st-pill ${cls}" title="${ui.escHtml(title)}"><span class="st-pill-dot"></span>${ui.escHtml(code)}</span>`;
+  },
+
+  viaBadge(via) {
+    const v = (via || '').toString().toLowerCase();
+    if (!v) return '<span class="via-badge via-unknown" title="?">—</span>';
+    if (v === 'http') return `<span class="via-badge via-http" title="${ui.escHtml(t('page.proxyControl.viaHttp'))}">HTTP</span>`;
+    if (v === 'socks5' || v === 'socks4') return `<span class="via-badge via-socks" title="${ui.escHtml(t('page.proxyControl.viaSocks'))}">SOCKS</span>`;
+    if (v === 'transparent' || v === 'tp') return `<span class="via-badge via-trans" title="${ui.escHtml(t('page.proxyControl.viaTrans'))}">TP</span>`;
+    return `<span class="via-badge via-unknown" title="${ui.escHtml(v)}">${ui.escHtml(v.slice(0, 6).toUpperCase())}</span>`;
   },
 };

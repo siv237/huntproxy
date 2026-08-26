@@ -117,6 +117,9 @@ class DbMixin:
                     agg.add(row[0], row[3], row[4], row[5], row[6], row[7])
                 except Exception:
                     logger.debug("suppressed", exc_info=True)
+            if len(row) < 9:
+                # Legacy callers/tests pass 8-field rows without the ingress type.
+                row = tuple(row) + ("",)
             buf = getattr(self, "_traffic_buffer", None)
             if buf is None:
                 buf = self._traffic_buffer = []
@@ -136,8 +139,8 @@ class DbMixin:
                 return
             self._traffic_buffer = []
             self._stats_writer().submit(
-                "INSERT INTO traffic_log (ts, client, target, status, upstream, bytes_in, bytes_out, duration) "
-                "VALUES (?,?,?,?,?,?,?,?)",
+                "INSERT INTO traffic_log (ts, client, target, status, upstream, bytes_in, bytes_out, duration, via) "
+                "VALUES (?,?,?,?,?,?,?,?,?)",
                 buf,
             )
             if wait:
@@ -270,7 +273,8 @@ class DbMixin:
                     upstream TEXT DEFAULT '',
                     bytes_in INTEGER DEFAULT 0,
                     bytes_out INTEGER DEFAULT 0,
-                    duration REAL DEFAULT 0
+                    duration REAL DEFAULT 0,
+                    via TEXT DEFAULT ''
                 );
                 CREATE INDEX IF NOT EXISTS idx_traffic_ts ON traffic_log(ts);
                 CREATE INDEX IF NOT EXISTS idx_traffic_target ON traffic_log(target);
@@ -329,24 +333,29 @@ class DbMixin:
                 conn.close()
 
     def _migrate_traffic_clients(self, conn: sqlite3.Connection):
-        """One-shot: strip :port from legacy traffic_log.client values.
+        """One-shot traffic_log migrations, gated by PRAGMA user_version.
 
-        A client is identified by IP only — every connection from the same
-        address is the same client. Legacy rows store "ip:port"; new rows
-        (proxy/socks5/transparent runners) store the bare IP. Gated by
-        PRAGMA user_version so the scan runs at most once per DB file.
+        v1: strip :port from legacy traffic_log.client values — a client is
+        identified by IP only, every connection from the same address is the
+        same client. Legacy rows store "ip:port"; new rows store the bare IP.
         Rows with 2+ colons (IPv6 addresses) are left untouched.
+        v2: add the `via` column (client ingress type: http/socks5/transparent).
         """
         try:
             ver = conn.execute("PRAGMA user_version").fetchone()[0]
-            if ver >= 1:
-                return
-            conn.execute(
-                "UPDATE traffic_log SET client = substr(client, 1, instr(client, ':') - 1) "
-                "WHERE client GLOB '*[0-9]:[0-9]*' AND client NOT GLOB '*:*:*'"
-            )
-            conn.execute("PRAGMA user_version = 1")
-            conn.commit()
+            if ver < 1:
+                conn.execute(
+                    "UPDATE traffic_log SET client = substr(client, 1, instr(client, ':') - 1) "
+                    "WHERE client GLOB '*[0-9]:[0-9]*' AND client NOT GLOB '*:*:*'"
+                )
+            if ver < 2:
+                try:
+                    conn.execute("ALTER TABLE traffic_log ADD COLUMN via TEXT DEFAULT ''")
+                except Exception:
+                    logger.debug("suppressed", exc_info=True)
+            if ver < 2:
+                conn.execute("PRAGMA user_version = 2")
+                conn.commit()
         except Exception:
             logger.debug("suppressed", exc_info=True)
 

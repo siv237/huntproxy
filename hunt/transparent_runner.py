@@ -185,14 +185,14 @@ class TransparentRunner:
         entry = {"ts": time.time(), "client": peer[0] if peer else "?",
                  "target": target, "status": status, "upstream": upstream,
                  "bytes_in": bytes_in, "bytes_out": bytes_out,
-                 "duration": round(duration, 3)}
+                 "duration": round(duration, 3), "via": "transparent"}
         self.log.append(entry)
         if len(self.log) > 200:
             self.log = self.log[-150:]
         try:
             self.state._queue_traffic_log(
                 (entry["ts"], entry["client"], target, status, upstream,
-                 bytes_in, bytes_out, round(duration, 3)))
+                 bytes_in, bytes_out, round(duration, 3), "transparent"))
         except Exception:
             logger.debug("suppressed", exc_info=True)
 

@@ -369,7 +369,11 @@
       "r24h": "24 Std",
       "headClients": "Alle Clients",
       "headProxies": "Alle Proxys",
-      "showLess": "Weniger"
+      "showLess": "Weniger",
+      "via": "Eingang",
+      "viaHttp": "Über HTTP-Proxy",
+      "viaSocks": "Über SOCKS-Proxy",
+      "viaTrans": "Über transparenten Proxy"
     },
     "proxyPool": {
       "title": "Proxy-Pool",

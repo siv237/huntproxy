@@ -307,10 +307,20 @@ router.register('proxy-control', (container) => {
   }
 
   let lastStreamData = null;
+  let geoMap = {};
+  function buildGeoMap(alive, ps) {
+    geoMap = {};
+    (alive || []).forEach(p => { if (p && p.address) geoMap[p.address] = p; });
+    const ap = ps && ps.active_proxy;
+    if (ap && ap.address) geoMap[ap.address] = Object.assign({}, geoMap[ap.address], ap);
+  }
+
   function updateStream(requests) {
     if (requests) lastStreamData = requests;
     const body = els.streamBody;
     const list = lastStreamData && lastStreamData.requests ? lastStreamData.requests : [];
+    const prevWrap = body.querySelector('.pc-stream-wrap');
+    const prevScroll = prevWrap ? prevWrap.scrollTop : 0;
     body.innerHTML = '';
     if (!list.length) {
       body.appendChild(ui.el('div', 'pc-empty', { text: t('page.proxyControl.noRecentRequests') }));
@@ -334,8 +344,9 @@ router.register('proxy-control', (container) => {
       return `<tr${isNew ? ' class="tm-row-new"' : ''}>` +
         `<td class="pc-td-time">${ui.fmtTime(r.ts || 0).split(' ')[0]}</td>` +
         `<td><span class="pc-client" data-client="${ui.escHtml(client)}">${ui.personAvatar(client, 22)}<span class="pc-client-addr">${ui.escHtml(client)}</span></span></td>` +
+        `<td>${ui.viaBadge(r.via)}</td>` +
         `<td><span class="pc-target">${ui.hostAvatar(host, 22)}<span title="${ui.escHtml(target)}">${ui.escHtml(targetShort)}</span></span></td>` +
-        `<td>${ui.routeBadge(r.upstream)}</td>` +
+        `<td>${ui.routeBadge(r.upstream, geoMap)}</td>` +
         `<td style="text-align:center">${ui.statusPill(r.status)}</td>` +
         `<td class="pc-td-num">${dur}</td>` +
         `<td class="pc-td-num">${sz}</td>` +
@@ -347,6 +358,7 @@ router.register('proxy-control', (container) => {
         `<thead><tr>` +
           `<th>${t('page.proxyControl.time')}</th>` +
           `<th>${t('page.proxyControl.client')}</th>` +
+          `<th>${t('page.proxyControl.via')}</th>` +
           `<th>${t('page.proxyControl.target')}</th>` +
           `<th>${t('page.proxyControl.route')}</th>` +
           `<th style="text-align:center">${t('page.proxyControl.status')}</th>` +
@@ -360,6 +372,8 @@ router.register('proxy-control', (container) => {
     body.querySelectorAll('.pc-client').forEach(el => {
       el.addEventListener('click', () => window.clientCard.show(el.dataset.client));
     });
+    const newWrap = body.querySelector('.pc-stream-wrap');
+    if (newWrap) newWrap.scrollTop = prevScroll;
     lastReqIds = newIds;
   }
 
@@ -601,7 +615,7 @@ router.register('proxy-control', (container) => {
   // ── Polling ──
   async function poll() {
     try {
-      const [ps, requests, routes, bw, summary, history, clients] = await Promise.all([
+      const [ps, requests, routes, bw, summary, history, clients, alive] = await Promise.all([
         api.proxyStatus().catch(() => ({})),
         api.requests().catch(() => ({})),
         api.trafficRoutes().catch(() => ({})),
@@ -609,7 +623,10 @@ router.register('proxy-control', (container) => {
         api.trafficSummary().catch(() => ({})),
         api.history('24h').catch(() => []),
         api.clients().catch(() => ({})),
+        api.proxyAlive().catch(() => []),
       ]);
+
+      buildGeoMap(alive, ps);
 
       historyCache = history || [];
       try { updateKpis(requests.requests || [], clients.clients || [], bw, historyCache); } catch (e) { console.error('tiles', e); }
