@@ -377,7 +377,8 @@
       "filterHint": "Filtre : domaine, IP, fournisseur, client…",
       "filterEmpty": "Aucun résultat",
       "filterHistory": "Filtrer les requêtes…",
-      "fallbackNote": "sans réponse — bascule automatique sur le pool"
+      "fallbackNote": "sans réponse — bascule automatique sur le pool",
+      "foundTotal": "{count} trouvés — derniers affichés"
     },
     "proxyPool": {
       "title": "Pool de proxys",

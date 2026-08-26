@@ -88,6 +88,7 @@ const api = {
   errors() { return this.request('/api/errors'); },
   bandwidth() { return this.request('/api/bandwidth'); },
   trafficRoutes() { return this.request('/api/traffic/routes'); },
+  trafficSearch(q, minutes = 1440) { return this.request(`/api/traffic/search?q=${encodeURIComponent(q)}&minutes=${minutes}`); },
   trafficSummary() { return this.request('/api/traffic/summary'); },
 
   // Routing & Domain Lists

@@ -53,6 +53,7 @@ GET_ENDPOINTS = [
     "/api/downloads/count",
     "/api/proxy-sources/progress",
     "/api/traffic",
+    "/api/traffic/search?q=ab",
     "/api/clients/1.2.3.4",
     "/api/actions?limit=5",
     "/api/logs?limit=5",

@@ -377,7 +377,8 @@
       "filterHint": "筛选：域名、IP、服务商、客户端…",
       "filterEmpty": "无匹配",
       "filterHistory": "筛选请求…",
-      "fallbackNote": "无响应 — 自动切换到代理池"
+      "fallbackNote": "无响应 — 自动切换到代理池",
+      "foundTotal": "找到 {count} 条 — 显示最新"
     },
     "proxyPool": {
       "title": "代理池",

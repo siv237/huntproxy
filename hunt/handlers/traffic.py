@@ -25,6 +25,13 @@ _SUMMARY_TTL = 10.0
 _DNS_TTL = 600.0
 _DNS_CACHE: dict = {}
 
+# Full-text traffic search (/api/traffic/search). The LIKE-style scan runs
+# over every row in the time window; a short per-query TTL keeps the 2s UI
+# poll from hammering the DB while staying fresh enough for live filtering.
+_SEARCH_TTL = 5.0
+_SEARCH_CACHE: dict = {}
+_SEARCH_REFRESHING: set = set()
+
 
 def _resolve_hostname(ip: str) -> str:
     if not ip or ip == "?":
@@ -155,6 +162,108 @@ class TrafficHandlers:
         for c in out:
             c["hostname"] = _resolve_hostname(c["client"])
         return {"clients": out}
+
+    async def _handle_traffic_search(self, raw_path, body):
+        """Live filter across the WHOLE traffic_log window — client, DNS-ish
+        target, upstream chain (incl. proxy IP), status, ingress type.
+        The window follows the period selector on the page (minutes param)."""
+        qs = _qs(raw_path)
+        q = (qs.get("q") or "").strip().lower()
+        minutes = max(1, min(_int_param(qs, "minutes", 1440), 31 * 24 * 60))
+        if len(q) < 2:
+            return json.dumps({"query": q, "minutes": minutes, "total": 0,
+                               "requests": [], "domains": [], "clients": []}), 200, "application/json"
+        key = (q, minutes)
+        now = time.monotonic()
+        cached = _SEARCH_CACHE.get(key)
+        if cached is not None:
+            if now - cached[0] < _SEARCH_TTL:
+                return json.dumps(cached[1]), 200, "application/json"
+            # Stale: serve the previous result immediately and refresh in the
+            # background (SWR) — a cold re-scan of the window takes seconds.
+            if key not in _SEARCH_REFRESHING:
+                _SEARCH_REFRESHING.add(key)
+
+                async def _refresh():
+                    try:
+                        payload = await asyncio.to_thread(self._traffic_search_payload, q, minutes)
+                        _SEARCH_CACHE[key] = (time.monotonic(), payload)
+                    except Exception:
+                        logger.debug("suppressed", exc_info=True)
+                    finally:
+                        _SEARCH_REFRESHING.discard(key)
+                asyncio.create_task(_refresh())
+            return json.dumps(cached[1]), 200, "application/json"
+        payload = await asyncio.to_thread(self._traffic_search_payload, q, minutes)
+        if len(_SEARCH_CACHE) > 200:
+            _SEARCH_CACHE.clear()
+        _SEARCH_CACHE[key] = (now, payload)
+        return json.dumps(payload), 200, "application/json"
+
+    def _traffic_search_payload(self, q: str, minutes: int) -> dict:
+        now = time.time()
+        cutoff = now - minutes * 60
+        cond = ("(instr(lower(client), ?) > 0 OR instr(lower(target), ?) > 0 "
+                "OR instr(lower(upstream), ?) > 0 OR instr(lower(status), ?) > 0 "
+                "OR instr(lower(via), ?) > 0")
+        args = [q, q, q, q, q]
+        # Hostnames are not stored in traffic_log; match them via the
+        # process-wide DNS cache (populated by /api/clients polling).
+        host_matches = [ip for ip, (_, host) in _DNS_CACHE.items()
+                        if host and q in host.lower()]
+        if host_matches:
+            cond += " OR client IN (" + ",".join("?" * len(host_matches)) + ")"
+            args.extend(host_matches)
+        args = tuple(args)
+        cond += ")"
+        payload = {"query": q, "minutes": minutes, "total": 0, "requests": [], "domains": [], "clients": []}
+        try:
+            conn = self.state._stats_db()
+            try:
+                payload["total"] = int(conn.execute(
+                    f"SELECT COUNT(*) AS c FROM traffic_log WHERE ts > ? AND {cond}",
+                    (cutoff,) + args).fetchone()["c"])
+                rows = [dict(r) for r in conn.execute(
+                    f"SELECT ts, client, target, status, upstream, bytes_in, bytes_out, duration, via "
+                    f"FROM traffic_log WHERE ts > ? AND {cond} ORDER BY ts DESC LIMIT 50",
+                    (cutoff,) + args).fetchall()]
+                dom_rows = conn.execute(
+                    f"SELECT target, COUNT(*) AS cnt, COALESCE(SUM(bytes_in + bytes_out),0) AS b "
+                    f"FROM traffic_log WHERE ts > ? AND {cond} GROUP BY target ORDER BY cnt DESC LIMIT 60",
+                    (cutoff,) + args).fetchall()
+                cli_rows = conn.execute(
+                    f"SELECT client, COUNT(*) AS cnt, MAX(ts) AS last FROM traffic_log "
+                    f"WHERE ts > ? AND {cond} GROUP BY client ORDER BY cnt DESC LIMIT 15",
+                    (cutoff,) + args).fetchall()
+            finally:
+                conn.close()
+        except Exception:
+            logger.debug("suppressed", exc_info=True)
+            rows = [e for e in self._mem_traffic(cutoff)
+                    if q in json.dumps(e, default=str).lower()]
+            dom_rows = []
+            cli_rows = []
+
+        domains: dict = {}
+        for r in dom_rows:
+            target = r["target"] or ""
+            try:
+                host = urlparse(target if target.startswith("http") else f"http://{target}").hostname or target
+            except Exception:
+                host = target
+            if not host:
+                continue
+            d = domains.setdefault(host, {"domain": host, "requests": 0, "bytes": 0})
+            d["requests"] += int(r["cnt"])
+            d["bytes"] += int(r["b"])
+        payload["domains"] = sorted(domains.values(), key=lambda d: d["requests"], reverse=True)[:10]
+
+        clients = [{"client": r["client"], "requests": int(r["cnt"]),
+                    "last_seen": float(r["last"]), "hostname": _resolve_hostname(r["client"])}
+                   for r in cli_rows]
+        payload["clients"] = sorted(clients, key=lambda c: c["requests"], reverse=True)[:10]
+        payload["requests"] = rows
+        return payload
 
     async def _handle_client_detail(self, raw_path, body):
         path = raw_path.split("?", 1)[0]

@@ -377,7 +377,8 @@
       "filterHint": "Filtro: dominio, IP, proveedor, cliente…",
       "filterEmpty": "Sin coincidencias",
       "filterHistory": "Filtrar solicitudes…",
-      "fallbackNote": "no respondió — respaldo automático al pool"
+      "fallbackNote": "no respondió — respaldo automático al pool",
+      "foundTotal": "Se encontraron {count} — se muestran las últimas"
     },
     "proxyPool": {
       "title": "Grupo de Proxis",
