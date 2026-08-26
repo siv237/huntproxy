@@ -304,24 +304,27 @@ const ui = {
         const type = m[1];
         const addr = m[2];
         const label = type.toUpperCase();
+        const isFallback = p.includes('(fallback');
         const g = geo ? geo[addr] : null;
+        const fbTag = isFallback ? ` <span class="route-fallback" title="${ui.escHtml(t('page.proxyControl.fallbackNote'))}">↯</span>` : '';
         if (g) {
           const cc = g.egress_country_code || g.country_code || '';
           const country = g.egress_country || g.country || '';
           const isp = g.egress_isp || '';
           const flag = ui.flag(cc);
           const short = [cc, isp ? isp.slice(0, 16) : ''].filter(Boolean).join(' · ');
-          const title = [addr, country, isp].filter(Boolean).join(' · ');
-          return `<span class="route-badge route-${type}" title="${ui.escHtml(title)}">${label}` +
+          const title = [addr, country, isp, isFallback ? t('page.proxyControl.fallbackNote') : ''].filter(Boolean).join(' · ');
+          return `<span class="route-badge route-${type} route-clickable${isFallback ? ' route-fell-back' : ''}" data-addr="${ui.escHtml(addr)}" title="${ui.escHtml(title)}">${label}` +
             (flag ? ` <span class="route-flag">${flag}</span>` : '') +
             (short ? ` <span class="route-geo">${ui.escHtml(short)}</span>` : ` <span class="route-addr">${ui.escHtml(addr)}</span>`) +
+            fbTag +
             `</span>`;
         }
         if (type === 'custom') {
           const name = p.slice(7);
           return `<span class="route-badge route-custom" title="${ui.escHtml(name)}">CUSTOM <span class="route-addr">${ui.escHtml(name)}</span></span>`;
         }
-        return `<span class="route-badge route-${type}" title="${ui.escHtml(addr)}">${label} <span class="route-addr">${ui.escHtml(addr)}</span></span>`;
+        return `<span class="route-badge route-${type} route-clickable${isFallback ? ' route-fell-back' : ''}" data-addr="${ui.escHtml(addr)}" title="${ui.escHtml(addr + (isFallback ? ' · ' + t('page.proxyControl.fallbackNote') : ''))}">${label} <span class="route-addr">${ui.escHtml(addr)}</span>${fbTag}</span>`;
       }
       if (p.startsWith('custom:')) {
         const name = p.slice(7);
@@ -350,3 +353,13 @@ const ui = {
     return `<span class="via-badge via-unknown" title="${ui.escHtml(v)}">${ui.escHtml(v.slice(0, 6).toUpperCase())}</span>`;
   },
 };
+
+// Click on a proxy/pool route badge opens the standard proxy card.
+// Capture phase + stopPropagation so container handlers (e.g. the expandable
+// history rows in the client card) don't also fire.
+document.addEventListener('click', (e) => {
+  const badge = e.target && e.target.closest ? e.target.closest('.route-badge[data-addr]') : null;
+  if (!badge) return;
+  e.stopPropagation();
+  if (window.proxyCard) window.proxyCard.show(badge.dataset.addr);
+}, true);

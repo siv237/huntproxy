@@ -69,6 +69,19 @@ router.register('routes', (container) => {
     defaultRow.appendChild(routeSelect);
     card.appendChild(defaultRow);
 
+    const fbRow = ui.el('div', '', { style: 'display:flex;align-items:center;gap:8px;margin:8px 0 2px' });
+    const fbCb = ui.el('input', '', { id: 'routing-fallback-toggle', type: 'checkbox' });
+    fbCb.addEventListener('change', () => {
+      api.routingFallback(fbCb.checked).then(() => {
+        app.toast(fbCb.checked ? t('page.routes.fallbackOn') : t('page.routes.fallbackOff'));
+      }).catch(e => app.toast('Error: ' + e.message, 'error'));
+    });
+    fbRow.appendChild(fbCb);
+    const fbText = ui.el('span', '', { style: 'font-size:12px;color:var(--text-secondary)', text: t('page.routes.fallbackPool') });
+    fbText.title = t('page.routes.fallbackPoolHint');
+    fbRow.appendChild(fbText);
+    card.appendChild(fbRow);
+
     const hint = ui.el('div', '', { style: 'font-size:11px;color:var(--text-muted);margin-top:4px', text: t('page.routes.routingOffHint') });
     card.appendChild(hint);
 
@@ -197,8 +210,10 @@ router.register('routes', (container) => {
     const toggle = document.getElementById('routing-toggle');
     const badge = document.getElementById('routing-status-badge');
     const select = document.getElementById('default-route-select');
+    const fb = document.getElementById('routing-fallback-toggle');
 
     if (toggle && status) toggle.checked = !!status.enabled;
+    if (fb && status) fb.checked = status.fallback_pool !== false;
     if (badge && status) {
       if (status.enabled) {
         badge.textContent = 'ON';

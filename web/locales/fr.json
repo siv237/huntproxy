@@ -376,7 +376,8 @@
       "viaTrans": "Entré via proxy transparent",
       "filterHint": "Filtre : domaine, IP, fournisseur, client…",
       "filterEmpty": "Aucun résultat",
-      "filterHistory": "Filtrer les requêtes…"
+      "filterHistory": "Filtrer les requêtes…",
+      "fallbackNote": "sans réponse — bascule automatique sur le pool"
     },
     "proxyPool": {
       "title": "Pool de proxys",
@@ -659,7 +660,11 @@
       "addRouteTitle": "Ajouter une route",
       "domainList": "Liste de domaines :",
       "route": "Route :",
-      "cancel": "Annuler"
+      "cancel": "Annuler",
+      "fallbackPool": "En cas d'échec, repli : meilleur proxy du pool",
+      "fallbackPoolHint": "INACTIF = strict : si le proxy sélectionné ne répond pas, le client reçoit une erreur — le trafic ne part jamais vers un autre proxy",
+      "fallbackOn": "Repli sur le pool activé",
+      "fallbackOff": "Mode strict : sans repli pool"
     },
     "domainLists": {
       "title": "Listes de domaines",

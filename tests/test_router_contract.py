@@ -83,6 +83,7 @@ POST_ENDPOINTS = [
     "/api/schedules/resume",
     "/api/schedules/restore-defaults",
     "/api/canary/hosts",
+    "/api/routing/fallback",
     "/api/channel/select",
     "/api/clear_dead",
     "/api/blocklists/fetch",

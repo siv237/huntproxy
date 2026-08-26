@@ -95,6 +95,7 @@ const api = {
   routingEnable() { return this.request('/api/routing/enable', 'POST'); },
   routingDisable() { return this.request('/api/routing/disable', 'POST'); },
   routingSetDefault(route) { return this.request('/api/routing/default', 'POST', { default_route: route }); },
+  routingFallback(enabled) { return this.request('/api/routing/fallback', 'POST', { enabled }); },
   routingReorder(listIds) { return this.request('/api/routing/reorder', 'POST', { order: listIds }); },
   routingTest(domain) { return this.request('/api/routing/test', 'POST', { domain }); },
 

@@ -30,6 +30,7 @@ class RoutingMixin:
             return {
                 "enabled": enabled,
                 "default_route": default_route,
+                "fallback_pool": self._routing_get("fallback_pool", "true") == "true",
                 "lists": lists,
                 "custom_proxies": self.get_custom_proxies(),
             }
@@ -48,6 +49,13 @@ class RoutingMixin:
         self._routing_set("default_route", route)
         self._route_cache_invalidate()
         self._emit(f"Default route set to: {route}", "info")
+
+    def routing_set_fallback(self, enabled: bool):
+        """When False, a failing selected/specific proxy must NOT fall back
+        to the best pool proxy — the client gets an error instead (strict
+        "no other proxy" guarantee)."""
+        self._routing_set("fallback_pool", "true" if enabled else "false")
+        self._emit("Pool fallback on failure: " + ("enabled" if enabled else "disabled (strict)"), "info")
 
     def routing_test(self, domain: str) -> dict:
             enabled = self._routing_get("routing_enabled", "false") == "true"

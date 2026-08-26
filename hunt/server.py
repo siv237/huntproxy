@@ -278,6 +278,7 @@ class HuntServer:
         self._router.add("POST", "/api/routing/enable", r._handle_routing_enable)
         self._router.add("POST", "/api/routing/disable", r._handle_routing_disable)
         self._router.add("POST", "/api/routing/default", r._handle_routing_default)
+        self._router.add("POST", "/api/routing/fallback", r._handle_routing_fallback)
         self._router.add("POST", "/api/routing/reorder", r._handle_routing_reorder)
         self._router.add("POST", "/api/routing/test", r._handle_routing_test)
 

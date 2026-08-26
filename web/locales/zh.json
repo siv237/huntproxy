@@ -376,7 +376,8 @@
       "viaTrans": "通过透明代理接入",
       "filterHint": "筛选：域名、IP、服务商、客户端…",
       "filterEmpty": "无匹配",
-      "filterHistory": "筛选请求…"
+      "filterHistory": "筛选请求…",
+      "fallbackNote": "无响应 — 自动切换到代理池"
     },
     "proxyPool": {
       "title": "代理池",
@@ -660,7 +661,11 @@
       "addRouteTitle": "添加路由",
       "domainList": "域名列表：",
       "route": "路由：",
-      "cancel": "取消"
+      "cancel": "取消",
+      "fallbackPool": "所选代理失败时回退到池中最优",
+      "fallbackPoolHint": "关 = 严格模式：所选代理无响应时客户端直接收到错误，流量绝不会走其他代理",
+      "fallbackOn": "已启用池回退",
+      "fallbackOff": "严格模式：不回退到池"
     },
     "trafficFlow": {
       "title": "流量流向",

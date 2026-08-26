@@ -30,6 +30,12 @@ class RoutingHandlers:
         self.state.routing_set_default(route)
         return json.dumps({"ok": True, "default_route": route}), 200, "application/json"
 
+    async def _handle_routing_fallback(self, raw_path, body):
+        data = _json_body(body)
+        enabled = bool(data.get("enabled", True))
+        self.state.routing_set_fallback(enabled)
+        return json.dumps({"ok": True, "fallback_pool": enabled}), 200, "application/json"
+
     async def _handle_routing_reorder(self, raw_path, body):
         data = _json_body(body)
         order = data.get("order", [])

@@ -376,7 +376,8 @@
       "viaTrans": "Über transparenten Proxy",
       "filterHint": "Filter: Domain, IP, Anbieter, Client…",
       "filterEmpty": "Keine Treffer",
-      "filterHistory": "Anfragen filtern…"
+      "filterHistory": "Anfragen filtern…",
+      "fallbackNote": "keine Antwort — automatischer Fallback auf den Pool"
     },
     "proxyPool": {
       "title": "Proxy-Pool",
@@ -659,7 +660,11 @@
       "addRouteTitle": "Route hinzufügen",
       "domainList": "Domain-Liste:",
       "route": "Route:",
-      "cancel": "Abbrechen"
+      "cancel": "Abbrechen",
+      "fallbackPool": "Bei Fehler auf besten Pool-Proxy ausweichen",
+      "fallbackPoolHint": "AUS = strikt: Antwortet der gewählte Proxy nicht, erhält der Client einen Fehler — kein Verkehr über andere Proxys",
+      "fallbackOn": "Pool-Fallback aktiviert",
+      "fallbackOff": "Strikter Modus: kein Pool-Fallback"
     },
     "domainLists": {
       "title": "Domain-Listen",
