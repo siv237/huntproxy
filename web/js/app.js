@@ -4,6 +4,7 @@ const app = {
   _pollers: [],
   _sectionOf: {
     server: 'engine', 'proxy-control': 'engine', connectivity: 'engine', routes: 'engine',
+    'traffic-flow': 'engine', pac: 'engine',
     'proxy-pool': 'proxies', hunt: 'proxies', proxies: 'proxies', favorites: 'proxies',
     analytics: 'proxies', 'custom-proxies': 'proxies',
     'proxy-sources': 'lists', blacklist: 'lists', 'ip-blacklists': 'lists', blocklists: 'lists', 'domain-lists': 'lists',

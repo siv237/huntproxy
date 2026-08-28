@@ -24,6 +24,7 @@
     "about": "À propos",
     "actions": "Actions",
     "blocklists": "Listes de blocage",
+    "pac": "PAC",
     "section": {
       "engine": "Moteur Proxy",
       "proxies": "Pool de Proxys",
@@ -666,6 +667,29 @@
       "fallbackPoolHint": "INACTIF = strict : si le proxy sélectionné ne répond pas, le client reçoit une erreur — le trafic ne part jamais vers un autre proxy",
       "fallbackOn": "Repli sur le pool activé",
       "fallbackOff": "Mode strict : sans repli pool"
+    },
+    "pac": {
+      "title": "PAC / Autoconfiguration",
+      "subtitle": "Servir le fichier PAC et gérer les exceptions",
+      "serverSettings": "Paramètres du serveur",
+      "enable": "Activer le PAC",
+      "proxyHost": "Adresse du proxy (hôte)",
+      "proxyPort": "Port du proxy",
+      "detectIp": "Détecter l'IP LAN",
+      "ipDetected": "IP LAN détectée",
+      "save": "Enregistrer",
+      "saved": "Configuration PAC enregistrée",
+      "autoconfigUrl": "URL d'autoconfiguration",
+      "urlHint": "Collez cette URL dans la configuration automatique du proxy du navigateur/OS.",
+      "copyUrl": "Copier l'URL",
+      "copied": "URL copiée dans le presse-papiers",
+      "domains": "Exceptions directes (domaines)",
+      "domainsHint": "Les hôtes sous ce masque renvoient DIRECT (motifs shExpMatch, p. ex. *.example.com).",
+      "noDomains": "Aucune exception de domaine",
+      "subnets": "Sous-réseaux internes",
+      "subnetsHint": "Les IP dans ces sous-réseaux renvoient DIRECT (réseau + masque, p. ex. 10.0.0.0 / 255.0.0.0).",
+      "noSubnets": "Aucun sous-réseau interne",
+      "preview": "Aperçu du PAC"
     },
     "domainLists": {
       "title": "Listes de domaines",

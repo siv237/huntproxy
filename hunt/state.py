@@ -33,6 +33,7 @@ from hunt.health_loops import HealthLoopsMixin
 from hunt.health_check import HealthCheckMixin
 from hunt.ip_blacklist import IPBlacklistMixin
 from hunt.ip_blacklist_sources import IPBlacklistSourcesMixin
+from hunt.pac import PacMixin
 from hunt.models import ProxyRating
 from hunt.traffic_stats import TrafficStats
 from hunt.proxy_sources import ProxySourcesMixin
@@ -41,7 +42,7 @@ from hunt.snapshot import SnapshotMixin
 from pathlib import Path
 from typing import Optional
 
-class HuntState(DbMixin, EventsMixin, SnapshotMixin, HuntControlMixin, HuntCycleMixin, CanaryMixin, HealthLoopsMixin, HealthCheckMixin, CheckValidationMixin, CheckProxyMixin, CheckSslMixin, CheckSpeedMixin, CheckMitmMixin, CheckGeoMixin, FraudScoreMixin, CheckRatingMixin, BlacklistMixin, IPBlacklistMixin, ProxySourcesMixin, IPBlacklistSourcesMixin, BlocklistsMixin, RoutingMixin, CustomProxiesMixin, ChannelMixin, ActionsMixin, BackupMixin, FavoritesMixin, StatePersistenceMixin, StateDownloadMixin):
+class HuntState(DbMixin, EventsMixin, SnapshotMixin, HuntControlMixin, HuntCycleMixin, CanaryMixin, HealthLoopsMixin, HealthCheckMixin, CheckValidationMixin, CheckProxyMixin, CheckSslMixin, CheckSpeedMixin, CheckMitmMixin, CheckGeoMixin, FraudScoreMixin, CheckRatingMixin, BlacklistMixin, IPBlacklistMixin, ProxySourcesMixin, IPBlacklistSourcesMixin, BlocklistsMixin, RoutingMixin, CustomProxiesMixin, ChannelMixin, ActionsMixin, BackupMixin, FavoritesMixin, StatePersistenceMixin, StateDownloadMixin, PacMixin):
     PHASE_IDLE = "idle"
 
     PHASE_DOWNLOAD = "downloading"

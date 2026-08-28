@@ -24,6 +24,7 @@ const router = {
     'custom-proxies': ['page.customProxies.title', 'page.customProxies.subtitle'],
     'connectivity': ['page.connectivity.title', 'page.connectivity.subtitle'],
     'interception': ['page.interception.title', 'page.interception.subtitle'],
+    pac: ['page.pac.title', 'page.pac.subtitle'],
     downloads: ['page.downloads.title', 'page.downloads.subtitle'],
     api: ['page.api.title', 'page.api.subtitle'],
     about: ['page.about.title', 'page.about.subtitle'],

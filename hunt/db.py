@@ -386,6 +386,19 @@ class DbMixin:
                     key TEXT PRIMARY KEY,
                     value TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS pac_config (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS pac_direct_hosts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    pattern TEXT NOT NULL UNIQUE
+                );
+                CREATE TABLE IF NOT EXISTS pac_internal_nets (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    network TEXT NOT NULL,
+                    mask TEXT NOT NULL
+                );
                 CREATE TABLE IF NOT EXISTS custom_proxies (
                     id TEXT PRIMARY KEY,
                     name TEXT NOT NULL,

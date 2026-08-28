@@ -25,6 +25,7 @@
     "api": "API",
     "about": "About",
     "blocklists": "Blocklists",
+    "pac": "PAC",
     "section": {
       "engine": "Proxy Engine",
       "proxies": "Proxy Pool",
@@ -705,6 +706,29 @@
       "fallbackPoolHint": "OFF = strict: if the selected/specific proxy fails, the client gets an error — traffic never goes to another proxy",
       "fallbackOn": "Pool fallback enabled",
       "fallbackOff": "Strict mode: no pool fallback"
+    },
+    "pac": {
+      "title": "PAC / Autoconfig",
+      "subtitle": "Serve a proxy auto-config file and manage exceptions",
+      "serverSettings": "Server Settings",
+      "enable": "Enable PAC",
+      "proxyHost": "Proxy address (host)",
+      "proxyPort": "Proxy port",
+      "detectIp": "Detect LAN IP",
+      "ipDetected": "LAN IP detected",
+      "save": "Save",
+      "saved": "PAC config saved",
+      "autoconfigUrl": "Autoconfig URL",
+      "urlHint": "Paste this URL into the browser/OS automatic proxy configuration (Web Proxy Auto-Discovery / PAC).",
+      "copyUrl": "Copy URL",
+      "copied": "URL copied to clipboard",
+      "domains": "Direct-exception domains",
+      "domainsHint": "Hosts matched here return DIRECT (shExpMatch patterns, e.g. *.example.com).",
+      "noDomains": "No domain exceptions",
+      "subnets": "Internal subnets",
+      "subnetsHint": "IPs inside these subnets return DIRECT (network + mask, e.g. 10.0.0.0 / 255.0.0.0).",
+      "noSubnets": "No internal subnets",
+      "preview": "PAC Preview"
     },
     "trafficFlow": {
       "title": "Traffic Flow",

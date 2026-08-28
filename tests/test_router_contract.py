@@ -60,6 +60,8 @@ GET_ENDPOINTS = [
     "/favicon.ico",
     "/css/layout.css",
     "/js/app.js",
+    "/pac.js",
+    "/api/pac/config",
 ]
 
 # ── POST endpoints — must not 404 (body may be wrong → 400/500 is OK) ──
@@ -90,6 +92,8 @@ POST_ENDPOINTS = [
     "/api/blocklists/fetch",
     "/api/ip-blacklists/fetch",
     "/api/proxy-sources/fetch",
+    "/api/pac/config",
+    "/api/pac/detect-ip",
 ]
 
 DELETE_ENDPOINTS = [

@@ -187,4 +187,9 @@ const api = {
   schedulesPause() { return this.request('/api/schedules/pause', 'POST'); },
   schedulesResume() { return this.request('/api/schedules/resume', 'POST'); },
   schedulesRestoreDefaults() { return this.request('/api/schedules/restore-defaults', 'POST'); },
+
+  // PAC / Autoconfig
+  pacConfig() { return this.request('/api/pac/config'); },
+  pacSave(data) { return this.request('/api/pac/config', 'POST', data); },
+  pacDetectIp() { return this.request('/api/pac/detect-ip', 'POST'); },
 };

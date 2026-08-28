@@ -30,6 +30,7 @@ STATIC_MIME = {
     ".jpeg": "image/jpeg",
     ".ico": "image/x-icon",
     ".webmanifest": "application/manifest+json",
+    ".pac": "application/x-ns-proxy-autoconfig; charset=utf-8",
 }
 
 logger = logging.getLogger("huntproxy.hunt")

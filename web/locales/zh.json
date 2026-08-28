@@ -25,6 +25,7 @@
     "about": "关于",
     "actions": "Actions",
     "blocklists": "封锁列表",
+    "pac": "PAC",
     "section": {
       "engine": "代理引擎",
       "proxies": "代理池",
@@ -667,6 +668,29 @@
       "fallbackPoolHint": "关 = 严格模式：所选代理无响应时客户端直接收到错误，流量绝不会走其他代理",
       "fallbackOn": "已启用池回退",
       "fallbackOff": "严格模式：不回退到池"
+    },
+    "pac": {
+      "title": "PAC / 自动配置",
+      "subtitle": "提供 PAC 文件并管理例外",
+      "serverSettings": "服务器设置",
+      "enable": "启用 PAC",
+      "proxyHost": "代理地址（主机）",
+      "proxyPort": "代理端口",
+      "detectIp": "检测局域网 IP",
+      "ipDetected": "已检测局域网 IP",
+      "save": "保存",
+      "saved": "PAC 配置已保存",
+      "autoconfigUrl": "自动配置 URL",
+      "urlHint": "将此 URL 粘贴到浏览器/操作系统的自动代理配置中。",
+      "copyUrl": "复制 URL",
+      "copied": "URL 已复制到剪贴板",
+      "domains": "直连例外（域名）",
+      "domainsHint": "匹配此掩码的主机返回 DIRECT（shExpMatch 模式，例如 *.example.com）。",
+      "noDomains": "无域名例外",
+      "subnets": "内部子网",
+      "subnetsHint": "这些子网内的 IP 返回 DIRECT（网络 + 掩码，例如 10.0.0.0 / 255.0.0.0）。",
+      "noSubnets": "无内部子网",
+      "preview": "PAC 预览"
     },
     "trafficFlow": {
       "title": "流量流向",
