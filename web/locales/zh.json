@@ -678,6 +678,7 @@
       "proxyPort": "代理端口",
       "detectIp": "检测局域网 IP",
       "ipDetected": "已检测局域网 IP",
+      "useIp": "使用所选 IP",
       "save": "保存",
       "saved": "PAC 配置已保存",
       "autoconfigUrl": "自动配置 URL",

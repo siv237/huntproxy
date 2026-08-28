@@ -62,6 +62,7 @@ GET_ENDPOINTS = [
     "/js/app.js",
     "/pac.js",
     "/api/pac/config",
+    "/api/pac/ips",
 ]
 
 # ── POST endpoints — must not 404 (body may be wrong → 400/500 is OK) ──

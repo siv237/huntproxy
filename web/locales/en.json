@@ -716,6 +716,7 @@
       "proxyPort": "Proxy port",
       "detectIp": "Detect LAN IP",
       "ipDetected": "LAN IP detected",
+      "useIp": "Use selected IP",
       "save": "Save",
       "saved": "PAC config saved",
       "autoconfigUrl": "Autoconfig URL",

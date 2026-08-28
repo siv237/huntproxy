@@ -81,6 +81,30 @@ class PacMixin:
                 logger.debug("suppressed", exc_info=True)
         return "127.0.0.1"
 
+    def list_local_ips(self) -> list:
+        """Enumerate all local interface IPv4 addresses (a box may have many
+        besides loopback). Uses ``ip -4 -o addr`` (no psutil dependency);
+        falls back to the default-route IP, then loopback."""
+        ips = set()
+        try:
+            import subprocess
+            out = subprocess.run(
+                ["ip", "-4", "-o", "addr", "show"],
+                capture_output=True, text=True, timeout=3,
+            ).stdout
+            for line in out.splitlines():
+                if " inet " not in line:
+                    continue
+                addr = line.split(" inet ")[1].split("/")[0].strip()
+                if addr and ":" not in addr:
+                    ips.add(addr)
+        except Exception:
+            logger.debug("suppressed", exc_info=True)
+        if not ips:
+            ips.add(self.detect_lan_ip())
+        ips.add("127.0.0.1")
+        return sorted(ips)
+
     def _pac_default_port(self) -> int:
         runner = getattr(self, "proxy_runner", None)
         if runner is not None:

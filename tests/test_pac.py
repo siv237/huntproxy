@@ -107,3 +107,11 @@ class TestPacApi:
         status, data = json_body(resp)
         assert status == 200
         assert data["ip"]
+
+    async def test_list_local_ips(self, http_client):
+        resp = await http_client("GET", "/api/pac/ips")
+        status, data = json_body(resp)
+        assert status == 200
+        assert isinstance(data["ips"], list)
+        assert len(data["ips"]) >= 1
+        assert "127.0.0.1" in data["ips"]

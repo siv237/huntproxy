@@ -716,6 +716,7 @@
       "proxyPort": "Порт прокси",
       "detectIp": "Определить LAN-IP",
       "ipDetected": "LAN-IP определён",
+      "useIp": "Использовать выбранный IP",
       "save": "Сохранить",
       "saved": "Конфигурация PAC сохранена",
       "autoconfigUrl": "URL автонастройки",

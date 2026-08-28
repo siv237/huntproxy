@@ -24,3 +24,6 @@ class PacHandlers:
 
     async def _handle_pac_detect_ip(self, raw_path, body):
         return json.dumps({"ip": self.state.detect_lan_ip()}), 200, "application/json"
+
+    async def _handle_pac_ips(self, raw_path, body):
+        return json.dumps({"ips": self.state.list_local_ips()}), 200, "application/json"

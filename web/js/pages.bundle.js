@@ -6210,10 +6210,31 @@ router.register('pac', (container) => {
     const btnRow = ui.el('div', '', { style: 'display:flex;gap:8px;margin-top:10px;flex-wrap:wrap' });
     const detectBtn = ui.el('button', 'btn btn-sm btn-secondary', { text: t('page.pac.detectIp') });
     detectBtn.addEventListener('click', () => {
-      api.pacDetectIp().then(r => {
-        const host = document.getElementById('pac-proxy-host');
-        if (host && r.ip) host.value = r.ip;
-        app.toast(t('page.pac.ipDetected'));
+      const existing = document.getElementById('pac-ip-select-wrap');
+      if (existing) { existing.remove(); return; }
+      api.pacIps().then(r => {
+        const ips = r.ips || [];
+        if (!ips.length) return;
+        const wrap = ui.el('div', '', { id: 'pac-ip-select-wrap', style: 'display:flex;gap:6px;align-items:center;margin-top:8px' });
+        const select = ui.el('select', '', { id: 'pac-ip-select', style: 'flex:1;padding:4px 8px;font-size:12px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--bg);color:var(--text-primary)' });
+        ips.forEach(ip => {
+          const o = ui.el('option', '', { value: ip, text: ip });
+          if (ip === cfg.proxy_host) o.selected = true;
+          select.appendChild(o);
+        });
+        select.addEventListener('change', () => {
+          applySelectedIp(select.value);
+          wrap.remove();
+        });
+        wrap.appendChild(select);
+        const useBtn = ui.el('button', 'btn btn-sm btn-primary', { text: t('page.pac.useIp') });
+        useBtn.addEventListener('click', () => {
+          applySelectedIp(select.value);
+          wrap.remove();
+        });
+        wrap.appendChild(useBtn);
+        const hostRow = document.querySelector('#card-pac-settings');
+        hostRow.appendChild(wrap);
       }).catch(e => app.toast('Error: ' + e.message, 'error'));
     });
     btnRow.appendChild(detectBtn);
@@ -6367,6 +6388,12 @@ router.register('pac', (container) => {
       if (!isNaN(p)) cfg.proxy_port = p;
     }
     if (cb) cfg.enabled = cb.checked;
+  }
+
+  function applySelectedIp(ip) {
+    const host = document.getElementById('pac-proxy-host');
+    if (host && ip) host.value = ip;
+    persist(true);
   }
 
   function updateStatusBadge() {

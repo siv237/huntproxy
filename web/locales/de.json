@@ -677,6 +677,7 @@
       "proxyPort": "Proxy-Port",
       "detectIp": "LAN-IP ermitteln",
       "ipDetected": "LAN-IP ermittelt",
+      "useIp": "Ausgewählte IP verwenden",
       "save": "Speichern",
       "saved": "PAC-Konfiguration gespeichert",
       "autoconfigUrl": "Autokonfigurations-URL",

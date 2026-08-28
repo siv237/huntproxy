@@ -342,3 +342,4 @@ class HuntServer:
         self._router.add("GET", "/api/pac/config", self._h_pac._handle_pac_config_get)
         self._router.add("POST", "/api/pac/config", self._h_pac._handle_pac_config_post)
         self._router.add("POST", "/api/pac/detect-ip", self._h_pac._handle_pac_detect_ip)
+        self._router.add("GET", "/api/pac/ips", self._h_pac._handle_pac_ips)

@@ -192,4 +192,5 @@ const api = {
   pacConfig() { return this.request('/api/pac/config'); },
   pacSave(data) { return this.request('/api/pac/config', 'POST', data); },
   pacDetectIp() { return this.request('/api/pac/detect-ip', 'POST'); },
+  pacIps() { return this.request('/api/pac/ips'); },
 };
