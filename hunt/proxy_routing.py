@@ -6,7 +6,10 @@ import logging
 logger = logging.getLogger(__name__)
 
 _CONNECT_RETRIES = 3
-_RETRY_DELAY = 0.3
+# Adaptive backoff between retries on a DEAD proxy (TCP refused / handshake
+# broken).  A refusal (proxy alive but target unreachable) is NOT retried.
+_RETRY_DELAYS = (0.1, 0.2, 0.4)
+_CONNECT_TIMEOUT = 5.0
 
 class ProxyRouteMixin:
     def _is_self_target(self, host: str, port: int) -> bool:
@@ -99,25 +102,32 @@ class ProxyRouteMixin:
         for attempt in range(_CONNECT_RETRIES):
             try:
                 reader, writer = await asyncio.wait_for(
-                    asyncio.open_connection(proxy["host"], proxy["port"]), timeout=10)
+                    asyncio.open_connection(proxy["host"], proxy["port"]), timeout=_CONNECT_TIMEOUT)
             except Exception:
                 if attempt < _CONNECT_RETRIES - 1:
-                    await asyncio.sleep(_RETRY_DELAY)
+                    await asyncio.sleep(_RETRY_DELAYS[attempt])
                 continue
-            if protocol == "socks5":
-                ok = await self._socks5_cmd_auth(reader, writer, host, port, uname, passwd)
-            elif need_connect:
-                ok = await self._http_connect_cmd_auth(reader, writer, host, port, uname, passwd)
-            else:
-                chain.append(f"custom:{proxy_id}")
-                return reader, writer, True
+            try:
+                if protocol == "socks5":
+                    ok = await self._socks5_cmd_auth(reader, writer, host, port, uname, passwd, raise_on_broken=True)
+                elif need_connect:
+                    ok = await self._http_connect_cmd_auth(reader, writer, host, port, uname, passwd, raise_on_broken=True)
+                else:
+                    chain.append(f"custom:{proxy_id}")
+                    return reader, writer, True
+            except OSError:
+                # Connection died mid-handshake — retryable.
+                self._safe_close(writer)
+                if attempt < _CONNECT_RETRIES - 1:
+                    await asyncio.sleep(_RETRY_DELAYS[attempt])
+                continue
             if ok:
                 tag = f" (retry:{attempt})" if attempt else ""
                 chain.append(f"custom:{proxy_id}{tag}")
                 return reader, writer, False
+            # Proxy responded but refused the target — retrying won't fix it.
             self._safe_close(writer)
-            if attempt < _CONNECT_RETRIES - 1:
-                await asyncio.sleep(_RETRY_DELAY)
+            break
         return None
 
     async def _connect_via_addr(self, addr: str, host: str, port: int, chain: list, need_connect: bool) -> tuple:
@@ -130,18 +140,26 @@ class ProxyRouteMixin:
         for attempt in range(_CONNECT_RETRIES):
             reader, writer = await self._open_proxy_conn(r)
             if reader is None:
+                # TCP to the proxy failed — retryable (proxy is down).
                 if attempt < _CONNECT_RETRIES - 1:
-                    await asyncio.sleep(_RETRY_DELAY)
+                    await asyncio.sleep(_RETRY_DELAYS[attempt])
                 continue
-            ok = await self._negotiate_proxy(r, reader, writer, host, port, need_connect)
+            try:
+                ok = await self._negotiate_proxy(r, reader, writer, host, port, need_connect)
+            except OSError:
+                # Connection died mid-handshake — retryable (proxy is flaky).
+                self._safe_close(writer)
+                if attempt < _CONNECT_RETRIES - 1:
+                    await asyncio.sleep(_RETRY_DELAYS[attempt])
+                continue
             if ok:
                 tag = f" (retry:{attempt})" if attempt else ""
                 chain.append(f"proxy:{r.address}{tag}")
                 is_raw = (not need_connect and r.protocol not in ("socks4", "socks5"))
                 return reader, writer, is_raw
+            # Proxy responded but refused the target — retrying won't fix it.
             self._safe_close(writer)
-            if attempt < _CONNECT_RETRIES - 1:
-                await asyncio.sleep(_RETRY_DELAY)
+            break
         return None
 
     async def _connect_via_pool(self, host: str, port: int, chain: list, need_connect: bool) -> tuple:
@@ -153,7 +171,10 @@ class ProxyRouteMixin:
             reader, writer = await self._open_proxy_conn(p)
             if reader is None:
                 continue
-            ok = await self._negotiate_proxy(p, reader, writer, host, port, need_connect)
+            try:
+                ok = await self._negotiate_proxy(p, reader, writer, host, port, need_connect)
+            except OSError:
+                ok = False
             if not ok:
                 self._safe_close(writer)
                 continue
@@ -201,18 +222,18 @@ class ProxyRouteMixin:
                 conn_kwargs["ssl"] = ctx
                 conn_kwargs["server_hostname"] = phost
             reader, writer = await asyncio.wait_for(
-                asyncio.open_connection(phost, int(pport_str), **conn_kwargs), timeout=10)
+                asyncio.open_connection(phost, int(pport_str), **conn_kwargs), timeout=_CONNECT_TIMEOUT)
             return reader, writer
         except Exception:
             return None, None
 
     async def _negotiate_proxy(self, r: ProxyRating, reader, writer, host: str, port: int, need_connect: bool) -> bool:
         if r.protocol == "socks4":
-            return await self._socks4_cmd(reader, writer, host, port)
+            return await self._socks4_cmd(reader, writer, host, port, raise_on_broken=True)
         if r.protocol == "socks5":
-            return await self._socks5_cmd(reader, writer, host, port)
+            return await self._socks5_cmd(reader, writer, host, port, raise_on_broken=True)
         if need_connect:
-            return await self._http_connect_cmd(reader, writer, host, port)
+            return await self._http_connect_cmd(reader, writer, host, port, raise_on_broken=True)
         return True
 
     def _safe_close(self, writer):

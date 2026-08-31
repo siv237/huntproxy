@@ -14,7 +14,7 @@
 #   ./update.sh               обычное обновление с подтверждением
 #   ./update.sh -y            без запроса подтверждения
 #   ./update.sh -f            принудительно, даже если версия та же
-#   ./update.sh --no-test     пропустить ./test.sh
+#   ./update.sh --test        запустить ./test.sh перед перезапуском (по умолчанию НЕ запускается)
 #   ./update.sh --no-restart  не перезапускать службу
 #
 set -euo pipefail
@@ -26,17 +26,17 @@ UNIT="/etc/systemd/system/$SERVICE.service"
 
 ASSUME_YES=false
 FORCE=false
-RUN_TESTS=true
+RUN_TESTS=false
 DO_RESTART=true
 
 for arg in "$@"; do
     case "$arg" in
         -y|--yes)          ASSUME_YES=true ;;
         -f|--force)        FORCE=true ;;
-        --no-test)         RUN_TESTS=false ;;
+        --test)            RUN_TESTS=true ;;
         --no-restart)      DO_RESTART=false ;;
         -h|--help)
-            sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'
+            sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'
             exit 0
             ;;
         *)
@@ -58,10 +58,15 @@ confirm() {
         echo "  $1 (авто-подтверждение -y) — да"
         return 0
     fi
-    read -r -p "  $1 [${def^^}/${def^^}-противоположное] " ans
+    if [ "$def" = "y" ]; then
+        read -r -p "  $1 [Y/n] " ans
+    else
+        read -r -p "  $1 [y/N] " ans
+    fi
     case "${ans,,}" in
-        y|yes|д|да|"") [ "$def" = "y" ] ;;
-        *)             [ "$def" = "n" ] && [ -z "${ans:-}" ] ;;
+        y|yes|д|да) return 0 ;;
+        n|no|н|нет) return 1 ;;
+        *) [ "$def" = "y" ] ;;
     esac
 }
 
@@ -185,19 +190,19 @@ if [ -f install-hooks.sh ]; then
     ./install-hooks.sh >/dev/null 2>&1 || true
 fi
 
-# --- тесты --------------------------------------------------------------------
+# --- тесты (только по явному флагу --test) ---------------------------------
 if $RUN_TESTS; then
     c_info "Запускаю тесты (./test.sh)..."
-    if ./test.sh; then
-        c_ok "Тесты пройдены"
-    else
+    if ! ./test.sh; then
         c_err "Тесты не прошли!"
-        if ! confirm "Перезапустить службу всё равно (возможно, тесты не блокирующие)?" "n"; then
+        if ! confirm "Перезапустить службу всё равно?" "n"; then
             echo ""
             c_info "Служба не перезапущена. Новый код установлен, но не активен до перезапуска."
             echo ""
             exit 1
         fi
+    else
+        c_ok "Тесты пройдены"
     fi
 fi
 

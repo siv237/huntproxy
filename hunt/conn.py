@@ -32,7 +32,8 @@ def _status_code_from_line(line: bytes) -> int:
 
 async def socks5_connect(reader, writer, host: str, port: int,
                          username: str = "", password: str = "",
-                         handshake_timeout: float = 25) -> bool:
+                         handshake_timeout: float = 25,
+                         raise_on_broken: bool = False) -> bool:
     try:
         if username:
             writer.write(bytes([5, 2, 0, 2]))
@@ -75,11 +76,14 @@ async def socks5_connect(reader, writer, host: str, port: int,
             return False
         return True
     except Exception:
+        if raise_on_broken:
+            raise OSError("socks5 handshake broken") from None
         return False
 
 
 async def socks4_connect(reader, writer, host: str, port: int,
-                         handshake_timeout: float = 25) -> bool:
+                         handshake_timeout: float = 25,
+                         raise_on_broken: bool = False) -> bool:
     try:
         req = struct.pack(">BBH", 4, 1, port) + bytes([0, 0, 0, 1]) + b"\x00"
         req += host.encode() + b"\x00"
@@ -88,11 +92,14 @@ async def socks4_connect(reader, writer, host: str, port: int,
         resp = await asyncio.wait_for(reader.readexactly(8), timeout=handshake_timeout)
         return resp[0] == 0 and resp[1] == 0x5A
     except Exception:
+        if raise_on_broken:
+            raise OSError("socks4 handshake broken") from None
         return False
 
 
 async def http_connect(reader, writer, host: str, port: int,
-                       username: str = "", password: str = "") -> bool:
+                       username: str = "", password: str = "",
+                       raise_on_broken: bool = False) -> bool:
     base_req = f"CONNECT {host}:{port} HTTP/1.1\r\nHost: {host}:{port}\r\n"
     if username:
         cred = base64.b64encode(f"{username}:{password}".encode()).decode()
@@ -104,6 +111,8 @@ async def http_connect(reader, writer, host: str, port: int,
         try:
             resp = await asyncio.wait_for(reader.readuntil(b"\r\n\r\n"), timeout=15)
         except Exception:
+            if raise_on_broken:
+                raise OSError("http connect broken") from None
             return False
         status_line = resp.split(b"\r\n")[0]
         if b"200" in status_line:

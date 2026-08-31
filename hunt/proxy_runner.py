@@ -13,6 +13,12 @@ import logging
 logger = logging.getLogger(__name__)
 
 class ProxyRunner(ProxyRouteMixin):
+    # Replay attempts for headless HTTP forward requests whose upstream died
+    # before the response head completed (nothing was sent to the client yet).
+    _FORWARD_RETRIES = 2
+    _FORWARD_RETRY_DELAYS = (0.1, 0.2)
+    _RESPONSE_HEAD_CAP = 65536
+
     def __init__(self, state: "HuntState", host: str = "127.0.0.1"):
         self.state = state
         self.proxy_host = host
@@ -163,17 +169,69 @@ class ProxyRunner(ProxyRouteMixin):
         target_host, target_port = self._parse_forward_target(target, host_hdr)
         if not target_host:
             writer.write(b"HTTP/1.1 400 Bad Request\r\n\r\n"); await writer.drain(); return
-        upstream = await self._connect_upstream(target_host, target_port, need_connect=False)
-        if not upstream:
-            writer.write(b"HTTP/1.1 502 Bad Gateway\r\n\r\n"); await writer.drain()
+        # Requests with a body cannot be replayed safely (the body was already
+        # streamed through the relay), so only headless requests get retries.
+        retries = 0 if self._request_has_body(raw_headers) else self._FORWARD_RETRIES
+        attempt = 0
+        while True:
+            upstream = await self._connect_upstream(target_host, target_port, need_connect=False)
+            if upstream:
+                up_r, up_w, chain, is_raw_proxy = upstream
+                try:
+                    await self._forward_request(up_w, method, url, target, is_raw_proxy, raw_headers)
+                    head = await self._read_response_head(up_r)
+                    if head is None:
+                        raise ConnectionError("upstream closed before response head")
+                    # The head is complete and nothing was sent to the client
+                    # yet — safe point. From here the response is committed.
+                    writer.write(head)
+                    await writer.drain()
+                    bi, bo = await self._relay(reader, writer, up_r, up_w)
+                    dur = time.monotonic() - t0
+                    status = "ok" if not attempt else f"ok (retry:{attempt})"
+                    self._log(peer, target_host, status, " → ".join(chain),
+                              bytes_in=bi, bytes_out=bo, duration=dur)
+                    return
+                except asyncio.CancelledError:
+                    self._safe_close(up_w)
+                    raise
+                except Exception:
+                    # Upstream died before the response head completed — the
+                    # client saw nothing yet, so the request can be replayed.
+                    self._safe_close(up_w)
+            if attempt < retries:
+                attempt += 1
+                await asyncio.sleep(self._FORWARD_RETRY_DELAYS[min(attempt - 1, len(self._FORWARD_RETRY_DELAYS) - 1)])
+                continue
+            writer.write(b"HTTP/1.1 502 Bad Gateway\r\n\r\n")
+            await writer.drain()
             dur = time.monotonic() - t0
-            self._log(peer, target_host, "502 no upstream", duration=dur); return
-        up_r, up_w, chain, is_raw_proxy = upstream
-        await self._forward_request(up_w, method, url, target, is_raw_proxy, raw_headers)
-        await self._pipe_response(up_r, writer)
-        bi, bo = await self._relay(reader, writer, up_r, up_w)
-        dur = time.monotonic() - t0
-        self._log(peer, target_host, "ok", " → ".join(chain), bytes_in=bi, bytes_out=bo, duration=dur)
+            self._log(peer, target_host, f"502 no upstream (retry:{attempt})", duration=dur)
+            return
+
+    def _request_has_body(self, raw_headers) -> bool:
+        for h in raw_headers:
+            hl = h.lower()
+            if hl.startswith(b"content-length:"):
+                try:
+                    return int(h.split(b":", 1)[1].strip() or b"0") > 0
+                except ValueError:
+                    return True
+            if hl.startswith(b"transfer-encoding:"):
+                return True
+        return False
+
+    async def _read_response_head(self, up_r) -> bytes | None:
+        """Read the complete response head (status line + headers) without
+        writing anything to the client. Returns None if the upstream died
+        before completing it — the caller may then retry the request."""
+        try:
+            head = await asyncio.wait_for(up_r.readuntil(b"\r\n\r\n"), timeout=30)
+        except Exception:
+            return None
+        if len(head) > self._RESPONSE_HEAD_CAP:
+            return None
+        return head
 
     async def _read_http_headers(self, reader) -> tuple:
         raw_headers = []
@@ -216,33 +274,20 @@ class ProxyRunner(ProxyRouteMixin):
         up_w.write(b"\r\n")
         await up_w.drain()
 
-    async def _pipe_response(self, up_r, writer):
-        resp_line = await asyncio.wait_for(up_r.readline(), timeout=30)
-        writer.write(resp_line)
-        while True:
-            try:
-                line = await asyncio.wait_for(up_r.readline(), timeout=30)
-            except Exception:
-                break
-            if line in (b"\r\n", b"\n", b""):
-                writer.write(b"\r\n"); break
-            writer.write(line)
-        await writer.drain()
+    async def _http_connect_cmd(self, r, w, h, p, raise_on_broken: bool = False):
+        return await http_connect(r, w, h, p, raise_on_broken=raise_on_broken)
 
-    async def _http_connect_cmd(self, r, w, h, p):
-        return await http_connect(r, w, h, p)
+    async def _socks5_cmd_auth(self, r, w, h, p, uname="", passwd="", raise_on_broken: bool = False) -> bool:
+        return await socks5_connect(r, w, h, p, uname, passwd, raise_on_broken=raise_on_broken)
 
-    async def _socks5_cmd_auth(self, r, w, h, p, uname="", passwd="") -> bool:
-        return await socks5_connect(r, w, h, p, uname, passwd)
+    async def _http_connect_cmd_auth(self, r, w, h, p, uname="", passwd="", raise_on_broken: bool = False) -> bool:
+        return await http_connect(r, w, h, p, uname, passwd, raise_on_broken=raise_on_broken)
 
-    async def _http_connect_cmd_auth(self, r, w, h, p, uname="", passwd="") -> bool:
-        return await http_connect(r, w, h, p, uname, passwd)
+    async def _socks5_cmd(self, r, w, h, p, raise_on_broken: bool = False):
+        return await socks5_connect(r, w, h, p, raise_on_broken=raise_on_broken)
 
-    async def _socks5_cmd(self, r, w, h, p):
-        return await socks5_connect(r, w, h, p)
-
-    async def _socks4_cmd(self, r, w, h, p):
-        return await socks4_connect(r, w, h, p)
+    async def _socks4_cmd(self, r, w, h, p, raise_on_broken: bool = False):
+        return await socks4_connect(r, w, h, p, raise_on_broken=raise_on_broken)
 
     async def _relay(self, client_reader, client_writer, upstream_reader, upstream_writer):
         bytes_in = 0   # client → upstream (upload)
