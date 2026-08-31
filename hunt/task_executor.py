@@ -10,6 +10,8 @@ the dispatch Open/Closed: adding a new task type means registering a new
 executor, not editing an if/elif chain.
 """
 
+import asyncio
+import sqlite3
 import time
 
 from hunt.constants import DATA_DIR, logger
@@ -59,6 +61,7 @@ class TaskExecutor:
         self.register("history", _execute_history)
         self.register("clear_dead", _execute_clear_dead)
         self.register("backup", _execute_backup)
+        self.register("db_maintenance", _execute_db_maintenance)
 
 
 # ── Executor implementations ───────────────────────────────────────────
@@ -204,3 +207,112 @@ async def _execute_backup(state, entry: ScheduleEntry):
         f.write(data)
     state._emit(f"Scheduler: backup saved as {filename}", "ok")
     state._log_action("scheduler.backup", filename)
+
+
+async def _execute_db_maintenance(state, entry: ScheduleEntry):
+    """Checkpoint WALs, prune retention-exempt tables and vacuum bloated DBs.
+
+    The WAL file grows without bound when checkpoints keep failing (e.g. a
+    full disk), so every run starts with a TRUNCATE checkpoint to keep the
+    file small.  Tables without their own retention (proxy_checks,
+    canary_history) are pruned here.  VACUUM only runs when the freelist
+    ratio passes the configured threshold and the previous vacuum is old
+    enough — full VACUUM rewrites the whole file, so it is deliberately
+    throttled.  Config keys: retention_days (30), vacuum_hours (168),
+    freelist_pct (25).
+    """
+    cfg = entry.config or {}
+    try:
+        retention_days = max(1, int(cfg.get("retention_days", 30)))
+        vacuum_hours = max(1, int(cfg.get("vacuum_hours", 168)))
+        freelist_pct = max(0, min(100, int(cfg.get("freelist_pct", 25))))
+    except Exception:
+        logger.warning("Scheduler: db_maintenance — bad config, using defaults")
+        retention_days, vacuum_hours, freelist_pct = 30, 168, 25
+
+    state._emit("Scheduler: DB maintenance starting", "info")
+    results = []
+    try:
+        # Nothing must be mid-flight before the checkpoint runs.
+        state._flush_proxy_checks()
+        state.drain_db_writers()
+        now = time.time()
+        w = state._stats_writer()
+        w.submit("DELETE FROM proxy_checks WHERE ts < ?", [(now - retention_days * 86400,)])
+        w.submit("DELETE FROM canary_history WHERE ts < ?", [(now - 90 * 86400,)])
+        w.drain()
+        for name, path in (("state", state._state_db_path), ("stats", state._db_path)):
+            # Vacuum markers (last_vacuum_*) live in state.db's runtime_state
+            # for both databases, so the stats vacuum gets the same throttle.
+            marker_path = str(state._state_db_path)
+            result = await asyncio.to_thread(
+                _maintain_db, str(path), name, freelist_pct, vacuum_hours, marker_path
+            )
+            if result.get("last_vacuum"):
+                state._state_writer().submit(
+                    "INSERT OR REPLACE INTO runtime_state (key, value) VALUES (?, ?)",
+                    [(f"last_vacuum_{name}", str(result["last_vacuum"]))],
+                )
+            results.append(result)
+        state.drain_db_writers()
+    except Exception as e:
+        logger.error(f"Scheduler: db_maintenance failed: {e}")
+        state._emit(f"Scheduler: DB maintenance failed: {e}", "error")
+        raise
+
+    summary = "; ".join(
+        f"{r['name']}: wal {r['checkpoint_frames']} frames"
+        + (f", vacuumed ({r['freelist_ratio']:.1f}% free)" if r["vacuum"] else "")
+        for r in results
+    )
+    state._emit(f"Scheduler: DB maintenance done — {summary}", "ok")
+    state._log_action("scheduler.db_maintenance", summary)
+
+
+def _maintain_db(path: str, name: str, freelist_pct: int, vacuum_hours: int,
+                 marker_path: str | None = None) -> dict:
+    """Run checkpoint + vacuum on one SQLite file in a worker thread.
+
+    Uses its own connection so the operation never blocks the event loop.
+    Returns a summary dict; ``last_vacuum`` is set (to persist upstream) only
+    when a VACUUM actually ran.  The vacuum marker is read from ``marker_path``
+    (defaults to ``path``) — both markers live in state.db so the stats
+    database gets the same vacuum throttle.
+    """
+    result = {"name": name, "checkpoint_frames": 0, "vacuum": False,
+              "freelist_ratio": 0.0, "last_vacuum": 0.0}
+    conn = sqlite3.connect(path, timeout=30)
+    try:
+        conn.execute("PRAGMA busy_timeout=30000")
+        conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        pages = conn.execute("PRAGMA page_count").fetchone()[0]
+        free = conn.execute("PRAGMA freelist_count").fetchone()[0]
+        ratio = (free / pages * 100.0) if pages else 0.0
+        result["freelist_ratio"] = round(ratio, 1)
+        last_vacuum = 0.0
+        try:
+            marker = sqlite3.connect(marker_path or path, timeout=30)
+            try:
+                marker.execute("PRAGMA busy_timeout=30000")
+                row = marker.execute(
+                    "SELECT value FROM runtime_state WHERE key=?",
+                    (f"last_vacuum_{name}",),
+                ).fetchone()
+                if row is not None:
+                    last_vacuum = float(row[0] or 0.0)
+            finally:
+                marker.close()
+        except Exception:
+            logger.debug("suppressed", exc_info=True)
+        now = time.time()
+        if ratio >= freelist_pct and now - last_vacuum >= vacuum_hours * 3600:
+            conn.commit()
+            conn.execute("VACUUM")
+            result["vacuum"] = True
+            result["last_vacuum"] = now
+    except Exception as e:
+        logger.error(f"db maintenance failed ({name}): {e}")
+        raise
+    finally:
+        conn.close()
+    return result

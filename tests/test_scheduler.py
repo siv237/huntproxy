@@ -753,6 +753,100 @@ class TestSchedulerExecutorSourceRefresh:
         asyncio.run(run())
 
 
+class TestSchedulerExecutorDbMaintenance:
+    def test_maintains_wal_and_retention(self, state):
+        async def run():
+            sched = SchedulerEngine(state)
+            now = time.time()
+            w = state._stats_writer()
+            w.submit("INSERT INTO proxy_checks (address, ts) VALUES (?,?)",
+                     [("1.1.1.1:80", now - 60 * 86400), ("2.2.2.2:80", now)])
+            w.submit("INSERT INTO canary_history (ts, alive) VALUES (?,?)",
+                     [(now - 200 * 86400, 1), (now, 1)])
+            w.drain()
+            entry = ScheduleEntry(id="db_maintenance", name="DB maintenance",
+                                  task_type="db_maintenance")
+            await sched.executor.run(entry)
+            w.drain()
+            conn = state._stats_db()
+            assert conn.execute("SELECT COUNT(*) FROM proxy_checks").fetchone()[0] == 1
+            assert conn.execute("SELECT COUNT(*) FROM canary_history").fetchone()[0] == 1
+            conn.close()
+            await sched.stop()
+
+        asyncio.run(run())
+
+    def test_runtime_state_keys_survive_full_save(self, state):
+        async def run():
+            sched = SchedulerEngine(state)
+            state._state_writer().submit(
+                "INSERT OR REPLACE INTO runtime_state (key, value) VALUES (?,?)",
+                [("last_vacuum_state", "1234.5")],
+            )
+            state._save_state()
+            state._state_writer().drain()
+            conn = state._db()
+            keys = {r["key"] for r in conn.execute("SELECT key FROM runtime_state")}
+            conn.close()
+            assert "last_vacuum_state" in keys
+            await sched.stop()
+
+        asyncio.run(run())
+
+    def test_maintain_db_vacuums_bloated_db(self, tmp_data_dir):
+        import sqlite3
+        from hunt.task_executor import _maintain_db
+
+        db = tmp_data_dir / "bloated.db"
+        marker = tmp_data_dir / "marker.db"
+        mc = sqlite3.connect(marker)
+        mc.execute("CREATE TABLE runtime_state (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+        mc.commit()
+        mc.close()
+        c = sqlite3.connect(db)
+        c.execute("CREATE TABLE t (id INTEGER PRIMARY KEY, val TEXT)")
+        c.executemany("INSERT INTO t (val) VALUES (?)", [(f"v{i}",) for i in range(10000)])
+        c.commit()
+        c.execute("DELETE FROM t")
+        c.commit()
+        free_before = c.execute("PRAGMA freelist_count").fetchone()[0]
+        c.close()
+        assert free_before > 0
+
+        res = _maintain_db(str(db), "test", freelist_pct=1, vacuum_hours=0,
+                           marker_path=str(marker))
+        assert res["vacuum"] is True
+        assert res["last_vacuum"] > 0
+        c = sqlite3.connect(db)
+        assert c.execute("PRAGMA freelist_count").fetchone()[0] == 0
+        c.close()
+
+    def test_maintain_db_throttled_by_marker(self, tmp_data_dir):
+        import sqlite3
+        import time as _time
+        from hunt.task_executor import _maintain_db
+
+        db = tmp_data_dir / "bloated2.db"
+        marker = tmp_data_dir / "marker2.db"
+        mc = sqlite3.connect(marker)
+        mc.execute("CREATE TABLE runtime_state (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+        mc.execute("INSERT OR REPLACE INTO runtime_state (key, value) VALUES (?,?)",
+                   ("last_vacuum_test", str(_time.time())))
+        mc.commit()
+        mc.close()
+        c = sqlite3.connect(db)
+        c.execute("CREATE TABLE t (id INTEGER PRIMARY KEY, val TEXT)")
+        c.executemany("INSERT INTO t (val) VALUES (?)", [(f"v{i}",) for i in range(10000)])
+        c.commit()
+        c.execute("DELETE FROM t")
+        c.commit()
+        c.close()
+
+        res = _maintain_db(str(db), "test", freelist_pct=1, vacuum_hours=24,
+                           marker_path=str(marker))
+        assert res["vacuum"] is False
+
+
 class TestSchedulerIntervalFromCompletion:
     """The next run must be scheduled interval_sec after the task COMPLETES,
     not after it starts — so a long hunt does not re-fire too early."""

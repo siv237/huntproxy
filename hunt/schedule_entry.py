@@ -56,6 +56,12 @@ TASK_TYPES: dict[str, dict[str, Any]] = {
         "respect_pause": False,
         "respect_internet": False,
     },
+    "db_maintenance": {
+        "description": "WAL checkpoint, retention cleanup and vacuum",
+        "mutex_with": [],
+        "respect_pause": False,
+        "respect_internet": False,
+    },
 }
 
 # Default schedules seeded on first run (when the DB table is empty).
@@ -104,6 +110,14 @@ DEFAULT_SCHEDULES: list[dict[str, Any]] = [
         "id": "source_refresh",
         "name": "Fresh proxy intake",
         "task_type": "source_refresh",
+        "enabled": 1,
+        "interval_sec": 3600,
+        "config": "{}",
+    },
+    {
+        "id": "db_maintenance",
+        "name": "DB maintenance",
+        "task_type": "db_maintenance",
         "enabled": 1,
         "interval_sec": 3600,
         "config": "{}",

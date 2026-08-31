@@ -12,7 +12,25 @@ router.register('schedules', (container) => {
     history: 'page.schedules.taskHistory',
     clear_dead: 'page.schedules.taskClearDead',
     backup: 'page.schedules.taskBackup',
+    db_maintenance: 'page.schedules.taskDbMaintenance',
   };
+
+  // Default schedule ids -> localized name keys. Custom schedules keep
+  // their user-entered name from the DB.
+  const SCHEDULE_NAME_KEYS = {
+    history: 'page.schedules.nameHistory',
+    ip_blacklist_refresh: 'page.schedules.nameIpBlacklistRefresh',
+    blocklist_refresh: 'page.schedules.nameBlocklistRefresh',
+    health_check: 'page.schedules.nameHealthCheck',
+    proxy_check: 'page.schedules.nameProxyCheck',
+    source_refresh: 'page.schedules.nameSourceRefresh',
+    db_maintenance: 'page.schedules.nameDbMaintenance',
+  };
+
+  function scheduleName(s) {
+    const key = SCHEDULE_NAME_KEYS[s.id];
+    return key ? t(key) : s.name;
+  }
 
   const STATUS_VARIANTS = {
     ok: 'green',
@@ -183,7 +201,7 @@ router.register('schedules', (container) => {
         { label: t('page.schedules.actions') },
       ],
       schedules.map(s => [
-        ui.escHtml(s.name) + '<br><span style="font-size:11px;color:var(--text-secondary)">' + ui.escHtml(s.id) + '</span>',
+        ui.escHtml(scheduleName(s)) + '<br><span style="font-size:11px;color:var(--text-secondary)">' + ui.escHtml(s.id) + '</span>',
         formatInterval(s.interval_sec),
         renderToggle(s),
         s.last_run > 0 ? ui.fmtDateTime(s.last_run) : '—',
@@ -291,7 +309,7 @@ router.register('schedules', (container) => {
       const due = schedules.filter(s => s.enabled && s.countdown !== null && s.countdown > 0);
       if (due.length) {
         const next = due.reduce((a, b) => a.countdown < b.countdown ? a : b);
-        nextEl.textContent = t('page.schedules.nextRun') + ': ' + formatCountdown(next) + ' (' + next.name + ')';
+        nextEl.textContent = t('page.schedules.nextRun') + ': ' + formatCountdown(next) + ' (' + scheduleName(next) + ')';
       } else {
         nextEl.textContent = t('page.schedules.nextRun') + ': —';
       }

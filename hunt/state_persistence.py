@@ -159,8 +159,14 @@ class StatePersistenceMixin:
                     "INSERT OR REPLACE INTO favorites (address) VALUES (?)",
                     [(addr,) for addr in self.favorites],
                 )
-                # runtime state
-                w.submit("DELETE FROM runtime_state", [()])
+                # runtime state — only replace the keys this module owns, so
+                # keys written by other subsystems (e.g. last_vacuum_* from
+                # db_maintenance) survive the full save.
+                w.submit(
+                    "DELETE FROM runtime_state WHERE key IN "
+                    "(?, ?, ?, ?)",
+                    ("proxy_runner", "services", "country_filter", "switch_history"),
+                )
                 runtime = [
                     ("proxy_runner", json.dumps({
                         "direct_mode": getattr(self, '_proxy_direct_mode', False),

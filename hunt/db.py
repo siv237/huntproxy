@@ -64,6 +64,7 @@ class _DbWriter:
             try:
                 conn.execute("PRAGMA journal_mode=WAL")
                 conn.execute("PRAGMA synchronous=NORMAL")
+                conn.execute("PRAGMA busy_timeout=30000")
             except Exception:
                 logger.debug("suppressed", exc_info=True)
             if self._ensure is not None:
@@ -85,6 +86,7 @@ class _DbWriter:
                     break
                 batch.append(nxt)
             ok = True
+            conn = None
             try:
                 conn = self._connection()
                 for sql, rows in batch:
@@ -95,6 +97,15 @@ class _DbWriter:
                 conn.commit()
             except Exception as e:
                 ok = False
+                # A failed commit leaves the write transaction open; without a
+                # rollback it pins the write lock (blocking every other writer
+                # and WAL checkpoint) and keeps accumulating uncommitted pages
+                # in the WAL — the "database is locked" / 10GB WAL spiral.
+                if conn is not None:
+                    try:
+                        conn.rollback()
+                    except Exception:
+                        logger.debug("suppressed", exc_info=True)
                 logger.error("background db write failed: %s", e)
             for _ in batch:
                 self._queue.task_done()
