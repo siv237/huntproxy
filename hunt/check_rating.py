@@ -171,14 +171,26 @@ class CheckRatingMixin:
             r.country_code = country_code
         elif country and not r.country_code:
             r.country_code = country_code_from_name(country)
+        elif country and r.country and country != r.country:
+            derived = country_code_from_name(country)
+            if derived:
+                r.country_code = derived
 
     def _apply_egress(self, r: ProxyRating, egress: dict):
         r.egress_ip = egress.get("egress_ip") or r.egress_ip
         r.egress_city = egress.get("egress_city") or r.egress_city
         r.egress_isp = egress.get("egress_isp") or r.egress_isp
-        r.egress_country = egress.get("egress_country") or r.egress_country
-        if egress.get("egress_country") and not r.egress_country_code:
-            r.egress_country_code = country_code_from_name(egress["egress_country"])
+        new_country = egress.get("egress_country")
+        if new_country:
+            # The name is overwritten on every check, but the code was only
+            # derived when empty — a proxy that hopped countries (Chile →
+            # United States) kept the stale code forever and the UI showed
+            # the wrong flag.  Re-derive whenever the name actually changed.
+            if new_country != r.egress_country or not r.egress_country_code:
+                code = country_code_from_name(new_country)
+                if code:
+                    r.egress_country_code = code
+            r.egress_country = new_country
         if "egress_hosting" in egress or "egress_proxy" in egress:
             r.fraud_hosting = bool(egress.get("egress_hosting"))
             r.fraud_proxy = bool(egress.get("egress_proxy"))
@@ -186,9 +198,13 @@ class CheckRatingMixin:
             r.fraud_checked_ts = time.time()
 
     def _apply_listen(self, r: ProxyRating, listen: dict):
-        r.listen_country = listen.get("country") or r.listen_country
-        if listen.get("country") and not r.listen_country_code:
-            r.listen_country_code = country_code_from_name(listen["country"])
+        new_country = listen.get("country")
+        if new_country:
+            if new_country != r.listen_country or not r.listen_country_code:
+                code = country_code_from_name(new_country)
+                if code:
+                    r.listen_country_code = code
+            r.listen_country = new_country
         r.listen_city = listen.get("city") or r.listen_city
         r.listen_isp = listen.get("isp") or r.listen_isp
 

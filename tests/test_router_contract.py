@@ -31,6 +31,7 @@ GET_ENDPOINTS = [
     "/api/favorites",
     "/api/proxy/status",
     "/api/proxy/alive",
+    "/api/proxy/ping",
     "/api/socks5/status",
     "/api/transparent/status",
     "/api/interception",

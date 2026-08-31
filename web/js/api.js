@@ -22,6 +22,7 @@ const api = {
   events(since = 0) { return this.request(`/api/events?since=${since}`); },
   proxyStatus() { return this.request('/api/proxy/status'); },
   proxyAlive() { return this.request('/api/proxy/alive'); },
+  proxyPing() { return this.request('/api/proxy/ping'); },
   huntStart() { return this.request('/api/hunt/start', 'POST'); },
   huntStop() { return this.request('/api/hunt/stop', 'POST'); },
   huntPause() { return this.request('/api/hunt/pause', 'POST'); },

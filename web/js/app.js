@@ -151,12 +151,14 @@ const app = {
     this._pollers.push(setInterval(() => this.pollEvents(), 2000));
     this._pollers.push(setInterval(() => this.pollCanary(), 30000));
     this._pollers.push(setInterval(() => this.pollTraffic(), 2000));
+    this._pollers.push(setInterval(() => this.pollPing(), 1000));
     this._pollers.push(setInterval(() => this.pollDirectMode(), 3000));
     this._pollers.push(setInterval(() => this.pollChannel(), 3000));
     this._pollers.push(setInterval(() => this.pollVersion(), 60000));
     this.pollCanary();
     this.pollVersion();
     this.pollTraffic();
+    this.pollPing();
     this.pollDirectMode();
     this.pollChannel();
   },
@@ -274,6 +276,84 @@ const app = {
         badge.style.display = 'none';
       }
     } catch (e) { /* ignore */ }
+  },
+
+  async pollPing() {
+    try {
+      const p = await api.proxyPing();
+      const badge = document.getElementById('ping-badge');
+      const valueEl = document.getElementById('ping-value');
+      const proxyEl = document.getElementById('ping-proxy');
+      const geoEl = document.getElementById('ping-geo');
+      const line = document.getElementById('ping-spark-line');
+      if (!badge || !valueEl) return;
+      const last = p.last || {};
+      const ok = last.ok === true;
+      const lat = ok ? (last.latency || 0) : -1;
+      const color = !ok ? 'var(--danger)' : lat < 100 ? 'var(--success)' : lat < 300 ? 'var(--warning, #f0ad4e)' : 'var(--danger)';
+      valueEl.style.color = color;
+      valueEl.textContent = ok ? lat + 'ms' : '✗';
+      if (line) {
+        const samples = p.samples || [];
+        if (samples.length >= 1) {
+          const n = samples.length;
+          const pts = samples.map((s, i) => {
+            const x = (n === 1 ? 23 : (i / (n - 1) * 44)).toFixed(1);
+            const y = (16 - Math.min(Math.max(s.latency, 0), 500) / 500 * 13).toFixed(1);
+            return `${x},${y}`;
+          }).join(' ');
+          line.setAttribute('points', pts);
+          line.setAttribute('stroke', color);
+          line.style.display = '';
+        } else {
+          line.style.display = 'none';
+        }
+      }
+      const src = p.source || 'none';
+      if (src === 'none' && !ok) {
+        badge.style.display = 'none';
+        return;
+      }
+      badge.style.display = '';
+      // Clicking the badge opens the standard proxy card for the proxy it
+      // pings through (pool proxy or channel pool-proxy); custom channels
+      // and direct mode fall back to the connectivity page.
+      if (badge && !badge._pingClickBound) {
+        badge._pingClickBound = true;
+        badge.style.cursor = 'pointer';
+        badge.addEventListener('click', () => {
+          const addr = badge.dataset.pingAddr;
+          if (addr && window.proxyCard) window.proxyCard.show(addr);
+          else router.navigate('connectivity');
+        });
+      }
+      const clickable = src === 'pool' ||
+        (src === 'channel' && (p.route || '').startsWith('proxy:'));
+      badge.dataset.pingAddr = clickable ? (p.proxy_addr || '') : '';
+      badge.style.cursor = clickable ? 'pointer' : 'default';
+      const srcLabel = src === 'direct' ? '↔' : src === 'channel' ? '◈' : '⬢';
+      if (proxyEl) {
+        proxyEl.textContent = src === 'direct'
+          ? (srcLabel + ' ' + t('topbar.pingDirect'))
+          : (srcLabel + ' ' + (p.proxy_addr || '') + (ok ? '' : ' — ' + (last.error || t('topbar.pingFail'))));
+        proxyEl.title = proxyEl.textContent;
+      }
+      if (geoEl) {
+        const g = p.geo || {};
+        const flag = ui.flag((g.country_code || '').toUpperCase());
+        const parts = [];
+        const country = g.country || g.country_code || '';
+        if (country) parts.push(country);
+        if (g.city) parts.push(g.city);
+        const isp = g.isp || '';
+        if (isp) parts.push(isp);
+        geoEl.textContent = ((flag ? flag + ' ' : '') + parts.join(' · ')) || '—';
+        geoEl.title = parts.join(' · ');
+      }
+    } catch (e) {
+      const badge = document.getElementById('ping-badge');
+      if (badge) badge.style.display = 'none';
+    }
   },
 
   async pollDirectMode() {

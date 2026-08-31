@@ -47,7 +47,11 @@
     "cascadeModeText": "Каскад",
     "routingModeText": "Маршрутизация",
     "channelText": "Канал",
-    "channelUnavailable": "недоступен"
+    "channelUnavailable": "недоступен",
+    "ping": "Пинг",
+    "pingTitle": "Живой пинг прокси — задержка через активный прокси",
+    "pingDirect": "напрямую",
+    "pingFail": "ошибка"
   },
   "sidebar": {
     "allSystemsOperational": "Все системы работают",

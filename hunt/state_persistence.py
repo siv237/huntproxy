@@ -21,6 +21,7 @@ class StatePersistenceMixin:
 
     def _load_ratings_from_db(self, conn):
         self.ratings.clear()
+        repaired = []
         for row in conn.execute("SELECT address, data FROM ratings"):
             try:
                 d = json.loads(row["data"])
@@ -28,11 +29,43 @@ class StatePersistenceMixin:
                 logger.debug("skipped corrupt rating row", exc_info=True)
                 continue
             r = self._build_rating_from_dict(d)
-            if not r.egress_country_code and r.egress_country:
-                r.egress_country_code = country_code_from_name(r.egress_country)
-            if not r.listen_country_code and r.listen_country:
-                r.listen_country_code = country_code_from_name(r.listen_country)
+            if self._repair_rating_codes(r):
+                repaired.append(r.address)
             self.ratings[r.address] = r
+        if repaired:
+            try:
+                self._dirty_ratings.update(repaired)
+            except Exception:
+                logger.debug("suppressed", exc_info=True)
+
+    def _repair_rating_codes(self, r) -> bool:
+        """Ensure country codes match their country names.
+
+        The country name is refreshed on every check, but the code used to be
+        derived only when empty — old rows can pair "United States" with an
+        outdated "CL" (proxy hopped countries), which renders the wrong flag.
+        Returns True if any code was fixed.
+        """
+        changed = False
+        for name, code_attr in (
+            (r.egress_country, "egress_country_code"),
+            (r.listen_country, "listen_country_code"),
+            (r.country, "country_code"),
+        ):
+            code = getattr(r, code_attr)
+            if not name:
+                continue
+            if not code:
+                derived = country_code_from_name(name)
+                if derived:
+                    setattr(r, code_attr, derived)
+                    changed = True
+            else:
+                derived = country_code_from_name(name)
+                if derived and derived != code:
+                    setattr(r, code_attr, derived)
+                    changed = True
+        return changed
 
     def _build_rating_from_dict(self, d: dict) -> ProxyRating:
         checks_ok = d.get("checks_ok", 0)

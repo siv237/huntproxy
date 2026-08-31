@@ -41,6 +41,9 @@ class ProxyHandlers:
             self._status_cache_ts = time.monotonic()
         return json.dumps(status), 200, "application/json"
 
+    async def _handle_proxy_ping(self, raw_path, body):
+        return json.dumps(self.state.get_proxy_ping_status()), 200, "application/json"
+
     async def _handle_proxy_alive(self, raw_path, body):
         # IP-blacklisted proxies are no longer a hard sentence: they can be
         # selected as upstream but with a reduced score. Only operator-curated

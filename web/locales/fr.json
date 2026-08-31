@@ -47,7 +47,11 @@
     "cascadeModeText": "Cascade",
     "routingModeText": "Routage",
     "channelText": "Canal",
-    "channelUnavailable": "indisponible"
+    "channelUnavailable": "indisponible",
+    "ping": "Ping",
+    "pingTitle": "Ping proxy en direct",
+    "pingDirect": "direct",
+    "pingFail": "erreur"
   },
   "sidebar": {
     "allSystemsOperational": "Tous les systèmes opérationnels",

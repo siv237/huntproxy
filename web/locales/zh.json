@@ -47,7 +47,11 @@
     "cascadeModeText": "级联",
     "routingModeText": "路由",
     "channelText": "通道",
-    "channelUnavailable": "不可用"
+    "channelUnavailable": "不可用",
+    "ping": "Ping",
+    "pingTitle": "代理实时延迟",
+    "pingDirect": "直连",
+    "pingFail": "失败"
   },
   "sidebar": {
     "allSystemsOperational": "所有系统正常运行",

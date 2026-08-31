@@ -212,6 +212,7 @@ class HuntServer:
 
         self._router.add("GET", "/api/proxy/status", p._handle_proxy_status)
         self._router.add("GET", "/api/proxy/alive", p._handle_proxy_alive)
+        self._router.add("GET", "/api/proxy/ping", p._handle_proxy_ping)
         for m in ("GET", "POST"):
             self._router.add_prefix(m, "/api/proxy/start", p._handle_proxy_start)
             self._router.add(m, "/api/proxy/stop", p._handle_proxy_stop)

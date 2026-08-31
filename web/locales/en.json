@@ -47,7 +47,11 @@
     "cascadeModeText": "Cascade",
     "routingModeText": "Routing",
     "channelText": "Channel",
-    "channelUnavailable": "unavailable"
+    "channelUnavailable": "unavailable",
+    "ping": "Ping",
+    "pingTitle": "Live proxy ping — latency through the active proxy",
+    "pingDirect": "direct",
+    "pingFail": "failed"
   },
   "sidebar": {
     "allSystemsOperational": "All Systems Operational",

@@ -47,7 +47,11 @@
     "cascadeModeText": "Kaskade",
     "routingModeText": "Routing",
     "channelText": "Kanal",
-    "channelUnavailable": "nicht verfügbar"
+    "channelUnavailable": "nicht verfügbar",
+    "ping": "Ping",
+    "pingTitle": "Live-Ping des Proxys",
+    "pingDirect": "direkt",
+    "pingFail": "Fehler"
   },
   "sidebar": {
     "allSystemsOperational": "Alle Systeme betriebsbereit",

@@ -303,6 +303,12 @@
   background: var(--border);
 }
 
+.ping-spark-wrap {
+  display: flex;
+  align-items: center;
+  padding: 0 2px;
+}
+
 .topbar-btn {
   display: flex;
   align-items: center;

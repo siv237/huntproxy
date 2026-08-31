@@ -65,6 +65,9 @@ async def amain(config: dict):
     await scheduler.prepare()
     await scheduler.start_loop()
 
+    # Continuous 1s proxy ping for the topbar badge.
+    state.start_proxy_ping()
+
     async def shutdown():
         await scheduler.stop()
         server_task.cancel()

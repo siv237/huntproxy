@@ -37,12 +37,13 @@ from hunt.pac import PacMixin
 from hunt.models import ProxyRating
 from hunt.traffic_stats import TrafficStats
 from hunt.proxy_sources import ProxySourcesMixin
+from hunt.proxy_ping import ProxyPingMixin
 from hunt.routing import RoutingMixin
 from hunt.snapshot import SnapshotMixin
 from pathlib import Path
 from typing import Optional
 
-class HuntState(DbMixin, EventsMixin, SnapshotMixin, HuntControlMixin, HuntCycleMixin, CanaryMixin, HealthLoopsMixin, HealthCheckMixin, CheckValidationMixin, CheckProxyMixin, CheckSslMixin, CheckSpeedMixin, CheckMitmMixin, CheckGeoMixin, FraudScoreMixin, CheckRatingMixin, BlacklistMixin, IPBlacklistMixin, ProxySourcesMixin, IPBlacklistSourcesMixin, BlocklistsMixin, RoutingMixin, CustomProxiesMixin, ChannelMixin, ActionsMixin, BackupMixin, FavoritesMixin, StatePersistenceMixin, StateDownloadMixin, PacMixin):
+class HuntState(DbMixin, EventsMixin, SnapshotMixin, HuntControlMixin, HuntCycleMixin, CanaryMixin, HealthLoopsMixin, HealthCheckMixin, CheckValidationMixin, CheckProxyMixin, CheckSslMixin, CheckSpeedMixin, CheckMitmMixin, CheckGeoMixin, FraudScoreMixin, CheckRatingMixin, BlacklistMixin, IPBlacklistMixin, ProxySourcesMixin, IPBlacklistSourcesMixin, BlocklistsMixin, RoutingMixin, CustomProxiesMixin, ChannelMixin, ActionsMixin, BackupMixin, FavoritesMixin, StatePersistenceMixin, StateDownloadMixin, PacMixin, ProxyPingMixin):
     PHASE_IDLE = "idle"
 
     PHASE_DOWNLOAD = "downloading"
@@ -176,6 +177,7 @@ class HuntState(DbMixin, EventsMixin, SnapshotMixin, HuntControlMixin, HuntCycle
             self._canary_interval: float = 30
             self._internet_alive: Optional[bool] = None
             self._canary_cache: dict = {}
+            self._init_proxy_ping()
 
             # IP blacklist settings
             ip_bl_cfg = config.get("ip_blacklists", {})
