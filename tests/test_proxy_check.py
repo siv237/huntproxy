@@ -43,6 +43,14 @@ class FakeHttpProxyServer:
             await writer.wait_closed()
 
 
+def mock_resolve_geo(state, cc, country, hosting=False, proxy=False):
+    """Patch _resolve_geo so the direct egress lookup matches the fixture."""
+    async def fake(ip):
+        return {"country": country, "country_code": cc, "city": "X",
+                "isp": "Y", "hosting": hosting, "proxy": proxy, "mobile": False}
+    state._resolve_geo = fake
+
+
 class TestCheckProxyHttp:
     def test_check_proxy_http_ok(self, state):
         resp = b'{"query":"1.2.3.4","country":"United States","countryCode":"US","city":"New York","isp":"Test ISP"}'
@@ -54,6 +62,7 @@ class TestCheckProxyHttp:
                 async def fake_connect(host, port, is_socks):
                     return True, False
                 state._check_proxy_connect = fake_connect
+                mock_resolve_geo(state, "US", "United States")
                 ok, country, supports_connect, mitm_suspect, egress, listen, latency, country_code, fast_fail = await state._check_proxy(
                     f"127.0.0.1:{proxy.port}"
                 )
@@ -80,6 +89,7 @@ class TestCheckProxyHttp:
                 async def fake_connect(host, port, is_socks):
                     return True, False
                 state._check_proxy_connect = fake_connect
+                mock_resolve_geo(state, "DE", "Germany")
                 state.us_only = True
                 ok, country, supports_connect, mitm_suspect, egress, listen, latency, country_code, fast_fail = await state._check_proxy(
                     f"127.0.0.1:{proxy.port}"
@@ -102,6 +112,7 @@ class TestCheckProxyHttp:
                 async def fake_connect(host, port, is_socks):
                     return True, False
                 state._check_proxy_connect = fake_connect
+                mock_resolve_geo(state, "US", "United States")
                 state.country_filter = "GB"
                 ok, country, supports_connect, mitm_suspect, egress, listen, latency, country_code, fast_fail = await state._check_proxy(
                     f"127.0.0.1:{proxy.port}"
@@ -221,12 +232,92 @@ class TestCheckProxyHttp:
                 async def fake_connect(host, port, is_socks):
                     return False, False
                 state._check_proxy_connect = fake_connect
+                mock_resolve_geo(state, "US", "United States")
                 ok, country, supports_connect, mitm_suspect, egress, listen, latency, country_code, fast_fail = await state._check_proxy(
                     f"127.0.0.1:{proxy.port}"
                 )
                 assert ok is False
                 assert supports_connect is False
                 assert latency > 0
+            finally:
+                await proxy.stop()
+
+        asyncio.run(run())
+
+    def test_check_proxy_http_spoofed_egress_rejected(self, state):
+        """A proxy that claims an egress country contradicting its real IP
+        (geo-spoofing) must be rejected before reaching the rating."""
+        resp = b'{"query":"1.2.3.4","country":"United Kingdom","countryCode":"GB","city":"London","isp":"Fake ISP"}'
+        proxy = FakeHttpProxyServer(resp)
+
+        async def run():
+            await proxy.start()
+            try:
+                async def fake_connect(host, port, is_socks):
+                    return True, False
+                state._check_proxy_connect = fake_connect
+                # Direct lookup says this egress IP is really in Australia.
+                mock_resolve_geo(state, "AU", "Australia", hosting=True, proxy=True)
+                ok, country, supports_connect, mitm_suspect, egress, listen, latency, country_code, fast_fail = await state._check_proxy(
+                    f"127.0.0.1:{proxy.port}"
+                )
+                assert ok is False
+                assert latency == 0.0
+            finally:
+                await proxy.stop()
+
+        asyncio.run(run())
+
+    def test_check_proxy_http_consistent_egress_uses_authoritative_geo(self, state):
+        """When the proxy's egress is genuine, the authoritative direct lookup
+        (hosting/proxy flags) must override the proxy's self-reported flags."""
+        resp = b'{"query":"1.2.3.4","country":"United States","countryCode":"US","hosting":false,"proxy":false}'
+        proxy = FakeHttpProxyServer(resp)
+
+        async def run():
+            await proxy.start()
+            try:
+                async def fake_connect(host, port, is_socks):
+                    return True, False
+                state._check_proxy_connect = fake_connect
+                # Real egress IS a datacenter/proxy even though the proxy lied.
+                mock_resolve_geo(state, "US", "United States", hosting=True, proxy=True)
+                ok, country, supports_connect, mitm_suspect, egress, listen, latency, country_code, fast_fail = await state._check_proxy(
+                    f"127.0.0.1:{proxy.port}"
+                )
+                assert ok is True
+                assert egress["egress_hosting"] is True
+                assert egress["egress_proxy"] is True
+                assert egress["egress_country"] == "United States"
+                assert country_code == "US"
+            finally:
+                await proxy.stop()
+
+        asyncio.run(run())
+
+    def test_check_proxy_http_egress_lookup_uncertain_keeps_reported(self, state):
+        """Fail-open: if the direct egress lookup returns nothing (transient
+        ip-api outage), a genuine proxy must not be evicted."""
+        resp = b'{"query":"1.2.3.4","country":"United States","countryCode":"US","hosting":false,"proxy":false}'
+        proxy = FakeHttpProxyServer(resp)
+
+        async def run():
+            await proxy.start()
+            try:
+                async def fake_connect(host, port, is_socks):
+                    return True, False
+                state._check_proxy_connect = fake_connect
+
+                async def fake_geo(ip):
+                    return {}
+                state._resolve_geo = fake_geo
+
+                ok, country, supports_connect, mitm_suspect, egress, listen, latency, country_code, fast_fail = await state._check_proxy(
+                    f"127.0.0.1:{proxy.port}"
+                )
+                assert ok is True
+                assert country == "United States"
+                assert country_code == "US"
             finally:
                 await proxy.stop()
 

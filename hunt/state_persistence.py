@@ -342,7 +342,7 @@ class StatePersistenceMixin:
             during a full pool re-validation (which would multiply the cost by
             the number of checkpoints)."""
             alive = [r for r in self.ratings.values()
-                     if (r.last_status == "ok" or r.in_grace) and not r.in_blacklist]
+                     if r.pool_eligible]
             alive.sort(key=lambda r: r.score, reverse=True)
             try:
                 w = self._state_writer()

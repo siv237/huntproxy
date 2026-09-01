@@ -38,6 +38,18 @@ class ProxyRating:
     # interval: one user page load can produce several connection errors, and
     # each should not count as an independent failed check.
     TRAFFIC_FAIL_THROTTLE = 5.0
+    # Speed enters the score MULTIPLICATIVELY, not additively: a proxy that
+    # cannot push real traffic must not rank (its "reliability" is meaningless
+    # for a dead channel). SPEED_FACTOR_NORM is the throughput (KB/s) at which
+    # the speed factor reaches 1.0 and stops scaling the base.
+    SPEED_FACTOR_NORM = 150.0
+    # Provisional speed factor granted before any measurement exists, so a
+    # brand-new proxy stays discoverable without dominating the ranking.
+    SPEED_NEWBORN_FACTOR = 0.5
+    # A proxy whose AVERAGE measured throughput is below this (KB/s) has
+    # never demonstrated usable traffic — it is dead, not "proven", and must
+    # not linger in the pool via the grace period.
+    MIN_USEFUL_SPEED = 5.0
 
     address: str
     country: str = ""
@@ -151,9 +163,40 @@ class ProxyRating:
         return self.speed_count > 0
 
     @property
+    def eff_speed(self) -> float:
+        """Effective throughput: recency EWMA when available, else lifetime avg."""
+        return self.speed_ewma if self.speed_ewma >= 0 else self.speed_avg
+
+    @property
+    def dead_by_speed(self) -> bool:
+        """Measured but unable to push usable traffic.
+
+        A proxy is dead when it produced no usable throughput: either its
+        average reading is below MIN_USEFUL_SPEED, or it has completed checks
+        yet never produced a single speed reading (speed_fails > 0 with
+        speed_count == 0). Such proxies are excluded from the pool and from
+        the grace period regardless of last_status. Only proxies never
+        measured at all (speed_count == 0 and speed_fails == 0) are still
+        unknown/newborn and stay discoverable.
+        """
+        if self.speed_count > 0:
+            return self.eff_speed < self.MIN_USEFUL_SPEED
+        return self.speed_fails > 0
+
+    @property
     def in_grace(self) -> bool:
-        """A proven proxy (had speed) within its failure grace period."""
-        return self.had_speed and self.consecutive_fails < self.GRACE_FAILS
+        """A proven proxy (one that demonstrated a usable speed) within its
+        failure grace period. A proxy whose only measurement was ~0 throughput
+        is dead, not proven — it must not linger in the pool."""
+        return (not self.dead_by_speed and self.had_speed
+                and self.consecutive_fails < self.GRACE_FAILS)
+
+    @property
+    def pool_eligible(self) -> bool:
+        """A proxy that belongs in the working pool: not blacklisted, not dead
+        by speed, and either last-checked-ok or in its (speed-proven) grace."""
+        return (not self.in_blacklist and not self.dead_by_speed
+                and (self.last_status == "ok" or self.in_grace))
 
     @property
     def is_blacklisted(self) -> bool:
@@ -195,6 +238,7 @@ class ProxyRating:
             return 0.0
         if self.in_blacklist:
             return 0.0
+        speed_factor = self._speed_factor()
         if self.last_status != "ok":
             # A proven proxy (one that once had non-zero speed) stays ranked
             # during its grace period so it sinks gradually instead of
@@ -203,8 +247,8 @@ class ProxyRating:
             if not self.in_grace:
                 return 0.0
             grace_ratio = max(0.0, 1.0 - self.consecutive_fails / self.GRACE_FAILS)
-            return max(0.0, min(100.0, self._base_points() * self._modifier_factor() * 0.3 * grace_ratio))
-        return max(0.0, min(100.0, self._base_points() * self._modifier_factor()))
+            return max(0.0, min(100.0, self._base_points() * speed_factor * self._modifier_factor() * 0.3 * grace_ratio))
+        return max(0.0, min(100.0, self._base_points() * speed_factor * self._modifier_factor()))
 
     def _effective_socks(self) -> bool:
         if self.protocol in ("socks4", "socks5"):
@@ -230,12 +274,33 @@ class ProxyRating:
             return 12.5
         return 0.0
 
+    def _speed_factor(self) -> float:
+        """Multiplicative throughput factor, [0, 1].
+
+        A proxy with no usable throughput gets ~0 so it cannot ride
+        reliability/latency/fraud-boost into a high rank while carrying no
+        real traffic (the "dead but clean" case). SOCKS proxies get a fixed
+        provisional floor because they cannot use the HTTP speed servers.
+        """
+        sp = self.eff_speed
+        if sp > 0:
+            factor = min(1.0, sp / self.SPEED_FACTOR_NORM)
+            if self.speed_fails > 0:
+                factor *= max(0.25, 1.0 - 0.35 * self.speed_fails)
+            return factor
+        if self._effective_socks():
+            return self.SPEED_NEWBORN_FACTOR
+        if self.speed_fails > 0:
+            return 0.0
+        if self.checks_ok < 5:
+            return self.SPEED_NEWBORN_FACTOR
+        return 0.0
+
     def _base_points(self) -> float:
         sr = self.sr_ewma if self.sr_ewma >= 0 else self.success_rate
         lat = self.latency_ewma if self.latency_ewma >= 0 else self.latency_avg
         pts = sr * 40.0
         pts += 20.0 * max(0.0, 1.0 - lat / 10.0)
-        pts += self._speed_points()
         if self.ssl_supported:
             pts += 5.0
         if self.supports_connect:
@@ -259,21 +324,11 @@ class ProxyRating:
         sr = self.sr_ewma if self.sr_ewma >= 0 else (
             self.success_rate if self.checks_total else 0.0)
         lat = self.latency_ewma if self.latency_ewma >= 0 else self.latency_avg
-        sp = self.speed_ewma if self.speed_ewma >= 0 else self.speed_avg
-        if sp > 0:
-            speed_pts = 25.0 * (min(sp, 1600.0) / 1600.0) ** 0.5
-            if self.speed_fails > 0:
-                speed_pts *= max(0.0, 1.0 - 0.35 * self.speed_fails)
-        elif self._effective_socks():
-            speed_pts = 12.0
-        elif self.speed_fails == 0 and self.checks_ok < 5:
-            speed_pts = 12.5
-        else:
-            speed_pts = 0.0
+        sp = self.eff_speed
+        speed_factor = self._speed_factor()
         base = [
             {"key": "reliability", "value": round(sr * 40.0, 1), "max": 40},
             {"key": "latency", "value": round(20.0 * max(0.0, 1.0 - lat / 10.0), 1), "max": 20},
-            {"key": "speed", "value": round(speed_pts, 1), "max": 25},
             {"key": "ssl", "value": 5.0 if self.ssl_supported else 0.0, "max": 5},
             {"key": "connect", "value": 5.0 if self.supports_connect else 0.0, "max": 5},
             {"key": "socks", "value": 5.0 if self._effective_socks() else 0.0, "max": 5},
@@ -286,7 +341,9 @@ class ProxyRating:
             fraud_note = "FAILCHECK"
         else:
             fraud_note = f"{self.fraud_verdict} {self.fraud_score}"
+        speed_note = f"{round(sp, 1)} KB/s" if sp > 0 else "no speed"
         mults = [
+            {"key": "speed", "factor": round(speed_factor, 2), "note": speed_note},
             {"key": "fraud", "factor": round(f_fraud, 2), "note": fraud_note},
             {"key": "mitm", "factor": 0.5 if self.mitm_suspect else 1.0,
              "note": "" },

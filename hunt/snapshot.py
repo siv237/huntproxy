@@ -40,7 +40,7 @@ class SnapshotMixin:
         # raise "dictionary changed size during iteration".
         all_ratings = list(self.ratings.values())
         alive = [r for r in all_ratings
-                 if (r.last_status == "ok" or r.in_grace) and not r.in_blacklist]
+                 if r.pool_eligible]
         sorted_alive = sorted(alive, key=lambda r: r.score, reverse=True)
         dead = [r for r in all_ratings
                 if r.last_status == "failed" and not r.in_grace]
@@ -117,7 +117,7 @@ class SnapshotMixin:
                 return cached[1]
             all_ratings = list(self.ratings.values())
             alive = [r for r in all_ratings
-                     if (r.last_status == "ok" or r.in_grace) and not r.in_blacklist]
+                     if r.pool_eligible]
             counts = Counter((r.country_code or r.country or "?") for r in alive)
             total = sum(counts.values()) or 1
             result = []
@@ -278,8 +278,7 @@ class SnapshotMixin:
 
     def _heatmap_alive(self) -> list:
         alive = [r for r in self.ratings.values()
-                 if (r.last_status == "ok" or r.in_grace)
-                 and not r.in_blacklist
+                 if r.pool_eligible
                  and r.speed_count > 0
                  and r.speed_avg > 0]
         alive.sort(key=lambda r: r.score, reverse=True)
@@ -423,7 +422,7 @@ class SnapshotMixin:
     def _push_history(self):
             self._flush_traffic_buffer(wait=True)
             alive = sum(1 for r in self.ratings.values()
-                        if (r.last_status == "ok" or r.in_grace) and not r.in_blacklist)
+                        if r.pool_eligible)
             dead = sum(1 for r in self.ratings.values()
                        if r.last_status == "failed" and not r.in_grace)
             pool_sr = (alive / max(1, alive + dead)) * 100

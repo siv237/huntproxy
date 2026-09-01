@@ -31,7 +31,7 @@ class HealthCheckMixin:
 
         try:
             candidates = [r for r in self.ratings.values()
-                          if (r.last_status == "ok" or r.in_grace) and not r.in_blacklist]
+                          if r.pool_eligible]
             if not candidates:
                 self._emit("No candidates for health check", "info")
             else:

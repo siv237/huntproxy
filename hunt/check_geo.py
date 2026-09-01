@@ -46,12 +46,39 @@ class CheckGeoMixin:
                 return {}
             result = {
                 "country": data.get("country", ""),
+                "country_code": data.get("countryCode", ""),
                 "city": data.get("city", ""),
                 "isp": data.get("isp", ""),
+                "hosting": bool(data.get("hosting")),
+                "proxy": bool(data.get("proxy")),
+                "mobile": bool(data.get("mobile")),
             }
             self._geo_cache[ip] = result
             return result
 
+
+    async def _authoritative_egress(self, reported_ip: str, reported_cc: str):
+        """Verify a proxy's self-reported egress against a direct ip-api lookup.
+
+        A proxy that returns a forged ip-api response (the "geo-spoofing"
+        attack) claims a country/flags that its real egress IP does not have.
+        We resolve the reported egress IP directly (outside the proxy) and
+        reject the proxy when the direct country code contradicts what the
+        proxy reported. Returns (ok, country, country_code, flags) where
+        ok=False means the proxy misrepresents its egress and must not reach
+        the rating. flags carries the authoritative hosting/proxy/mobile bits
+        for fraud scoring. Fail-open when the direct lookup yields nothing
+        (transient ip-api outage must not evict a genuine proxy).
+        """
+        direct = await self._resolve_geo(reported_ip) if reported_ip else {}
+        cc = direct.get("country_code", "")
+        if cc and reported_cc and cc != reported_cc:
+            return False, "", "", {}
+        return True, direct.get("country", ""), cc, {
+            "hosting": bool(direct.get("hosting")),
+            "proxy": bool(direct.get("proxy")),
+            "mobile": bool(direct.get("mobile")),
+        }
 
     async def _socks_egress(self, host: str, port: int) -> dict:
             try:

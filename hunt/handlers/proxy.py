@@ -49,7 +49,7 @@ class ProxyHandlers:
         # selected as upstream but with a reduced score. Only operator-curated
         # manual blacklists are excluded here.
         ratings = [r for r in self.state.ratings.values()
-                   if (r.last_status == "ok" or r.in_grace) and not r.in_blacklist]
+                   if r.pool_eligible]
         ratings.sort(key=lambda r: r.score, reverse=True)
         ip_bl_total = len(self.state.get_ip_blacklist_sources())
         result = []
@@ -120,7 +120,7 @@ class ProxyHandlers:
 
     async def _handle_proxy_next(self, raw_path, body):
         alive = [r for r in self.state.ratings.values()
-                 if (r.last_status == "ok" or r.in_grace) and not r.in_blacklist]
+                 if r.pool_eligible]
         alive.sort(key=lambda r: r.score, reverse=True)
         current = self.server.proxy.active_proxy_addr
         next_proxy = None
@@ -287,7 +287,7 @@ class ProxyHandlers:
         return await self._proxies_list(qs)
 
     def _proxy_alive(self, r):
-        return (r.last_status == "ok" or r.in_grace) and not r.in_blacklist
+        return r.pool_eligible
 
     async def _proxies_grouped(self, qs):
         all_proxies = list(self.state.ratings.values())

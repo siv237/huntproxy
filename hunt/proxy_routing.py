@@ -199,7 +199,7 @@ class ProxyRouteMixin:
 
     def _build_pool(self, need_connect: bool) -> list:
         def _eligible(r: ProxyRating) -> bool:
-            if r.in_blacklist or not (r.last_status == "ok" or r.in_grace):
+            if not r.pool_eligible:
                 return False
             return need_connect is False or r.supports_connect or r.protocol in ("socks4", "socks5")
 

@@ -42,16 +42,21 @@ class CheckSslMixin:
             if data is None:
                 return False, "", "", {}, 0.0, False
             ssl_latency = time.monotonic() - t0
-            country = data.get("country", "")
-            country_code = data.get("countryCode", "")
+            reported_ip = data.get("query", "")
+            reported_cc = data.get("countryCode", "")
+            ok, vcountry, vcc, flags = await self._authoritative_egress(reported_ip, reported_cc)
+            if not ok:
+                return False, "", "", {}, 0.0, False
+            country = vcountry or data.get("country", "")
+            country_code = vcc or reported_cc
             egress = {
-                "egress_ip": data.get("query", ""),
+                "egress_ip": reported_ip,
                 "egress_city": data.get("city", ""),
                 "egress_isp": data.get("isp", ""),
-                "egress_country": data.get("country", ""),
-                "egress_hosting": bool(data.get("hosting")),
-                "egress_proxy": bool(data.get("proxy")),
-                "egress_mobile": bool(data.get("mobile")),
+                "egress_country": country,
+                "egress_hosting": flags["hosting"],
+                "egress_proxy": flags["proxy"],
+                "egress_mobile": flags["mobile"],
             }
             return True, country, country_code, egress, ssl_latency, supports_connect
 

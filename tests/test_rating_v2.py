@@ -63,9 +63,9 @@ class TestScoreMatrix:
         weak.sr_ewma = 0.4
         weak.speed_ewma = 100.0
         # cap applies to the FINAL product, not the base:
-        # expected = base_points * clean_factor * mitm_penalty
-        strong_mitm = min(100.0, strong._base_points() * _CLEAN_FACTOR * 0.5)
-        weak_mitm = min(100.0, weak._base_points() * _CLEAN_FACTOR * 0.5)
+        # expected = base_points * speed_factor * clean_factor * mitm_penalty
+        strong_mitm = min(100.0, strong._base_points() * strong._speed_factor() * _CLEAN_FACTOR * 0.5)
+        weak_mitm = min(100.0, weak._base_points() * weak._speed_factor() * _CLEAN_FACTOR * 0.5)
         strong.mitm_suspect = True
         weak.mitm_suspect = True
         assert strong.score == pytest.approx(strong_mitm)
@@ -206,16 +206,19 @@ class TestSpeedPointsV2:
                              fraud_hosting=True)
         r.sr_ewma = 0.9
         r.latency_ewma = 1.0
-        assert r._speed_points() == 12.0
+        # SOCKS cannot use the HTTP speed servers: it gets a provisional
+        # speed factor even with no measurement (HTTP twin with no speed -> 0).
+        assert r._speed_factor() == hunt.ProxyRating.SPEED_NEWBORN_FACTOR
         http_twin = hunt.ProxyRating(address="1.2.3.4:8080",
                                      checks_total=10, checks_ok=9, last_status="ok",
                                      fraud_checked_ts=now,
                                      fraud_hosting=True)
         http_twin.sr_ewma = 0.9
         http_twin.latency_ewma = 1.0
-        # both twins share the DC flag multiplier (score 40 -> x0.9),
-        # so the +17 SOCKS advantage scales with it
-        assert r.score - http_twin.score == pytest.approx(17.0 * 0.9)
+        # DC-flag multiplier (score 40 -> x0.9) scales the whole product.
+        expected = (r._base_points() * r._speed_factor() * r._modifier_factor()
+                    - http_twin._base_points() * http_twin._speed_factor() * http_twin._modifier_factor())
+        assert r.score - http_twin.score == pytest.approx(expected)
 
     def test_speed_saturation_log_like(self):
         low = hunt.ProxyRating(address="1.2.3.4:8080")

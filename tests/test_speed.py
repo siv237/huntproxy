@@ -335,6 +335,14 @@ class TestHttpsProxyConnect:
             proxy.target_port = target.port
             await proxy.start()
             try:
+                # The fake proxy reports query=1.2.3.4 / countryCode=TL; the
+                # authoritative-egress guard must see a matching direct lookup
+                # (not a real ip-api call that would flag TL != AU as spoofing).
+                async def fake_geo(ip):
+                    return {"country": "Testland", "country_code": "TL",
+                            "city": "Test", "isp": "Test",
+                            "hosting": False, "proxy": False, "mobile": False}
+                state._resolve_geo = fake_geo
                 ok, country, country_code, egress, latency, supports_connect = await state._check_ssl(f"{proxy.host}:{proxy.port}")
                 assert ok is True
                 assert supports_connect is True

@@ -40,7 +40,7 @@ class CheckProxyMixin:
 
             connect_ok, mitm_suspect = await self._check_proxy_connect(host, port, is_socks)
 
-            if not connect_ok:
+            if not ok or not connect_ok:
                 return False, country, False, mitm_suspect, egress, listen, http_latency, country_code, False
             return True, country, True, mitm_suspect, egress, listen, http_latency, country_code, False
 
@@ -60,6 +60,20 @@ class CheckProxyMixin:
         egress = await self._socks_egress(host, port)
         country = egress.get("egress_country", "") if egress else ""
         country_code = country_code_from_name(country) if country else ""
+        if egress:
+            ok, vcountry, vcc, flags = await self._authoritative_egress(
+                egress.get("egress_ip", ""), country_code)
+            if not ok:
+                return False, country, False, False, egress or {}, None, 0.0, country_code
+            if vcountry:
+                country = vcountry
+                country_code = vcc or country_code
+            egress = dict(egress)
+            egress["egress_hosting"] = flags["hosting"]
+            egress["egress_proxy"] = flags["proxy"]
+            egress["egress_mobile"] = flags["mobile"]
+            if vcountry:
+                egress["egress_country"] = country
         if not country:
             country = "Unknown"
         http_latency = time.monotonic() - t0
@@ -92,17 +106,22 @@ class CheckProxyMixin:
             listen = await listen_task
             return False, "", False, False, {}, listen, 0.0, ""
 
-        country = data.get("country", "")
-        country_code = data.get("countryCode", "")
+        reported_ip = data.get("query", "")
+        reported_cc = data.get("countryCode", "")
         http_latency = time.monotonic() - t0
+        ok, vcountry, vcc, flags = await self._authoritative_egress(reported_ip, reported_cc)
+        if not ok:
+            return False, data.get("country", ""), False, False, {}, None, 0.0, reported_cc
+        country = vcountry or data.get("country", "")
+        country_code = vcc or reported_cc
         egress = {
-            "egress_ip": data.get("query", ""),
+            "egress_ip": reported_ip,
             "egress_city": data.get("city", ""),
             "egress_isp": data.get("isp", ""),
-            "egress_country": data.get("country", ""),
-            "egress_hosting": bool(data.get("hosting")),
-            "egress_proxy": bool(data.get("proxy")),
-            "egress_mobile": bool(data.get("mobile")),
+            "egress_country": country,
+            "egress_hosting": flags["hosting"],
+            "egress_proxy": flags["proxy"],
+            "egress_mobile": flags["mobile"],
         }
         return True, country, False, False, egress, None, http_latency, country_code
 
