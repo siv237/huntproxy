@@ -30,7 +30,7 @@ class RoutingMixin:
             return {
                 "enabled": enabled,
                 "default_route": default_route,
-                "fallback_pool": self._routing_get("fallback_pool", "true") == "true",
+                "fallback_pool": self._routing_get("fallback_pool", "false") == "true",
                 "lists": lists,
                 "custom_proxies": self.get_custom_proxies(),
             }

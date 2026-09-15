@@ -344,6 +344,7 @@ class ProxyRunner(ProxyRouteMixin):
             "bind_host": self.proxy_host,
             "active_proxy": self.selected_proxy.to_dict() if self.selected_proxy else None,
             "direct_mode": self.direct_mode,
+            "pool_fallback": self._pool_fallback_enabled(),
             "connections": len(self.log),
             "connections_ok": ok,
             "connections_failed": failed,

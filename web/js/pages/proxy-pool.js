@@ -86,6 +86,24 @@ router.register('proxy-pool', (container) => {
     card.id = 'selected-proxy-card';
     card.appendChild(ui.el('div', 'card-title', { text: t('page.proxyPool.selectedUpstream'), style: 'margin-bottom:8px' }));
 
+    const fbRow = ui.el('div', '', { style: 'display:flex;align-items:center;gap:8px;margin-bottom:8px' });
+    const fbCb = ui.el('input', '', { id: 'pool-fallback-checkbox', type: 'checkbox', style: 'display:none' });
+    const fbToggle = ui.el('div', 'route-toggle', { id: 'pool-fallback-toggle', title: t('page.proxyPool.fallbackHint') });
+    fbToggle.addEventListener('click', () => {
+      const next = !fbToggle.classList.contains('on');
+      api.routingFallback(next).then(() => {
+        fbToggle.classList.toggle('on', next);
+        fbCb.checked = next;
+        app.toast(next ? t('page.proxyPool.fallbackOn') : t('page.proxyPool.fallbackOff'));
+      }).catch(e => app.toast(t('common.error', {message: e.message}), 'error'));
+    });
+    const fbText = ui.el('span', '', { style: 'font-size:12px;color:var(--text-secondary)', text: t('page.proxyPool.fallbackLabel') });
+    fbText.title = t('page.proxyPool.fallbackHint');
+    fbRow.appendChild(fbCb);
+    fbRow.appendChild(fbToggle);
+    fbRow.appendChild(fbText);
+    card.appendChild(fbRow);
+
     const body = ui.el('div', '', { id: 'sel-proxy-body' });
     body.innerHTML = '<div class="empty" style="padding:8px;font-size:11px">No upstream selected</div>';
     card.appendChild(body);
@@ -203,6 +221,8 @@ router.register('proxy-pool', (container) => {
   function updateSelectedProxy(ps) {
     const body = document.getElementById('sel-proxy-body');
     if (!body) return;
+    const fbToggle = document.getElementById('pool-fallback-toggle');
+    if (fbToggle && ps) fbToggle.classList.toggle('on', !!ps.pool_fallback);
     const ap = ps && ps.active_proxy;
     if (!ap || (ps && ps.direct_mode)) {
       body.innerHTML = `<div class="empty" style="padding:8px;font-size:11px">${t('page.proxyPool.noUpstreamSelected')}</div>`;

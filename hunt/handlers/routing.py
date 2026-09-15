@@ -32,7 +32,7 @@ class RoutingHandlers:
 
     async def _handle_routing_fallback(self, raw_path, body):
         data = _json_body(body)
-        enabled = bool(data.get("enabled", True))
+        enabled = bool(data.get("enabled", False))
         self.state.routing_set_fallback(enabled)
         return json.dumps({"ok": True, "fallback_pool": enabled}), 200, "application/json"
 

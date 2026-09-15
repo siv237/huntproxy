@@ -213,7 +213,7 @@ router.register('routes', (container) => {
     const fb = document.getElementById('routing-fallback-toggle');
 
     if (toggle && status) toggle.checked = !!status.enabled;
-    if (fb && status) fb.checked = status.fallback_pool !== false;
+    if (fb && status) fb.checked = !!status.fallback_pool;
     if (badge && status) {
       if (status.enabled) {
         badge.textContent = 'ON';

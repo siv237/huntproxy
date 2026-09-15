@@ -38,9 +38,10 @@ class ProxyRouteMixin:
         """Strict-mode switch: when False a failing selected/specific proxy
         must not silently reroute user traffic to another proxy."""
         try:
-            return self._routing_get("fallback_pool", "true") == "true"
+            return self.state._routing_get("fallback_pool", "false") == "true"
         except Exception:
-            return True
+            logger.debug("pool fallback check failed", exc_info=True)
+            return False
 
     async def _connect_by_route(self, route: str, host: str, port: int, chain: list = None, need_connect: bool = True):
         if chain is None:
@@ -69,8 +70,6 @@ class ProxyRouteMixin:
                 if not self._pool_fallback_enabled():
                     return None
                 chain.append(f"proxy:{addr} (fallback→pool)")
-            elif not self._pool_fallback_enabled():
-                return None
             return await self._connect_via_pool(host, port, chain, need_connect)
         if route == "pool" or route == "":
             return await self._connect_via_pool(host, port, chain, need_connect)

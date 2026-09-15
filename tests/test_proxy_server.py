@@ -314,9 +314,10 @@ class TestProxyServer:
         asyncio.run(run())
 
     def test_proxy_route_falls_back_to_pool(self, state, monkeypatch):
-        """Selected proxy fails after retries → falls back to pool."""
+        """Selected proxy fails after retries → falls back to pool (opt-in)."""
         async def run():
             monkeypatch.setattr(proxy_routing, "_RETRY_DELAYS", (0.0, 0.0, 0.0))
+            state._routing_set("fallback_pool", "true")
 
             async def good_proxy_handler(reader, writer):
                 line = await reader.readline()
@@ -359,9 +360,10 @@ class TestProxyServer:
         asyncio.run(run())
 
     def test_connect_fallback_active_proxy_to_pool(self, state, monkeypatch):
-        """_connect_fallback: active_proxy fails → pool fallback."""
+        """_connect_fallback: active_proxy fails → pool fallback (opt-in)."""
         async def run():
             monkeypatch.setattr(proxy_routing, "_RETRY_DELAYS", (0.0, 0.0, 0.0))
+            state._routing_set("fallback_pool", "true")
 
             async def good_proxy_handler(reader, writer):
                 line = await reader.readline()
@@ -403,6 +405,65 @@ class TestProxyServer:
             await good_server.wait_closed()
 
         asyncio.run(run())
+
+    def test_selected_proxy_strict_no_fallback(self, state, monkeypatch):
+        """Strict default: selected proxy down → NO pool fallback.
+
+        The server must hold the selected upstream and return an error to
+        the client instead of silently rerouting to another pool proxy.
+        Opting in via routing_set_fallback(True) restores the fallback.
+        """
+        async def run():
+            monkeypatch.setattr(proxy_routing, "_RETRY_DELAYS", (0.0, 0.0, 0.0))
+
+            async def good_proxy_handler(reader, writer):
+                line = await reader.readline()
+                while True:
+                    hdr = await reader.readline()
+                    if hdr in (b"\r\n", b"\n", b""):
+                        break
+                writer.write(b"HTTP/1.1 200 Connection Established\r\n\r\n")
+                await writer.drain()
+                await asyncio.sleep(5)
+                writer.close()
+
+            good_server = await asyncio.start_server(good_proxy_handler, "127.0.0.1", 0)
+            good_addr = f"127.0.0.1:{good_server.sockets[0].getsockname()[1]}"
+
+            bad_addr = "127.0.0.1:1"
+            state.ratings[bad_addr] = hunt.ProxyRating(
+                address=bad_addr, protocol="http", last_status="ok",
+                checks_total=1, checks_ok=1, supports_connect=True)
+            state.ratings[good_addr] = hunt.ProxyRating(
+                address=good_addr, protocol="http", last_status="ok",
+                checks_total=1, checks_ok=1, supports_connect=True)
+
+            runner = hunt.ProxyRunner(state, "127.0.0.1")
+            runner.active_proxy_addr = bad_addr
+
+            result = await runner._connect_fallback("example.com", 443, [], need_connect=True)
+            assert result is None, "strict mode must not reroute to the pool"
+
+            result = await runner._connect_by_route("pool_selected", "example.com", 443, [])
+            assert result is None, "strict mode must not reroute to the pool"
+
+            result = await runner._connect_by_route(f"proxy:{bad_addr}", "example.com", 443, [])
+            assert result is None, "strict mode must not reroute to the pool"
+
+            state.routing_set_fallback(True)
+            result = await runner._connect_fallback("example.com", 443, [], need_connect=True)
+            assert result is not None, "opt-in fallback must work"
+
+            good_server.close()
+            await good_server.wait_closed()
+
+        asyncio.run(run())
+
+    def test_pool_fallback_default_is_strict(self, state):
+        """Fresh state (no routing_config row) → fallback disabled."""
+        runner = hunt.ProxyRunner(state, "127.0.0.1")
+        assert runner._pool_fallback_enabled() is False
+        assert state.get_routing_status()["fallback_pool"] is False
 
 
 class TestUnstableProxyConnect:
