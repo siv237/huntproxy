@@ -14,7 +14,7 @@ _CONNECT_TIMEOUT = 5.0
 class ProxyRouteMixin:
     def _is_self_target(self, host: str, port: int) -> bool:
         host = (host or "").lower()
-        if host in ("127.0.0.1", "localhost", "::1", "0.0.0.0", "[::1]", ""):
+        if host in ("127.0.0.1", "localhost", "::1", "0.0.0.0", "[::1]", ""):  # nosec B104 — string comparison, not a socket bind
             ports = {self.port}
             for attr in ("_socks5_port", "_transparent_port", "_proxy_port"):
                 p = getattr(self.state, attr, None)

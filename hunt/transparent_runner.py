@@ -91,7 +91,7 @@ class TransparentRunner:
         connections before we delegate to the upstream connector.
         """
         host = (host or "").lower()
-        if host in ("127.0.0.1", "localhost", "::1", "0.0.0.0", "[::1]", ""):
+        if host in ("127.0.0.1", "localhost", "::1", "0.0.0.0", "[::1]", ""):  # nosec B104 — string comparison, not a socket bind
             ports = {self.port}
             pr = getattr(self.state, "proxy_runner", None)
             if pr is not None:
