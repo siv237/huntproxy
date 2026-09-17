@@ -8,6 +8,7 @@ __pycache__/
 *.pid
 
 data/
+data[0-9]*/
 
 # Local installation config (tracked template: config.example.yaml)
 config.yaml
