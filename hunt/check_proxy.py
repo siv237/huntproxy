@@ -159,12 +159,9 @@ class CheckProxyMixin:
             except Exception:
                 return False, False
             try:
-                return await self._check_mitm_via(r, w, port, is_socks)
+                return await self._check_mitm_via(r, w, port, is_socks, host=host)
             finally:
-                try:
-                    w.close()
-                except Exception:
-                    logger.debug("suppressed", exc_info=True)
+                await self._close_mitm_writer(w)
 
 
     @staticmethod

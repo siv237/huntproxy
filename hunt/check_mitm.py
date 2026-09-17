@@ -85,28 +85,59 @@ class CheckMitmMixin:
                 logger.debug("suppressed", exc_info=True)
                 return False
 
-    async def _check_mitm_via(self, r, w, port: int, is_socks: bool) -> tuple:
-            """Multi-target MITM probe over one open connection to the proxy.
+    @staticmethod
+    async def _close_mitm_writer(w) -> None:
+            try:
+                if w is not None:
+                    w.close()
+                    await w.wait_closed()
+            except Exception:
+                logger.debug("suppressed", exc_info=True)
+
+    async def _check_mitm_via(self, r, w, port: int, is_socks: bool,
+                              host: str | None = None) -> tuple:
+            """Multi-target MITM probe.
 
             Returns (connect_ok, mitm_suspect). connect_ok means at least one
             tunnel succeeded (the proxy forwards traffic at all). mitm_suspect
             requires every reached target to fail certificate verification
             with >=2 targets reached, so one flaky/blocked target alone can
             never flag a proxy.
+
+            When ``host`` is given each target gets a fresh proxy connection:
+            a failed TLS verification tears the tunnel down, so reusing the
+            connection left every target after the first unreachable and
+            silently kept ``reached`` below the detection threshold — MITMing
+            proxies were never flagged.
             """
             proto = self._mitm_proto(port, is_socks)
+            owns = host is not None
             reached = bad = 0
-            for i, host in enumerate(self._mitm_hosts()):
-                if i:
-                    await self._flush_tunnel_noise(r)
-                if not await self._tunnel_to(r, w, host, proto):
-                    continue
-                reached += 1
-                verdict = await self._check_mitm_tls_over(w, host)
-                if verdict == "clean":
-                    return True, False
-                if verdict == "mitm":
-                    bad += 1
+            try:
+                for i, target in enumerate(self._mitm_hosts()):
+                    if i:
+                        if owns:
+                            await self._close_mitm_writer(w)
+                            try:
+                                r, w = await self._outbound_connect(
+                                    host, port, timeout=self.effective_timeout)
+                            except Exception:
+                                logger.debug("suppressed", exc_info=True)
+                                w = None
+                                continue
+                        else:
+                            await self._flush_tunnel_noise(r)
+                    if not await self._tunnel_to(r, w, target, proto):
+                        continue
+                    reached += 1
+                    verdict = await self._check_mitm_tls_over(w, target)
+                    if verdict == "clean":
+                        return True, False
+                    if verdict == "mitm":
+                        bad += 1
+            finally:
+                if owns:
+                    await self._close_mitm_writer(w)
             if reached >= 2 and bad == reached:
                 if await self._channel_tls_baseline_trusted():
                     return True, True

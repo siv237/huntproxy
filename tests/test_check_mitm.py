@@ -34,6 +34,26 @@ def _run(engine):
     return asyncio.run(go())
 
 
+class _ReconnectEngine(_Engine):
+    """Engine that records fresh proxy connections opened between targets."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.opens = 0
+
+    async def _outbound_connect(self, host, port, *, timeout=None):
+        self.opens += 1
+        return object(), _Writer()
+
+
+class _Writer:
+    def close(self):
+        pass
+
+    async def wait_closed(self):
+        pass
+
+
 class TestCheckMitmVia:
     def test_clean_on_first_target_short_circuits(self):
         e = _Engine(
@@ -87,6 +107,21 @@ class TestCheckMitmVia:
         assert connect_ok is False
         assert mitm is False
         assert len(e.probed) == 3
+
+    def test_reconnects_between_targets_when_host_known(self):
+        e = _ReconnectEngine(
+            tunnels={"a.test": True, "b.test": True},
+            verdicts={"a.test": "mitm", "b.test": "mitm"},
+        )
+
+        async def go():
+            return await e._check_mitm_via(
+                object(), _Writer(), 8080, is_socks=False, host="proxy.test")
+
+        connect_ok, mitm = asyncio.run(go())
+        assert connect_ok is True
+        assert mitm is True
+        assert e.opens == 2
 
     def test_proto_selection_by_port(self):
         assert CheckMitmMixin._mitm_proto(4145, True) == "socks4"
