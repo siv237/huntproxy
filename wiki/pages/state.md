@@ -1,6 +1,6 @@
 ---
 updated: 2026-09-17
-commit: b028d67
+commit: 06630a5
 tags: [entity]
 ---
 
@@ -8,13 +8,13 @@ tags: [entity]
 
 ## `HuntState` — композиция миксинов
 
-`HuntState` (`hunt/state.py:46`) собирается множественным наследованием из ~30
-миксинов. Это главный приём архитектуры: один объект-фасад, но каждая
+`HuntState` (`hunt/state.py:46`) собирается множественным наследованием из 31
+миксина. Это главный приём архитектуры: один объект-фасад, но каждая
 подсистема живёт в своём файле. Полный список миксинов и их назначение:
 
 | Файл | Миксин | Отвечает за |
 |---|---|---|
-| `hunt/db.py` | `DbMixin` | SQLite-соединения, фоновые writer'ы, `_init_db` |
+| `hunt/db.py` | `DbMixin` | SQLite-соединения, `_init_db`; writer-классы — `hunt/db_writer.py` |
 | `hunt/events.py` | `EventsMixin` | `_emit`, ring-буфер, long-poll |
 | `hunt/snapshot.py` | `SnapshotMixin` | `get_snapshot`, страны, история, heatmap |
 | `hunt/hunt_control.py` | `HuntControlMixin` | start/stop/pause/resume/skip |
@@ -23,13 +23,15 @@ tags: [entity]
 | `hunt/health_loops.py` | `HealthLoopsMixin` | legacy-циклы (не запускаются) |
 | `hunt/health_check.py` | `HealthCheckMixin` | health-check живых, revalidate |
 | `hunt/check_validation.py` | `CheckValidationMixin` | `_validate_all`, `_check_one`, merge/fast-fail |
+| `hunt/check_validation_helpers.py` | `CheckValidationHelpersMixin` | `_record_check_result`, fast-fail, speed-замер |
 | `hunt/check_proxy.py` | `CheckProxyMixin` | HTTP/SOCKS-пробы |
 | `hunt/check_ssl.py` | `CheckSslMixin` | TLS-прокси |
 | `hunt/check_speed.py` | `CheckSpeedMixin` | замер скорости |
 | `hunt/check_mitm.py` | `CheckMitmMixin` | multi-target TLS-верификация MITM |
 | `hunt/check_geo.py` | `CheckGeoMixin` | `_resolve_geo`, `_authoritative_egress` |
 | `hunt/fraudscore.py` | `FraudScoreMixin` | proxycheck.io |
-| `hunt/check_rating.py` | `CheckRatingMixin` | `_update_rating`, применение результатов |
+| `hunt/check_rating.py` | `CheckRatingMixin` | `_update_rating`, `_record_traffic_fail`, `_create_rating` |
+| `hunt/check_rating_apply.py` | `CheckRatingApplyMixin` | `_apply_ok_result/egress/listen/fraud` |
 | `hunt/blacklist.py` | `BlacklistMixin` | ручной чёрный список |
 | `hunt/ip_blacklist.py` | `IPBlacklistMixin` | матчинг egress-IP по скачанным спискам |
 | `hunt/proxy_sources.py` | `ProxySourcesMixin` | источники прокси (CRUD) |
@@ -41,7 +43,8 @@ tags: [entity]
 | `hunt/actions.py` | `ActionsMixin` | аудит-лог действий |
 | `hunt/backup.py` | `BackupMixin` | backup/restore по группам |
 | `hunt/favorites.py` | `FavoritesMixin` | избранное |
-| `hunt/state_persistence.py` | `StatePersistenceMixin` | `_save_state`, `_load_state` |
+| `hunt/state_persistence.py` | `StatePersistenceMixin` | `_save_state`, `_load_state`, рейтинги/ЧС runtime |
+| `hunt/state_working.py` | `StateWorkingMixin` | working-set: `_load/_save_working_file`, миграция |
 | `hunt/state_download.py` | `StateDownloadMixin` | экспорт рабочих списков |
 | `hunt/pac.py` | `PacMixin` | генерация PAC |
 | `hunt/proxy_ping.py` | `ProxyPingMixin` | пинг активного маршрута |
@@ -63,7 +66,7 @@ tags: [entity]
 состоянием пула.
 
 Запись идёт через фоновые writer'ы (`_DbWriter`/`_SharedConn`), есть очередь
-`_queue_traffic_log`, которая попутно кормит `TrafficStats` (`hunt/db.py:124-130`).
+`_queue_traffic_log`, которая попутно кормит `TrafficStats` (`hunt/db.py:18-25`).
 
 ## События и действия
 

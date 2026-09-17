@@ -1,6 +1,6 @@
 ---
 updated: 2026-09-17
-commit: b028d67
+commit: 06630a5
 tags: [entity]
 ---
 
@@ -63,7 +63,8 @@ API: `/api/ip-blacklists`, `/api/ip-blacklist/entries|matches`.
 
 ## Экспорт/импорт
 
-- `hunt/state_download.py` — `_save_working_file`, экспорт рабочих списков
+- `hunt/state_working.py` — `_load/_save_working_file` (рабочий набор);
+  `hunt/state_download.py` — экспорт рабочих списков
   (`data/working.txt`, `blacklist.txt`, `ratings.json`).
 - `/api/export` (`hunt/handlers/hunt.py:51`), `/api/import` (`:58`).
 - `/api/download/<file>` (`hunt/handlers/core.py:125`) — whitelist файлов.

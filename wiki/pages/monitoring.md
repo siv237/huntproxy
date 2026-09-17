@@ -1,6 +1,6 @@
 ---
 updated: 2026-09-17
-commit: b028d67
+commit: 06630a5
 tags: [entity]
 ---
 
@@ -57,7 +57,7 @@ API `GET /api/actions?limit=`. UI — страница `actions.js`.
 - `TrafficStats` (`hunt/traffic_stats.py`) — in-memory часовой роллап
   `_hours[hour][upstream]`, окно 35 суток, `prune`/`totals`/`by_upstream`/
   `load_from_db`. Обновляется O(1) из `_queue_traffic_log`
-  (`hunt/db.py:124-130`), грузится при старте (`hunt/state.py:211-215`).
+  (`hunt/db.py:18-25`), грузится при старте (`hunt/state.py:211-215`).
 - Логирование запросов — `traffic_log`, кольцевой буфер в раннерах.
 - API: `/api/traffic/live`, `/api/traffic`, `/api/requests`, `/api/clients`
   (+rDNS), `/api/domains`, `/api/errors`, `/api/traffic/routes`,
@@ -79,7 +79,8 @@ API `GET /api/actions?limit=`. UI — страница `actions.js`.
   чистка retention задачей `history`.
 - `switch_history.py` — история переключений прокси: `record_switch` (`:21`),
   `enrich_switch_history` (`:29`) со схлопыванием одинаковых action, метаданными
-  rating и трафиком за период (`_traffic_by_period`, `:106`), TTL-мемоизация 10с.
+  rating и трафиком за период (`_traffic_by_period`,
+  `hunt/switch_history_stats.py:22`), TTL-мемоизация 10с.
 
 ## См. также
 

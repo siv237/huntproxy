@@ -1,6 +1,6 @@
 ---
 updated: 2026-09-17
-commit: b028d67
+commit: 06630a5
 tags: [concept]
 ---
 
@@ -82,7 +82,7 @@ proxy ×0.60, 100 → ×0.30.
 `fraud_failcheck` (`hunt/models.py:130-137`): флагов нет или они старше
 `FRAUD_FRESH_SECONDS = 6ч` → множитель 0.30 (fail-closed). `fraud_score_raw`
 от proxycheck.io информационный — в формулу не входит, пишется только в
-`fraud_score_raw` (`hunt/check_rating.py:145-156`).
+`fraud_score_raw` (`hunt/check_rating_apply.py:42-52`).
 
 ### Grace-период
 

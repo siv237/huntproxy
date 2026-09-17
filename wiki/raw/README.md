@@ -11,7 +11,7 @@
 
 Где что лежит:
 
-- **Код:** `hunt/**` (66 модулей, карта — `MODULES.md`).
+- **Код:** `hunt/**` (78 модулей, карта — `MODULES.md`).
 - **Документация:** `README*.md`, `docs/*.md`, `llm-wiki.md`.
 - **История:** `git log` (269 коммитов на `b028d67`).
 - **Конфиги:** `config.example.yaml`, `sources/default.ini`, `pyproject.toml`,

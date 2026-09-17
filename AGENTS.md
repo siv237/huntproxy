@@ -70,7 +70,7 @@ Always use the project test runner instead of invoking `pytest` directly:
 ./test.sh --arch         # architecture invariants (file sizes, complexity, silent-except, bandit, coverage)
 ./test.sh --security     # SAST (bandit) + SCA (pip-audit) + HTTP fuzzing (hypothesis)
 ./test.sh --quality      # arch + router + executor contracts
-./test.sh --coverage     # functional + branch coverage report
+./test.sh --coverage     # functional + branch coverage (enforces 58% baseline)
 ./test.sh --map          # regenerate MODULES.md from source
 ./test.sh --all          # everything including slow + arch
 ```
@@ -108,13 +108,13 @@ Thresholds only move one direction: complexity/file-size/coupling **down**, cove
 
 ## Project structure
 
-`MODULES.md` (auto-generated, run `./test.sh --map` to refresh) has the full live map: 66 modules, line counts, public APIs, import coupling. Read it first when looking for where something lives.
+`MODULES.md` (auto-generated, run `./test.sh --map` to refresh) has the full live map: 78 modules, line counts, public APIs, import coupling. Read it first when looking for where something lives.
 
 Key facts not obvious from filenames:
 
 - `hunt.py` — thin entry point; re-exports from `hunt` package, runs `main()`.
-- `hunt/state.py` — `HuntState` class, composed from ~30 mixins (db, events, snapshot, blacklist, checking, etc.). Each mixin is its own file (`hunt/db.py`, `hunt/events.py`, `hunt/check_*.py`, `hunt/health_*.py`, etc.).
-- `hunt/server.py` (346 lines) — `HuntServer` + route registration. Actual dispatch via `hunt/router.py` (75 lines, zero deps). Handlers split into `hunt/handlers/*.py` (11 domain modules).
+- `hunt/state.py` — `HuntState` class, composed from 31 mixins (db, events, snapshot, blacklist, checking, etc.). Each mixin is its own file (`hunt/db.py`, `hunt/events.py`, `hunt/check_*.py`, `hunt/health_*.py`, etc.); some mixins delegate to helper mixins to stay under the size budget (`check_validation_helpers.py`, `check_rating_apply.py`, `state_working.py`).
+- `hunt/server.py` (346 lines) — `HuntServer` + route registration. Actual dispatch via `hunt/router.py` (75 lines, zero deps). Handlers split into `hunt/handlers/*.py` (16 modules: domain handlers + extracted helper mixins such as `proxy_groups.py` and the `traffic_*` family).
 - `hunt/task_executor.py` — separates task planning from execution via registry.
 - `hunt/check_*.py` (7 files) — proxy checking pipeline, split from former `checking.py` monolith.
 - `hunt/hunt_*.py`, `hunt/health_*.py` — hunt cycle and health loop logic, split from former `health.py`.

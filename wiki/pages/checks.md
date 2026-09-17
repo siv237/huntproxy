@@ -1,6 +1,6 @@
 ---
 updated: 2026-09-17
-commit: b028d67
+commit: 06630a5
 tags: [concept]
 ---
 
@@ -39,7 +39,8 @@ tags: [concept]
    при падении HTTP берётся SSL-результат; для не-SOCKS без CONNECT `ok=False`.
 6. Fast-fail при `fast_fail and not ok and not ssl_ok` (`:170-176`), авто-пауза.
 7. `_measure_check_speed` при успехе (`:183`).
-8. `_record_check_result` (`:243-282`): счётчики, `_update_rating`, прогресс.
+8. `_record_check_result` (`hunt/check_validation_helpers.py:55-90`): счётчики,
+   `_update_rating`, прогресс.
 
 ## Пробы
 

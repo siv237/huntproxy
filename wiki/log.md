@@ -26,3 +26,22 @@ Append-only журнал **операций вики** (ingest / query / lint), 
 - `commit` во frontmatter всех страниц поднят до `b028d67`; исправлены
   расхождения (источников 23, тест-модулей 38) и stale-утверждения в `AGENTS.md`
   (66 модулей, ~30 миксинов, 11 handler-модулей, no-op pre-commit).
+
+## [2026-09-17] ingest | Разбиение модулей по arch-тестам + security
+
+- Устранены нарушения arch-тестов: разбиты `handlers/traffic.py` (808→240, на
+  `traffic_common/_detail/_report/_summary.py`), `handlers/proxy.py` (groups),
+  `check_validation.py` (helpers), `check_rating.py` (apply), `state_persistence.py`
+  (working), `db.py` (writer), `proxy_runner.py` (http), `switch_history.py`
+  (stats); новые миксины внесены в [state](pages/state.md).
+- `_summary_payload` разбит на хелперы — CC в норме; writer-классы — в `db_writer.py`.
+- Security: добавлены `# nosec` с обоснованиями (B608/B104); `bandit`/`pip-audit`
+  скипаются при отсутствии. `--coverage` теперь enforced (`--cov-fail-under=58`),
+  coverage-arch-тест помечен `slow` (устранено «зависание»). Детали —
+  [quality](pages/quality.md).
+- `MODULES.md` пересобран: **78 модулей** (`./test.sh --map`).
+- Прогоны: `./test.sh` 620/620, `--quality` 90/90, `--security` 16/16,
+  покрытие 62% (baseline 58); сервис перезапущен `systemctl restart huntproxy`,
+  все эндпоинты живы.
+- Ревизии кода: `dda115f` (тест-инфра), `06630a5` (рефакторинг); frontmatter
+  страниц поднят до `06630a5`.

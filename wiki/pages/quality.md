@@ -1,6 +1,6 @@
 ---
 updated: 2026-09-17
-commit: b028d67
+commit: 06630a5
 tags: [concept]
 ---
 
@@ -20,12 +20,12 @@ tags: [concept]
 |---|---|
 | (без флага) | `not slow and not arch` |
 | `--all` | без маркера |
-| `--arch` | `arch` |
+| `--arch` | `arch and not slow` |
 | `--router` | `router` |
 | `--executor` | `executor` |
-| `--quality` | `arch or router or executor` |
-| `--security` | `arch or fuzz` (доставляет bandit/pip-audit/hypothesis) |
-| `--coverage` | pytest + `--cov=hunt --cov-branch` |
+| `--quality` | `(arch and not slow) or router or executor` |
+| `--security` | `(arch and not slow) or fuzz` (доставляет bandit/pip-audit/hypothesis) |
+| `--coverage` | pytest + `--cov=hunt --cov-branch --cov-fail-under=58` |
 | `--map` | `scripts/module_map.py` |
 | `-k`, `-x` | pass-through в pytest |
 
@@ -45,8 +45,15 @@ tags: [concept]
 - `tests/test_api_consistency.py` — согласованность API.
 
 Архитектурные (`tests/test_architecture.py`, маркер `arch`): размер файлов
-(≤500 строк), CC≤15, God Object/coupling, границы импортов, модули-листья,
-запрет silent-except, baseline branch coverage.
+(≤500 строк), CC≤15 (ruff C901), God Object/coupling, границы импортов,
+модули-листья, запрет silent-except.
+
+- `TestBranchCoverage` (baseline 58%) помечен ещё и `slow`: он запускает
+  **вложенный** прогон всего функционала под coverage (минуты), поэтому исключён
+  из `--arch`/`--quality`/`--security`. Реальный контроль порога — в
+  `./test.sh --coverage` (`--cov-fail-under=58`).
+- `TestBanditClean`/`TestNoKnownCVEs` скипаются, если `bandit`/`pip-audit` не
+  установлены в `.venv` (а не падают `FileNotFoundError`).
 
 Безопасность (`tests/test_http_fuzz.py`, `fuzz`): сервер не должен отдавать
 status 0 (drop) или 500 на произвольный ввод.
