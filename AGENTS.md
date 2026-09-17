@@ -6,6 +6,56 @@
 - **One bug = one commit.** If you re-fix the same bug, the previous fix was wrong. Find the root cause first, verify it actually works, then commit once.
 - **Verify for real, not just with tests.** Tests passing ≠ bug fixed. Use curl, logs, profiler to confirm the actual problem is gone.
 
+## LLM Wiki
+
+Вики — персистентная память проекта: компаундящий конспект кода и решений, чтобы
+агенты не переоткрывали знание на каждой задаче. Этот раздел — **схема вики,
+единственный источник правил**; страницы лежат в `wiki/`.
+
+- [wiki/index.md](wiki/index.md) — каталог страниц. **Читать первым** при любом
+  вопросе об устройстве проекта: строка на страницу + дата синхронизации.
+- [wiki/log.md](wiki/log.md) — журнал **операций вики** (append-only:
+  ingest/query/lint), не история кода. История разработки —
+  [wiki/pages/changelog.md](wiki/pages/changelog.md).
+- [wiki/pages/wip.md](wiki/pages/wip.md) — открытые дефекты и незавершённое.
+  Проверять перед любыми правками.
+
+### Слои
+
+- `wiki/raw/` — инвентарь исходников, только читать (`wiki/raw/README.md`).
+  Рабочее дерево мутабельно; неизменяемы только коммиты git.
+- `wiki/pages/*.md` + `wiki/index.md` — конспекты, которые пишет и поддерживает
+  агент.
+- Этот раздел `AGENTS.md` — схема: структура, конвенции, воркфлоу.
+
+### Конвенции страниц
+
+- Каждая страница начинается с YAML-frontmatter: `updated: ГГГГ-ММ-ДД`,
+  `commit: <hash>` (ревизия, к которой синхронизирован текст),
+  `tags: [entity|concept|source|analysis]`.
+- Факты из кода подтверждать чтением исходников и указывать `файл:строка`;
+  противоречие со старым утверждением — пометить и обновить затронутые страницы,
+  не переписывать молча.
+- Не дублировать `MODULES.md` и `docs/*.md` дословно: вики — синтез и
+  перекрёстные ссылки, не копия.
+- Язык вики — русский.
+
+### Операции
+
+- **ingest** — новый источник (коммит, документ, разбор): прочитать, обновить
+  страницу-конспект, `index.md`, связанные страницы и дописать запись в `log.md`.
+- **query** — ответ по вики со ссылками; удачные ответы (сравнения, разборы)
+  сохранять как новые страницы в `pages/`.
+- **lint** — здоровье вики: противоречия, устаревшие утверждения, страницы-сироты,
+  битые ссылки, отставший `commit` во frontmatter.
+
+### Свежесть (обязательно)
+
+Перед доработкой кода сверять `commit` во frontmatter затрагиваемых страниц с
+`git rev-parse HEAD`. Если код с тех пор менялся — перечитать исходники и
+обновить страницу, подняв `updated`/`commit`. После значимого изменения кода
+обновлять затронутые страницы и дописывать запись в `log.md` (ingest).
+
 ## Running tests
 
 Always use the project test runner instead of invoking `pytest` directly:
@@ -27,9 +77,11 @@ so the full output (every test group, every failure, ESLint warnings) is
 visible.
 
 The pre-commit hook (`.git/hooks/pre-commit`, installed via
-`./install-hooks.sh`) runs `./test.sh` automatically — commits are blocked
-if any functional or contract test fails. Architecture and security tests
-do **not** block commits (run via `--arch` / `--security` separately).
+`./install-hooks.sh`) is currently a **no-op**: its `./test.sh` line is commented
+out (`hooks/pre-commit:8`), so commits are **not** blocked by tests. Run
+`./test.sh` manually before committing. Architecture and security tests do not
+block commits (run via `--arch` / `--security` separately). Known defect — see
+`wiki/pages/quality.md`.
 
 ESLint runs on `web/js/` before pytest (when Node.js is available):
 
@@ -53,13 +105,13 @@ Thresholds only move one direction: complexity/file-size/coupling **down**, cove
 
 ## Project structure
 
-`MODULES.md` (auto-generated, run `./test.sh --map` to refresh) has the full live map: 58 modules, line counts, public APIs, import coupling. Read it first when looking for where something lives.
+`MODULES.md` (auto-generated, run `./test.sh --map` to refresh) has the full live map: 66 modules, line counts, public APIs, import coupling. Read it first when looking for where something lives.
 
 Key facts not obvious from filenames:
 
 - `hunt.py` — thin entry point; re-exports from `hunt` package, runs `main()`.
-- `hunt/state.py` — `HuntState` class, composed from ~20 mixins (db, events, snapshot, blacklist, checking, etc.). Each mixin is its own file (`hunt/db.py`, `hunt/events.py`, `hunt/check_*.py`, `hunt/health_*.py`, etc.).
-- `hunt/server.py` (306 lines) — `HuntServer` + route registration. Actual dispatch via `hunt/router.py` (75 lines, zero deps). Handlers split into `hunt/handlers/*.py` (8 domain modules).
+- `hunt/state.py` — `HuntState` class, composed from ~30 mixins (db, events, snapshot, blacklist, checking, etc.). Each mixin is its own file (`hunt/db.py`, `hunt/events.py`, `hunt/check_*.py`, `hunt/health_*.py`, etc.).
+- `hunt/server.py` (346 lines) — `HuntServer` + route registration. Actual dispatch via `hunt/router.py` (75 lines, zero deps). Handlers split into `hunt/handlers/*.py` (11 domain modules).
 - `hunt/task_executor.py` — separates task planning from execution via registry.
 - `hunt/check_*.py` (7 files) — proxy checking pipeline, split from former `checking.py` monolith.
 - `hunt/hunt_*.py`, `hunt/health_*.py` — hunt cycle and health loop logic, split from former `health.py`.
@@ -93,7 +145,7 @@ Key facts not obvious from filenames:
 ## When making changes
 
 1. Update affected tests (or add new ones) in `tests/`.
-2. Run `./test.sh` before finishing — pre-commit will block if it fails.
+2. Run `./test.sh` before finishing (the pre-commit hook currently does not run tests — see above).
 3. If you added/removed modules, run `./test.sh --map` to refresh `MODULES.md`.
 4. If you touched security-sensitive code, run `./test.sh --security`.
 5. Keep changes minimal and consistent with existing style. No comments unless asked.
