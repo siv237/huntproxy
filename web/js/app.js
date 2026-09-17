@@ -265,7 +265,10 @@ const app = {
           badge.style.borderColor = ok ? 'var(--info)' : 'var(--danger)';
           badge.style.background = ok ? 'var(--info-bg)' : 'var(--danger-bg)';
           badge.style.color = ok ? 'var(--info)' : 'var(--danger)';
-          if (span) span.textContent = t('topbar.channelText') + ': ' + p.host + ':' + p.port;
+          const cp = ch.ping || null;
+          const pingText = cp ? (cp.ok ? ' · ' + cp.latency + 'ms' : ' · ✗') : '';
+          if (span) span.textContent = t('topbar.channelText') + ': ' + p.host + ':' + p.port + pingText;
+          badge.title = t('topbar.channelText') + ': ' + p.host + ':' + p.port + pingText;
         } else {
           badge.style.borderColor = 'var(--danger)';
           badge.style.background = 'var(--danger-bg)';
@@ -315,9 +318,9 @@ const app = {
         return;
       }
       badge.style.display = '';
-      // Clicking the badge opens the standard proxy card for the proxy it
-      // pings through (pool proxy or channel pool-proxy); custom channels
-      // and direct mode fall back to the connectivity page.
+      // Clicking the badge opens the standard proxy card for the client-path
+      // proxy it pings through; direct mode falls back to the connectivity
+      // page. The engine channel ping is shown separately in the channel chip.
       if (badge && !badge._pingClickBound) {
         badge._pingClickBound = true;
         badge.style.cursor = 'pointer';
@@ -327,11 +330,10 @@ const app = {
           else router.navigate('connectivity');
         });
       }
-      const clickable = src === 'pool' ||
-        (src === 'channel' && (p.route || '').startsWith('proxy:'));
+      const clickable = src === 'pool';
       badge.dataset.pingAddr = clickable ? (p.proxy_addr || '') : '';
       badge.style.cursor = clickable ? 'pointer' : 'default';
-      const srcLabel = src === 'direct' ? '↔' : src === 'channel' ? '◈' : '⬢';
+      const srcLabel = src === 'direct' ? '↔' : '⬢';
       if (proxyEl) {
         proxyEl.textContent = src === 'direct'
           ? (srcLabel + ' ' + t('topbar.pingDirect'))

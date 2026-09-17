@@ -14,13 +14,14 @@ class TestProxyPingStatus:
     def test_status_shape_without_proxy(self, state):
         async def run():
             status = await self._status(state)
-            assert status["source"] in ("channel", "pool", "direct")
+            assert status["source"] in ("pool", "direct")
             assert status["window"] == 60
             assert status["interval"] == 1.0
             assert isinstance(status["samples"], list)
             assert isinstance(status["last"], dict)
             assert "latency" in status["last"]
             assert isinstance(status["geo"], dict)
+            assert status["channel"] is None
 
         asyncio.run(run())
 
@@ -50,6 +51,66 @@ class TestProxyPingStatus:
         async def run():
             src = state._ping_source()
             assert src["kind"] == "direct"
+
+        asyncio.run(run())
+
+    def test_primary_stays_on_pool_when_channel_set(self, state):
+        """The badge must show the client-path proxy, not the engine channel."""
+        async def run():
+            state._proxy_active_addr = "1.2.3.4:8080"
+            state.ratings["1.2.3.4:8080"] = state._create_rating("1.2.3.4:8080", "RU", "ru")
+            state.ratings["5.6.7.8:1080"] = state._create_rating("5.6.7.8:1080", "US", "us")
+            state.set_channel("proxy:5.6.7.8:1080")
+            src = state._ping_source()
+            assert src["kind"] == "pool"
+            assert src["addr"] == "1.2.3.4:8080"
+            chsrc = state._ping_channel_source()
+            assert chsrc["addr"] == "5.6.7.8:1080"
+            status = state.get_proxy_ping_status()
+            assert status["source"] == "pool"
+            assert status["channel"] is not None
+            assert status["channel"]["addr"] == "5.6.7.8:1080"
+
+        asyncio.run(run())
+
+    def test_channel_ping_source_none_without_channel(self, state):
+        async def run():
+            assert state._ping_channel_source() is None
+            assert state.get_proxy_ping_status()["channel"] is None
+
+        asyncio.run(run())
+
+    def test_channel_ping_loop_records(self, state):
+        async def run():
+            import types
+
+            state.ratings["5.6.7.8:1080"] = state._create_rating("5.6.7.8:1080", "US", "us")
+            state.set_channel("proxy:5.6.7.8:1080")
+
+            def _conn():
+                w = types.SimpleNamespace()
+                w.close = lambda: None
+                w.wait_closed = lambda: None
+                return types.SimpleNamespace(), w
+
+            async def fake_probe(src, host, port):
+                return _conn()
+
+            async def fake_outbound(host, port, **kw):
+                return _conn()
+
+            state._ping_probe = fake_probe
+            state._outbound_connect = fake_outbound
+            state.start_proxy_ping()
+            for _ in range(200):
+                if state._ping_channel_samples:
+                    break
+                await asyncio.sleep(0.05)
+            assert state._ping_channel_samples, "channel ping produced no samples"
+            assert state._ping_channel_last["ok"] is True
+            status = state.get_proxy_ping_status()
+            assert status["channel"]["ok_count"] >= 1
+            state.stop_proxy_ping()
 
         asyncio.run(run())
 

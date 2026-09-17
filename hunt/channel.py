@@ -211,11 +211,21 @@ class ChannelMixin:
                 "port": proxy["port"],
                 "has_auth": bool(proxy.get("username")),
             }
+        ping = None
+        if route and route != "direct":
+            last = getattr(self, "_ping_channel_last", None)
+            if last is not None:
+                ping = {
+                    "ok": bool(last.get("ok")),
+                    "latency": last.get("latency", -1),
+                    "error": last.get("error", ""),
+                }
         return {
             "channel_route": route,
             "proxy": info,
             "available": available if route else True,
             "channel_tls_trusted": getattr(self, "_channel_tls_trusted", None),
+            "ping": ping,
         }
 
     def set_channel(self, route: str):

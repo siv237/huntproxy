@@ -1,7 +1,7 @@
 # Карта модулей
 Автоматически сгенерировано из исходного кода. Не редактировать руками.
 Запуск: `python scripts/module_map.py`
-Всего модулей: 78 | Всего строк: 12946
+Всего модулей: 78 | Всего строк: 12958
 ---
 ## Сводка
 | Модуль | Строк | Публичные классы/функции | Импортирует из hunt |
@@ -12,7 +12,7 @@
 | `hunt/blacklist.py` | 54 | `BlacklistMixin` | hunt.constants |
 | `hunt/blocklists.py` | 433 | `BlocklistsMixin` | hunt.constants, hunt.domain_parser, hunt.download |
 | `hunt/canary.py` | 159 | `CanaryMixin` | hunt.constants |
-| `hunt/channel.py` | 200 | `ChannelMixin` | hunt.conn |
+| `hunt/channel.py` | 210 | `ChannelMixin` | hunt.conn |
 | `hunt/check_geo.py` | 157 | `CheckGeoMixin` | hunt.constants |
 | `hunt/check_mitm.py` | 168 | `CheckMitmMixin` | hunt.conn, hunt.constants |
 | `hunt/check_proxy.py` | 154 | `CheckProxyMixin` | hunt.constants, hunt.geo |
@@ -61,7 +61,7 @@
 | `hunt/models.py` | 391 | `ProxyRating` | — |
 | `hunt/pac.py` | 208 | `render_pac`, `PacMixin` | hunt.constants |
 | `hunt/proxy_http.py` | 56 | `ProxyHttpMixin` | — |
-| `hunt/proxy_ping.py` | 225 | `ProxyPingMixin` | hunt.conn, hunt.constants |
+| `hunt/proxy_ping.py` | 227 | `ProxyPingMixin` | hunt.conn, hunt.constants |
 | `hunt/proxy_routing.py` | 213 | `ProxyRouteMixin` | hunt.models |
 | `hunt/proxy_runner.py` | 269 | `ProxyRunner` | hunt.conn, hunt.models, hunt.proxy_http, hunt.proxy_routing +1 |
 | `hunt/proxy_sources.py` | 415 | `ProxySourcesMixin` | hunt.constants, hunt.download |
@@ -126,7 +126,7 @@
 
 **Зависимости:** `hunt.constants`
 
-### `hunt/channel.py` (200 строк)
+### `hunt/channel.py` (210 строк)
 *Channel mixin — route the engine's own internet access through an upstream*
 **Публичные:**
 - `ChannelMixin` (class)
@@ -340,7 +340,7 @@
 - `ProxyHttpMixin` (class)
 
 
-### `hunt/proxy_ping.py` (225 строк)
+### `hunt/proxy_ping.py` (227 строк)
 *Continuous proxy ping — measures latency through the currently active*
 **Публичные:**
 - `ProxyPingMixin` (class)
