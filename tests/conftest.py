@@ -196,6 +196,7 @@ class _LiveReporter:
         self.total = 0
         self.passed = 0
         self.failed = 0
+        self.skipped = 0
         self.failures = []
 
     def pytest_collection_finish(self, session):
@@ -212,7 +213,7 @@ class _LiveReporter:
                 e = self.groups[self.order[-1]]
                 st = "OK" if e["fail"] == 0 else f"FAIL({e['fail']})"
                 _put(f"] {e['ok']}/{e['count']} {st}\n")
-            self.groups[g] = {"count": 0, "ok": 0, "fail": 0}
+            self.groups[g] = {"count": 0, "ok": 0, "fail": 0, "skip": 0}
             self.order.append(g)
             ts = _dt.now().strftime("%H:%M:%S")
             _put(f"  {ts}  {g:<24} [")
@@ -222,6 +223,13 @@ class _LiveReporter:
             e["ok"] += 1
             self.passed += 1
             _put(".")
+        elif report.skipped:
+            # A skip is not a failure: pytest.skip() inside a test reports at
+            # the "call" phase with passed=False, which used to be counted as
+            # FAIL and made missing tools / heavy opt-in checks look broken.
+            e["skip"] += 1
+            self.skipped += 1
+            _put("s")
         else:
             e["fail"] += 1
             self.failed += 1
@@ -239,7 +247,8 @@ class _LiveReporter:
             st = "OK" if e["fail"] == 0 else f"FAIL({e['fail']})"
             _put(f"] {e['ok']}/{e['count']} {st}\n")
         _put(f"\n  {'='*64}\n")
-        _put(f"  Total: {self.passed} passed, {self.failed} failed\n")
+        tail = f", {self.skipped} skipped" if self.skipped else ""
+        _put(f"  Total: {self.passed} passed, {self.failed} failed{tail}\n")
         if self.failures:
             _put(f"\n  Failed tests:\n")
             for g, name, _ in self.failures:

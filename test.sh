@@ -62,8 +62,12 @@ fi
 # The --arch / --router / --executor / --quality / --coverage modes skip
 # the ruff pre-check and slow-test filter so they run as fast as possible.
 
-QUALITY_MARKERS='arch or router or executor'
-SECURITY_MARKERS='arch or fuzz'
+# The branch-coverage arch test re-runs the whole functional suite under
+# coverage (minutes); it is marked slow and excluded from the fast
+# arch/quality/security modes.  Coverage baseline is enforced by
+# `./test.sh --coverage` via --cov-fail-under.
+QUALITY_MARKERS='(arch and not slow) or router or executor'
+SECURITY_MARKERS='(arch and not slow) or fuzz'
 
 if [[ "$#" -gt 0 ]]; then
     case "$1" in
@@ -73,7 +77,7 @@ if [[ "$#" -gt 0 ]]; then
             ;;
         --arch)
             shift
-            MARKER='-m "arch"'
+            MARKER='-m "arch and not slow"'
             ;;
         --router)
             shift
@@ -97,7 +101,7 @@ if [[ "$#" -gt 0 ]]; then
             ;;
         --coverage)
             shift
-            eval ".venv/bin/python -m pytest tests/ -p no:terminal -p no:capture -m \"not slow and not arch\" --cov=hunt --cov-branch --cov-report=term-missing \"\$@\"" 2>/dev/null
+            eval ".venv/bin/python -m pytest tests/ -p no:terminal -p no:capture -m \"not slow and not arch\" --cov=hunt --cov-branch --cov-report=term-missing --cov-fail-under=58 \"\$@\"" 2>/dev/null
             exit $?
             ;;
         --map)

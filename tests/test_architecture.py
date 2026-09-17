@@ -273,6 +273,7 @@ class TestBranchCoverage:
     COVERAGE_BASELINE = 58  # current branch coverage % — only goes up
 
     @pytest.mark.arch
+    @pytest.mark.slow
     def test_branch_coverage_above_baseline(self):
         """Check branch coverage via pytest-cov.
 
@@ -332,8 +333,11 @@ class TestBanditClean:
     @pytest.mark.arch
     def test_no_high_medium_bandit_findings(self):
         import subprocess
+        bandit = ROOT / ".venv/bin/bandit"
+        if not bandit.exists():
+            pytest.skip("bandit not installed in .venv — run: pip install bandit")
         result = subprocess.run(
-            [".venv/bin/bandit", "-r", "hunt/", "-f", "json", "-q"],
+            [str(bandit), "-r", "hunt/", "-f", "json", "-q"],
             capture_output=True, text=True, cwd=ROOT, timeout=60,
         )
         import json
@@ -373,8 +377,11 @@ class TestNoKnownCVEs:
     @pytest.mark.arch
     def test_no_known_vulnerabilities_in_runtime_deps(self):
         import subprocess
+        pip_audit = ROOT / ".venv/bin/pip-audit"
+        if not pip_audit.exists():
+            pytest.skip("pip-audit not installed in .venv — run: pip install pip-audit")
         result = subprocess.run(
-            [".venv/bin/pip-audit", "--strict", "--format", "json"],
+            [str(pip_audit), "--strict", "--format", "json"],
             capture_output=True, text=True, cwd=ROOT, timeout=120,
         )
         import json
