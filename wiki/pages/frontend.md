@@ -1,6 +1,6 @@
 ---
 updated: 2026-09-17
-commit: 06630a5
+commit: 8b0c0c0
 tags: [entity]
 ---
 
@@ -44,7 +44,9 @@ app (`web/index.html:318-324`).
 - **app.js**: тема (`data-theme`, localStorage), секции sidebar, глобальные
   поллеры (`startPollers`, `:150-164`): events 2с, traffic 2с, ping 1с,
   direct/channel 3с, canary 30с, version 60с. `pollEvents` рассылает
-  `CustomEvent('hunt-events')`.
+  `CustomEvent('hunt-events')`. `pollPing` (`:281`) показывает **итоговый**
+  пинг клиентского маршрута; `pollChannel` (`:253`) параллельно показывает
+  пинг канала в чипе «Канал: host:port · Nms» (`:269`).
 
 ## Кэширование
 

@@ -45,3 +45,18 @@ Append-only журнал **операций вики** (ingest / query / lint), 
   все эндпоинты живы.
 - Ревизии кода: `dda115f` (тест-инфра), `06630a5` (рефакторинг); frontmatter
   страниц поднят до `06630a5`.
+
+## [2026-09-17] ingest | Пинг: итоговый маршрут vs пинг канала
+
+- Основной пинг в шапке больше не переключается на канал: `_ping_source`
+  (`hunt/proxy_ping.py:75`) отдаёт приоритет активному прокси клиентского
+  трафика, канал исключён из основного источника.
+- Пинг канала измеряется параллельно (`_ping_channel_once`, `:179`) и отдаётся
+  в `proxy/ping.channel` (`_channel_ping_status`, `:214`) и в
+  `GET /api/channel/status.ping` (`hunt/channel.py:201`); фронт показывает его
+  в чипе канала «Канал: host:port · Nms» (`web/js/app.js:269`).
+- Обновлены [monitoring](pages/monitoring.md), [data-sources](pages/data-sources.md),
+  [state](pages/state.md), [frontend](pages/frontend.md), [api](pages/api.md).
+- Проверка на живом сервисе: `proxy/ping.source=pool` (107.167.18.122:443) при
+  канале `custom:tor` (192.168.237.2:9050), `channel.latency=336ms`;
+  `./test.sh` 623/623. Незакоммичено; `commit` frontmatter — при коммите.

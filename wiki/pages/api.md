@@ -1,6 +1,6 @@
 ---
 updated: 2026-09-17
-commit: 06630a5
+commit: 8b0c0c0
 tags: [entity]
 ---
 
@@ -84,7 +84,8 @@ tags: [entity]
 
 ### Proxy / SOCKS5 / Transparent (`handlers/proxy.py`)
 
-`GET /api/proxy/status` (TTL 2с), `GET /api/proxy/alive`, `GET /api/proxy/ping`,
+`GET /api/proxy/status` (TTL 2с), `GET /api/proxy/alive`,
+`GET /api/proxy/ping` (итоговый пинг клиентского пути + `channel`),
 `GET|POST /api/proxy/start|stop|select|next|recheck|direct|fraud`,
 `GET /api/socks5/status`, `GET|POST /api/socks5/start|stop`,
 `GET /api/transparent/status`, `GET|POST /api/transparent/start|stop`,
@@ -97,7 +98,7 @@ tags: [entity]
 
 ### Admin (`handlers/admin.py`)
 
-`GET /api/channel/status`, `POST /api/channel/select`,
+`GET /api/channel/status` (вкл. `ping` канала), `POST /api/channel/select`,
 `POST /api/settings/country_filter`, `GET /api/backup/groups`,
 `POST /api/backup`, `POST /api/restore`,
 `GET|POST /api/schedules`, `/status`, `/log`, `/pause`, `/resume`,

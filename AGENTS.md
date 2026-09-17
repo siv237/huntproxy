@@ -3,6 +3,12 @@
 ## CRITICAL RULES
 
 - **NEVER commit without explicit user permission.** No exceptions. Wait for "commit" / "пиши в гит".
+- **NEVER restart, start, stop or deploy services on your own.** No exceptions.
+  This includes `systemctl restart/start/stop`, `daemon.sh start/stop/restart`,
+  `hunt.sh`, killing processes, and any action that interrupts the running
+  service or user traffic. Prepare the exact commands first, then **ask in chat
+  and wait for explicit confirmation** ("перезапусти" / "давай"). Do not treat a
+  general task (e.g. "make the fix work live") as permission to restart.
 - **One bug = one commit.** If you re-fix the same bug, the previous fix was wrong. Find the root cause first, verify it actually works, then commit once.
 - **Verify for real, not just with tests.** Tests passing ≠ bug fixed. Use curl, logs, profiler to confirm the actual problem is gone.
 

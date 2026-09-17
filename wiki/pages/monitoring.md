@@ -1,6 +1,6 @@
 ---
 updated: 2026-09-17
-commit: 06630a5
+commit: 8b0c0c0
 tags: [entity]
 ---
 
@@ -69,9 +69,22 @@ API `GET /api/actions?limit=`. UI — страница `actions.js`.
 
 ## Прокси-пинг (`hunt/proxy_ping.py`)
 
-`ProxyPingMixin` — секундный пинг активного маршрута для бейджа в шапке
+`ProxyPingMixin` — секундный пинг клиентского маршрута для бейджа в шапке
 (спарклайн задержек + гео, коммит `118e07d`). API `GET /api/proxy/ping`;
-опрос на фронте каждую 1с (`web/js/app.js:281-357`).
+опрос на фронте каждую 1с (`web/js/app.js:281`).
+
+Основной источник (`_ping_source`, `hunt/proxy_ping.py:75`) — **активный
+прокси клиентского трафика** (`_proxy_active_addr`), иначе direct. Канал
+(вышестоящий прокси движка) намеренно не является основным источником: бейдж
+обязан показывать итоговый пинг клиентского пути, а не пинг канала.
+
+Пинг канала (`_ping_channel_once`, `hunt/proxy_ping.py:179`) измеряется
+**параллельно** тем же секундным циклом, когда канал задан
+(`_channel_is_set`), и отдаётся в `proxy/ping.channel`
+(`_channel_ping_status`, `hunt/proxy_ping.py:214`). Дублирующее измерение
+для чипа канала: `GET /api/channel/status` → `ping`
+(`hunt/channel.py:201`), фронт показывает «Канал: host:port · Nms»
+в `web/js/app.js:269` (`pollChannel` каждые 3с).
 
 ## История (`hunt/snapshot.py`, `hunt/switch_history.py`)
 

@@ -1,6 +1,6 @@
 ---
 updated: 2026-09-17
-commit: 06630a5
+commit: 8b0c0c0
 tags: [entity]
 ---
 
@@ -47,7 +47,7 @@ tags: [entity]
 | `hunt/state_working.py` | `StateWorkingMixin` | working-set: `_load/_save_working_file`, миграция |
 | `hunt/state_download.py` | `StateDownloadMixin` | экспорт рабочих списков |
 | `hunt/pac.py` | `PacMixin` | генерация PAC |
-| `hunt/proxy_ping.py` | `ProxyPingMixin` | пинг активного маршрута |
+| `hunt/proxy_ping.py` | `ProxyPingMixin` | пинг клиентского маршрута + пинг канала |
 
 `__init__` задаёт контейнеры: `ratings: dict[str, ProxyRating]`, `blacklist`,
 `favorites`, `_geo_cache`, счётчики фаз и прогресса, буферы

@@ -1,6 +1,6 @@
 ---
 updated: 2026-09-17
-commit: 06630a5
+commit: 8b0c0c0
 tags: [entity]
 ---
 
@@ -87,8 +87,9 @@ canary_history, proxy_checks.
 
 ## Прокси-пинг (`hunt/proxy_ping.py`)
 
-`ProxyPingMixin` — секундный пинг активного маршрута для бейджа в шапке
-(коммит `118e07d`). API `GET /api/proxy/ping`.
+`ProxyPingMixin` — секундный пинг клиентского маршрута для бейджа в шапке
+(коммит `118e07d`). API `GET /api/proxy/ping` (+ `channel` с пингом канала);
+гео и справочник по адресам — [monitoring.md](monitoring.md).
 
 ## См. также
 
