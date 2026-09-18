@@ -27,6 +27,8 @@ class HuntCycleMixin:
                 if self.phase not in (self.PHASE_DONE, self.PHASE_IDLE):
                     self.phase = self.PHASE_DONE
                 self._save_state()
+                # Release the exclusive scheduler pause a manual hunt holds.
+                self._end_manual_hunt()
 
     async def _hunt_download_phase(self):
         self.phase = self.PHASE_DOWNLOAD

@@ -3,11 +3,9 @@
 import asyncio
 import json
 import logging
-import os
 import time
 from urllib.parse import unquote
 
-from hunt.geo import country_code_from_name, country_flag, country_name_from_code
 from hunt.handlers import _qs, _int_param
 from hunt.handlers.proxy_groups import ProxyGroupMixin
 

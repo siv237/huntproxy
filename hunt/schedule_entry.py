@@ -37,6 +37,9 @@ TASK_TYPES: dict[str, dict[str, Any]] = {
         "mutex_with": ["proxy_check"],
         "respect_pause": False,
         "respect_internet": True,
+        # A running hunt owns the shared progress counters; a scheduled health
+        # check must not start mid-hunt and pause it.
+        "busy_flag": "_hunt_running",
     },
     "history": {
         "description": "Record history snapshot + retention cleanup",

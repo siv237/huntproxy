@@ -13,12 +13,13 @@ from hunt.constants import logger
 from hunt.schedule_entry import ScheduleEntry, TASK_TYPES, DEFAULT_SCHEDULES
 from hunt.scheduler_persistence import SchedulerPersistenceMixin
 from hunt.scheduler_api import SchedulerApiMixin
+from hunt.scheduler_guard import SchedulerGuardMixin
 
 
 _TICK_INTERVAL = 5  # seconds
 
 
-class SchedulerEngine(SchedulerPersistenceMixin, SchedulerApiMixin):
+class SchedulerEngine(SchedulerPersistenceMixin, SchedulerApiMixin, SchedulerGuardMixin):
 
     def __init__(self, state):
         self.state = state
@@ -28,6 +29,16 @@ class SchedulerEngine(SchedulerPersistenceMixin, SchedulerApiMixin):
         self._paused: bool = False
         self._stopped: bool = False
         self._lock = asyncio.Lock()
+        # Serializes the launch decision (checks + task registration) so two
+        # concurrent drains cannot launch the same task_type twice.  The check
+        # and the `_running_tasks[...] = task` assignment must be atomic — an
+        # `await` in between (is_internet_alive) used to let a second drain
+        # slip a duplicate run through, double-counting progress.
+        self._launch_lock = asyncio.Lock()
+        # True when the scheduler was paused because the canary found no
+        # internet.  Distinguishes an internet-induced pause from a manual one
+        # so restoration can resume only what the gate paused.
+        self._paused_by_internet: bool = False
         self._schedules: dict[str, ScheduleEntry] = {}
         # Task executor — decoupled from planning logic.  Tests can stub
         # individual executors via self.executor.register(tt, fn).
@@ -198,6 +209,7 @@ class SchedulerEngine(SchedulerPersistenceMixin, SchedulerApiMixin):
         while True:
             try:
                 await asyncio.sleep(_TICK_INTERVAL)
+                await self._internet_gate()
                 if self._paused:
                     continue
                 now = time.time()
@@ -240,6 +252,9 @@ class SchedulerEngine(SchedulerPersistenceMixin, SchedulerApiMixin):
         if self._stopped:
             # Shutting down — don't launch new tasks.
             return
+        if self._paused:
+            # Paused (manually or by the internet gate) — keep tasks queued.
+            return
         for sid in list(self._queue.keys()):
             entry = self._schedules.get(sid)
             if entry is None:
@@ -252,44 +267,7 @@ class SchedulerEngine(SchedulerPersistenceMixin, SchedulerApiMixin):
                 self._queue.pop(sid, None)
 
     # ── Task triggering ────────────────────────────────────────────────
-
-    def _is_busy_flag_stale(self, busy_flag: str) -> bool:
-        """Return True if a busy-flag is True but no live task backs it.
-
-        For _hunt_running the live task can be either the startup cycle
-        (self.state._startup_task) or the hunt cycle (self.state.task),
-        since both set the flag.  If neither is alive, the flag is leftover
-        from a crashed/destroyed/GC'd run and should be cleared.
-        """
-        if not getattr(self.state, busy_flag, False):
-            return False
-        if busy_flag == "_hunt_running":
-            for attr in ("_startup_task", "task"):
-                t = getattr(self.state, attr, None)
-                if t is not None and not t.done():
-                    return False
-            return True
-        return True
-
-    def _check_busy_flag(self, task_def: dict) -> bool:
-        """Clear a stale busy-flag and return True if the task may proceed.
-
-        Returns False when a genuinely active busy-flag blocks the task.
-        """
-        busy_flag = task_def.get("busy_flag")
-        if not busy_flag:
-            return True
-        if not getattr(self.state, busy_flag, False):
-            return True
-        if self._is_busy_flag_stale(busy_flag):
-            self.state._emit(
-                f"Scheduler: clearing stale busy-flag '{busy_flag}'",
-                "warn",
-            )
-            setattr(self.state, busy_flag, False)
-            self.state._save_state()
-            return True
-        return False
+    # _is_busy_flag_stale / _check_busy_flag live in scheduler_guard.py.
 
     async def _try_launch(self, sid: str) -> bool:
         """Try to launch a schedule. Returns True if launched, False if blocked.
@@ -304,43 +282,47 @@ class SchedulerEngine(SchedulerPersistenceMixin, SchedulerApiMixin):
         if task_def is None:
             return False
 
-        # Check if this task_type is already running
-        if entry.task_type in self._running_tasks:
-            return False
-
-        # Check if an external fetch is already in progress (e.g. the
-        # startup hunt cycle is downloading the same lists).  A stale flag
-        # (left True by a crashed/destroyed previous run) is cleared so the
-        # task is not blocked forever.
-        if not self._check_busy_flag(task_def):
-            return False
-
-        # Check mutex conflicts
-        for conflict_type in task_def["mutex_with"]:
-            if conflict_type in self._running_tasks:
+        # The whole decision below is atomic: without the lock a concurrent
+        # drain could pass the "already running" check while this call is
+        # awaiting is_internet_alive(), launching the same task_type twice.
+        async with self._launch_lock:
+            # Check if this task_type is already running
+            if entry.task_type in self._running_tasks:
                 return False
 
-        # Environment checks
-        if task_def["respect_pause"] and self.state._paused:
-            return False
-
-        if task_def["respect_internet"]:
-            try:
-                internet_ok = await self.state.is_internet_alive()
-            except Exception:
-                internet_ok = False
-            if not internet_ok:
+            # Check if an external fetch is already in progress (e.g. the
+            # startup hunt cycle is downloading the same lists).  A stale flag
+            # (left True by a crashed/destroyed previous run) is cleared so the
+            # task is not blocked forever.
+            if not self._check_busy_flag(task_def):
                 return False
 
-        # Launch the task
-        entry.last_status = "running"
-        entry.last_run = time.time()
-        self._persist(entry)
-        self.state._emit(f"Scheduler: starting '{entry.name}'", "info")
+            # Check mutex conflicts
+            for conflict_type in task_def["mutex_with"]:
+                if conflict_type in self._running_tasks:
+                    return False
 
-        task = asyncio.create_task(self._run_with_tracking(sid))
-        self._running_tasks[entry.task_type] = task
-        return True
+            # Environment checks
+            if task_def["respect_pause"] and self.state._paused:
+                return False
+
+            if task_def["respect_internet"]:
+                try:
+                    internet_ok = await self.state.is_internet_alive()
+                except Exception:
+                    internet_ok = False
+                if not internet_ok:
+                    return False
+
+            # Launch the task
+            entry.last_status = "running"
+            entry.last_run = time.time()
+            self._persist(entry)
+            self.state._emit(f"Scheduler: starting '{entry.name}'", "info")
+
+            task = asyncio.create_task(self._run_with_tracking(sid))
+            self._running_tasks[entry.task_type] = task
+            return True
 
     async def _trigger(self, sid: str):
         """Manual trigger: queue a schedule (runs as soon as possible)."""
@@ -424,6 +406,18 @@ class SchedulerEngine(SchedulerPersistenceMixin, SchedulerApiMixin):
         if entry.task_type in self._running_tasks:
             return False
 
+        # Network checks must not run offline, even when triggered manually.
+        if task_def.get("respect_internet"):
+            try:
+                internet_ok = await self.state.is_internet_alive()
+            except Exception:
+                internet_ok = False
+            if not internet_ok:
+                self.state._emit(
+                    f"Scheduler: '{entry.name}' not started — no internet", "warn",
+                )
+                return False
+
         # Clear a stale busy-flag: if the flag is True but there is no live
         # task behind it, the flag is leftover from a crash/restart/GC.
         # Uses the same logic as the automatic _try_launch path.
@@ -459,14 +453,18 @@ class SchedulerEngine(SchedulerPersistenceMixin, SchedulerApiMixin):
                 )
                 return True
 
-        # Launch directly, skipping the queue.
-        entry.last_status = "running"
-        entry.last_run = time.time()
-        self._persist(entry)
-        self.state._emit(f"Scheduler: manual run '{entry.name}'", "info")
-        task = asyncio.create_task(self._run_with_tracking(sid))
-        self._running_tasks[entry.task_type] = task
-        return True
+        # Launch directly, skipping the queue.  Registration is atomic with
+        # the "already running" re-check to avoid a duplicate manual+auto run.
+        async with self._launch_lock:
+            if entry.task_type in self._running_tasks:
+                return False
+            entry.last_status = "running"
+            entry.last_run = time.time()
+            self._persist(entry)
+            self.state._emit(f"Scheduler: manual run '{entry.name}'", "info")
+            task = asyncio.create_task(self._run_with_tracking(sid))
+            self._running_tasks[entry.task_type] = task
+            return True
 
     async def cancel_running(self, sid: str) -> bool:
         """Cancel a running (or queued) schedule instance.
@@ -490,4 +488,7 @@ class SchedulerEngine(SchedulerPersistenceMixin, SchedulerApiMixin):
             self.state._emit(f"Scheduler: cancelling '{entry.name}'", "warn")
             return True
         return False
+
+    # Bulk cancellation and the internet gate are extracted to
+    # hunt/scheduler_guard.py to keep this module under the size budget.
 

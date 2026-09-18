@@ -15,7 +15,7 @@ import sqlite3
 import time
 
 from hunt.constants import DATA_DIR, logger
-from hunt.scheduler import ScheduleEntry
+from hunt.schedule_entry import ScheduleEntry
 
 
 class TaskExecutor:

@@ -1,6 +1,5 @@
 """State persistence methods — extracted from state.py."""
 import json
-import time
 from hunt.constants import logger
 from hunt.geo import country_code_from_name
 from hunt.models import ProxyRating

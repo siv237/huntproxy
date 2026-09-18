@@ -1,5 +1,5 @@
 ---
-updated: 2026-09-17
+updated: 2026-09-18
 commit: 8b0c0c0
 tags: [analysis]
 ---
@@ -28,6 +28,16 @@ tags: [analysis]
    [quality](quality.md), [infra](infra.md).
 6. **`docs/ANALYSIS.md` хранит устаревшую формулу рейтинга**. См.
    [sources-docs](sources-docs.md), [rating](rating.md).
+
+## Закрыто в рабочем дереве (незакоммичено, 2026-09-18)
+
+- **Прогресс пула >100% (200%/1000%)** — устранено. Причины и правки:
+  двойной запуск одной task_type планировщиком (`_launch_lock` в
+  `hunt/scheduler.py`); ручной Hunt не прерывал чужие задачи
+  (`hunt/manual_hunt.py`, `POST /api/hunt/start`); проверки не вставали на
+  паузу без интернета (`hunt/scheduler_guard.py::_internet_gate`);
+  потеря `counted` на retry fast_fail (`hunt/check_validation.py:171-179`).
+  Детали — [scheduler](scheduler.md). Доказательства — `data*` прода.
 
 ## Закрыто в этой ревизии
 

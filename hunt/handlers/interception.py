@@ -13,13 +13,10 @@ import logging
 import os
 import shutil
 import socket
-import struct
 import fcntl
 from pathlib import Path
-from urllib.parse import unquote
 
 from hunt.constants import DATA_DIR, PROJECT_DIR
-from hunt.handlers import _qs, _int_param
 
 logger = logging.getLogger(__name__)
 

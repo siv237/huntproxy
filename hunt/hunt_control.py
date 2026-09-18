@@ -3,8 +3,9 @@
 import asyncio
 import time
 from hunt.constants import logger
+from hunt.manual_hunt import ManualHuntMixin
 
-class HuntControlMixin:
+class HuntControlMixin(ManualHuntMixin):
     def start_hunt(self) -> bool:
             if self.phase not in (self.PHASE_IDLE, self.PHASE_DONE):
                 return False

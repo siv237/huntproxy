@@ -13,9 +13,6 @@ and explain why in the commit message.
 """
 
 import ast
-import importlib
-import inspect
-import os
 from pathlib import Path
 
 import pytest
@@ -31,14 +28,21 @@ HUNT_DIR = ROOT / "hunt"
 # When a file is split, add the new (smaller) files here and remove the old
 # entry.  Thresholds only go down, never up.
 
+# Hard ceiling for every module in hunt/ (no file may become a monolith).
+MAX_FILE_LINES = 500
+
+# Per-file ceilings, stricter than MAX_FILE_LINES, for modules already slimmed
+# down. These are targets, not snapshots — numbers are deliberately omitted to
+# avoid rotting: run ./test.sh --arch to see actuals. Lower an entry when a
+# file is split; never raise one.
 MAX_LINES = {
-    "server.py": 350,       # current: 306 — handler extraction done
-    "scheduler.py": 500,    # current: 494 — persistence+API extracted
-    "state.py": 250,         # current: 212 — persistence+downloads extracted
-    "proxy_runner.py": 350,  # current: 307 — switch history extracted
-    "proxy_sources.py": 500, # current: 474 — OK (just under)
-    "snapshot.py": 500,     # current: 447 — OK
-    "blocklists.py": 500,   # current: 427 — OK
+    "server.py": 350,        # handler extraction done
+    "scheduler.py": 500,     # persistence+API extracted
+    "state.py": 250,         # persistence+downloads extracted
+    "proxy_runner.py": 350,  # switch history extracted
+    "proxy_sources.py": 500,
+    "snapshot.py": 500,
+    "blocklists.py": 500,
     # Switch history enrichment — extracted from proxy_runner.py
     "switch_history.py": 150,
     # Handler modules — all under 500 after extraction
@@ -77,8 +81,20 @@ MAX_LINES = {
 
 MAX_CYCLOMATIC = 15  # per function — industry standard threshold
 
-MAX_MIXIN_COUNT = 28  # HuntState God Object — was 16, grew to 28 after checking+health+state split
-# Target: <8 — requires replacing mixin inheritance with composition
+MAX_MIXIN_COUNT = 31  # HuntState direct bases — God Object; only goes down, target <8
+# Target: <8 — requires replacing mixin inheritance with composition.
+# Lower this constant whenever a responsibility is removed from HuntState.
+
+# Base modules that must stay dependency-free: they are the bottom of the
+# import graph, and their isolation is what keeps the package import-safe.
+LEAF_MODULES = (
+    "conn.py",
+    "models.py",
+    "router.py",
+    "constants.py",
+    "geo.py",
+    "domain_parser.py",
+)
 
 
 # ── Helpers ────────────────────────────────────────────────────────────
@@ -123,6 +139,101 @@ def _ruff_complexity_offenders() -> list[str]:
     return offenders
 
 
+def _hunt_imports(path: Path) -> set[str]:
+    """Absolute ``hunt.*`` modules imported by *path* (relative imports
+    cannot escape a leaf module and are ignored here)."""
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+    except SyntaxError:
+        return set()
+    deps: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            if not node.level and node.module and node.module.split(".")[0] == "hunt":
+                deps.add(node.module)
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name.split(".")[0] == "hunt":
+                    deps.add(alias.name)
+    return deps
+
+
+def _resolve_dep(mod: str, raw: str, modules: dict[str, Path]) -> str | None:
+    """Map an imported name to a known module file."""
+    if raw in modules:
+        return raw
+    children = sorted(m for m in modules if m.startswith(raw + "."))
+    return children[0] if children else None
+
+
+def _module_import_graph() -> dict[str, set[str]]:
+    """Adjacency map of ``hunt`` modules → imported ``hunt`` modules.
+
+    Includes imports nested inside functions (lazy imports): a cycle is a
+    boundary smell regardless of where the import statement lives.
+    """
+    modules: dict[str, Path] = {}
+    for path in _python_files():
+        parts = list(path.relative_to(HUNT_DIR).with_suffix("").parts)
+        if parts[-1] == "__init__":
+            parts = parts[:-1]
+        modules[".".join(["hunt"] + parts)] = path
+
+    graph: dict[str, set[str]] = {}
+    for mod, path in modules.items():
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+        except SyntaxError:
+            continue
+        edges: set[str] = set()
+        for node in ast.walk(tree):
+            raw: str | None = None
+            if isinstance(node, ast.ImportFrom):
+                if node.level:
+                    base = mod.rsplit(".", node.level)[0] if mod.count(".") >= node.level else "hunt"
+                    raw = base + ("." + node.module if node.module else "")
+                elif node.module and node.module.startswith("hunt"):
+                    raw = node.module
+            elif isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.name.startswith("hunt"):
+                        target = _resolve_dep(mod, alias.name, modules)
+                        if target:
+                            edges.add(target)
+                continue
+            if raw is None:
+                continue
+            target = _resolve_dep(mod, raw, modules)
+            if target:
+                edges.add(target)
+        graph[mod] = edges
+    return graph
+
+
+def _find_cycles(graph: dict[str, set[str]]) -> list[str]:
+    """Return human-readable import cycles (DFS three-colour marking)."""
+    WHITE, GRAY, BLACK = 0, 1, 2
+    color = {m: WHITE for m in graph}
+    stack: list[str] = []
+    cycles: list[str] = []
+
+    def dfs(u: str) -> None:
+        color[u] = GRAY
+        stack.append(u)
+        for v in graph.get(u, ()):
+            if color.get(v, BLACK) == GRAY:
+                cycles.append(" -> ".join(stack[stack.index(v):] + [v]))
+            elif color.get(v, BLACK) == WHITE:
+                dfs(v)
+        stack.pop()
+        color[u] = BLACK
+
+    for m in graph:
+        if color[m] == WHITE:
+            dfs(m)
+    return cycles
+
+
 # ── File size guardrails ───────────────────────────────────────────────
 
 class TestFileSizes:
@@ -154,17 +265,91 @@ class TestFileSizes:
         )
 
     @pytest.mark.arch
-    def test_no_new_huge_files(self):
-        """Any new file over 500 lines must be registered in MAX_LINES."""
-        unregistered = []
+    def test_no_file_exceeds_global_limit(self):
+        """Every module (listed or not) must stay under MAX_FILE_LINES.
+
+        Unlike ``MAX_LINES`` this is a blanket ceiling: no module — including
+        brand-new ones — may become a monolith by simply not being registered.
+        """
+        offenders = []
         for path in _python_files():
-            rel = str(path.relative_to(HUNT_DIR))
             lines = sum(1 for _ in open(path, encoding="utf-8"))
-            if lines > 500 and rel not in MAX_LINES and path.name not in MAX_LINES:
-                unregistered.append(f"{rel}: {lines} lines (not in MAX_LINES)")
-        assert not unregistered, (
-            "New file(s) over 500 lines found — add them to MAX_LINES in "
-            f"test_architecture.py:\n  {chr(10).join(unregistered)}"
+            if lines > MAX_FILE_LINES:
+                rel = str(path.relative_to(HUNT_DIR))
+                offenders.append(f"{rel}: {lines} > {MAX_FILE_LINES}")
+        assert not offenders, (
+            f"File(s) over the global {MAX_FILE_LINES}-line limit — split them "
+            f"into focused modules:\n  {chr(10).join(offenders)}"
+        )
+
+
+# ── God Object guardrail (HuntState mixin count) ───────────────────────
+
+class TestMixinCount:
+    """HuntState must not grow more mixed-in responsibilities.
+
+    ``HuntState`` is composed by inheriting from many mixins rather than by
+    composition; each new base widens the God Object and makes the class
+    harder to reason about. The budget is the current count and may only go
+    down — remove an entry from ``MAX_MIXIN_COUNT`` when a responsibility is
+    extracted into a collaborator.
+    """
+
+    @pytest.mark.arch
+    def test_huntstate_mixin_count_within_budget(self):
+        tree = ast.parse((HUNT_DIR / "state.py").read_text(encoding="utf-8"))
+        bases: list[str] = []
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ClassDef) and node.name == "HuntState":
+                bases = [
+                    getattr(b, "id", None) or getattr(b, "attr", None) or "?"
+                    for b in node.bases
+                ]
+                break
+        assert bases, "HuntState class not found in hunt/state.py"
+        assert len(bases) <= MAX_MIXIN_COUNT, (
+            f"HuntState now has {len(bases)} mixins (budget {MAX_MIXIN_COUNT}). "
+            "Do not mix in new responsibilities — use composition or a helper "
+            "object, then lower MAX_MIXIN_COUNT when you extract one:\n  "
+            + ", ".join(bases)
+        )
+
+
+# ── Import-boundary guardrails (acyclic graph, dependency-free leaves) ──
+
+class TestImportBoundaries:
+    """Keep the ``hunt`` package import graph acyclic and its base modules
+    dependency-free.
+
+    Cycles make import order fragile and hide coupling; leaf modules are the
+    foundation everything else may import, so they must import nothing from
+    the package themselves.
+    """
+
+    @pytest.mark.arch
+    def test_leaf_modules_have_no_hunt_dependencies(self):
+        offenders = []
+        for name in LEAF_MODULES:
+            path = HUNT_DIR / name
+            if not path.exists():
+                offenders.append(f"{name}: missing (update LEAF_MODULES)")
+                continue
+            deps = _hunt_imports(path)
+            if deps:
+                offenders.append(f"{name}: imports {', '.join(sorted(deps))}")
+        assert not offenders, (
+            "Leaf modules must stay dependency-free (they keep the import "
+            "graph acyclic):\n  " + "\n  ".join(offenders)
+        )
+
+    @pytest.mark.arch
+    def test_no_circular_imports(self):
+        graph = _module_import_graph()
+        cycles = _find_cycles(graph)
+        assert not cycles, (
+            "Circular imports found in hunt/ — they make import order fragile "
+            "and hide coupling. Break the cycle by importing from the module "
+            "that actually defines the symbol:\n  " + "\n  ".join(cycles[:10])
         )
 
 
@@ -191,6 +376,46 @@ class TestComplexity:
                 f"(threshold={MAX_CYCLOMATIC}):\n  "
                 + "\n  ".join(offenders)
             )
+
+
+# ── Dead-code guardrail (ruff F401/F841/E722) ──────────────────────────
+
+class TestNoDeadCode:
+    """No unused imports, unused variables, or bare ``except:`` in hunt/.
+
+    Ruff's default ``./test.sh`` pass is advisory (errors ignored), so these
+    rules could silently rot. This test makes them binding: F401 (unused
+    import), F841 (unused variable) and E722 (bare except) must stay at zero.
+    """
+
+    RULES = ("F401", "F841", "E722")
+
+    @pytest.mark.arch
+    def test_no_unused_or_bare_except(self):
+        import json
+        import subprocess
+
+        ruff = ROOT / ".venv/bin/ruff"
+        if not ruff.exists():
+            pytest.skip("ruff not installed in .venv — run: pip install ruff")
+        result = subprocess.run(
+            [str(ruff), "check", "hunt/", "--config", "ruff.toml",
+             "--select", ",".join(self.RULES), "--output-format", "json"],
+            capture_output=True, text=True, cwd=ROOT, timeout=60,
+        )
+        try:
+            violations = json.loads(result.stdout) if result.stdout.strip() else []
+        except json.JSONDecodeError:
+            pytest.skip("ruff output not parseable — check ruff installation")
+        offenders = []
+        for v in violations:
+            rel = v.get("filename", "").replace(str(ROOT) + "/", "")
+            loc = v.get("location", {})
+            offenders.append(f"{rel}:{loc.get('row', '?')} {v.get('code', '?')}: {v.get('message', '')}")
+        assert not offenders, (
+            "Dead code found (unused import/variable, or bare except). Remove "
+            "it or handle the error explicitly:\n  " + "\n  ".join(offenders[:30])
+        )
 
 
 # ── Silent-except guardrail (AI anti-pattern) ──────────────────────────

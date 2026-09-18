@@ -1,7 +1,6 @@
 """Functional split of the huntproxy backend."""
 
 import asyncio
-import ipaddress
 import time
 from hunt.blacklist import BlacklistMixin
 from hunt.favorites import FavoritesMixin
@@ -186,6 +185,9 @@ class HuntState(DbMixin, EventsMixin, SnapshotMixin, HuntControlMixin, HuntCycle
 
             # Scheduler (set by main.py after construction)
             self.scheduler = None
+            # True while a manual Hunt holds the scheduler paused (exclusive
+            # operator mode); the hunt cycle resumes it when it ends.
+            self._scheduler_paused_by_hunt: bool = False
 
             self.started_at = time.time()
             self._db_path = DATA_DIR / "stats.db"

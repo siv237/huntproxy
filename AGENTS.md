@@ -164,6 +164,6 @@ Key facts not obvious from filenames:
 - **CC threshold 15, not 8:** async retry/timeout patterns inflate CC artificially — 3 `if` + 2 `except` + 1 `for` = CC 7.
 - **AST silent-except test, not ruff BLE001:** BLE001 flags all `except Exception` (277 false positives) including legitimate handlers with logging. AST test catches only the real anti-pattern: broad/bare `except` with bare `pass`.
 - **Coverage baseline 58%, not 90%:** 90% would block all commits on a project at 58%. Threshold = current state, raised monotonically.
-- **Architecture tests non-blocking:** would block all commits at current state. Run via `--arch` / `--quality` to track backlog.
+- **Architecture tests non-blocking:** run via `--arch` / `--quality` to track backlog; they currently pass, thresholds only tighten.
 - **No docstring control:** AI generates meaningless comments to pass automated docstring checks. Documentation quality is enforced at code review, not CI.
 - **`except OSError` → `except Exception` for DB files:** `sqlite3.OperationalError` is not caught by `OSError`. Use `except Exception` with `logger.debug` for DB operations.

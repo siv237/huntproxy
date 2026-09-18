@@ -45,15 +45,22 @@ tags: [concept]
 - `tests/test_api_consistency.py` — согласованность API.
 
 Архитектурные (`tests/test_architecture.py`, маркер `arch`): размер файлов
-(≤500 строк), CC≤15 (ruff C901), God Object/coupling, границы импортов,
-модули-листья, запрет silent-except.
+(≤500 строк, `MAX_LINES`), CC≤15 (ruff C901), God Object (бюджет числа
+миксинов `HuntState` — `TestMixinCount`, только вниз), границы импортов
+(ацикличность графа `hunt/` — `TestImportBoundaries.test_no_circular_imports`),
+модули-листья (без внутренних импортов — `test_leaf_modules_have_no_hunt_dependencies`),
+запрет silent-except, мёртвый код (ruff F401/F841/E722 — `TestNoDeadCode`).
 
 - `TestBranchCoverage` (baseline 58%) помечен ещё и `slow`: он запускает
   **вложенный** прогон всего функционала под coverage (минуты), поэтому исключён
   из `--arch`/`--quality`/`--security`. Реальный контроль порога — в
   `./test.sh --coverage` (`--cov-fail-under=58`).
-- `TestBanditClean`/`TestNoKnownCVEs` скипаются, если `bandit`/`pip-audit` не
-  установлены в `.venv` (а не падают `FileNotFoundError`).
+- `TestBanditClean`/`TestNoKnownCVEs`/`TestNoDeadCode`/`TestBranchCoverage`
+  скипаются, если `bandit`/`pip-audit`/`ruff`/`pytest-cov` не установлены в
+  `.venv` (а не падают `FileNotFoundError`). Скипы **видны**: live-репорт
+  (`tests/conftest.py`, `_LiveReporter`) печатает их как `s`, отдельным блоком
+  «Skipped» с причиной и командой установки — молча «пройдено» не выглядит.
+- Skip учитывается и на фазе `setup` (`@pytest.mark.skip/skipif`, `importorskip`).
 
 Безопасность (`tests/test_http_fuzz.py`, `fuzz`): сервер не должен отдавать
 status 0 (drop) или 500 на произвольный ввод.
@@ -66,11 +73,14 @@ Frontend-тесты: `test_locales.py` (полнота переводов + за
 
 ## Пороги (enforced)
 
+- любой файл `hunt/` ≤ 500 строк (глобальный потолок `MAX_FILE_LINES`,
+  `test_no_file_exceeds_global_limit`) плюс персональные лимиты `MAX_LINES`;
 - CC ≤ 15 (ruff C901);
-- файл ≤ 500 строк (arch-тест; новые oversized регистрируются);
 - `except: pass` / `except Exception: pass` запрещены (AST-тест
   `TestNoSilentExcept`), вместо них `logger.debug(..., exc_info=True)`;
-- ruff F401/F841, E722 — 0;
+- число миксинов `HuntState` ≤ 31 (`TestMixinCount`) — только вниз, цель <8;
+- импорт-граф `hunt/` ацикличен, модули-листья без внутренних импортов;
+- ruff F401/F841/E722 — 0 (`TestNoDeadCode`, enforced);
 - branch coverage baseline 58%, только вверх;
 - bandit — 0 HIGH/MEDIUM без `# nosec <CODE> — reason`;
 - pip-audit — 0 CVE в runtime-deps (`requirements.txt`);
@@ -84,7 +94,7 @@ Frontend-тесты: `test_locales.py` (полнота переводов + за
 `hooks/pre-commit` копируется в `.git/hooks/` через `install-hooks.sh`
 (вызывается из `update.sh:188-191`). **Важно:** строка `./test.sh`
 закомментирована (`hooks/pre-commit:8`), поэтому фактической блокировки
-коммитов тестами сейчас нет, хотя `AGENTS.md` это заявляет. Скрипт лишь
+коммитов тестами сейчас нет (`AGENTS.md` тоже это отмечает). Скрипт лишь
 печатает сообщения и завершается успешно (`set -euo pipefail` не помогает —
 `exit 0` подразумевается).
 
@@ -101,8 +111,8 @@ bandit (SAST), pip-audit (SCA), hypothesis (фаззинг), ESLint (JS), AST-а
   AST-тест — только `except: pass`.
 - **Baseline покрытия 58%, а не 90%:** 90% заблокировал бы все коммиты; порог = текущее
   состояние и растёт монотонно.
-- **Arch-тесты не блокируют:** на текущем состоянии блокировали бы всё; запуск через
-  `--arch`/`--quality` как backlog.
+- **Arch-тесты не блокируют:** запускаются отдельно (`--arch`/`--quality`) как
+  backlog; сейчас проходят, пороги только ужесточаются.
 - **Без контроля docstring:** AI генерирует бессмысленные комментарии ради проверки;
   качество документации — на ревью.
 - **`except OSError` → `except Exception` для БД:** `sqlite3.OperationalError` не

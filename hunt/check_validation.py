@@ -171,6 +171,11 @@ class CheckValidationMixin(CheckValidationHelpersMixin):
                     if merged["fast_fail"] and not merged["ok"] and not merged["ssl_ok"]:
                         if await self._handle_fast_fail(addr, lock, ctx, counted):
                             return
+                        # _handle_fast_fail already incremented `checked` for
+                        # this address (it only counts when `counted` is
+                        # False).  Mark it counted so the internet-suspect
+                        # retry below cannot count the same address again.
+                        counted = True
                         if self._internet_suspect:
                             await self._pause_event.wait()
                             continue

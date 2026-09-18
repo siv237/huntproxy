@@ -1,5 +1,5 @@
 ---
-updated: 2026-09-17
+updated: 2026-09-18
 commit: 8b0c0c0
 tags: [entity]
 ---
@@ -8,16 +8,28 @@ tags: [entity]
 
 Единый движок фоновых задач заменил разрозненные циклы (`docs/SCHEDULER_PLAN.md`).
 Реализация: `hunt/scheduler.py`, `hunt/scheduler_api.py`,
-`hunt/scheduler_persistence.py`, `hunt/schedule_entry.py`,
-`hunt/task_executor.py`.
+`hunt/scheduler_persistence.py`, `hunt/scheduler_guard.py`,
+`hunt/schedule_entry.py`, `hunt/task_executor.py`.
 
 ## Устройство
 
-`SchedulerEngine(SchedulerPersistenceMixin, SchedulerApiMixin)` (`hunt/scheduler.py:21`):
+`SchedulerEngine(SchedulerPersistenceMixin, SchedulerApiMixin, SchedulerGuardMixin)`
+(`hunt/scheduler.py:21`):
 - `_running_tasks: dict[task_type, Task]` — по одному экземпляру типа задачи;
 - `_queue: dict[sid, queued_at]`, `_paused`, `_stopped`, `_lock`, `_schedules`;
+- `_launch_lock` — атомарность решения о запуске (см. ниже);
+- `_paused_by_internet` — пауза, выставленная интернет-гейтом;
 - `executor = TaskExecutor(state)`;
 - тик `_TICK_INTERVAL=5` секунд (`:18`).
+
+> **_launch_lock (2026-09-18, незакоммичено):** проверка «task_type уже
+> запущен» и регистрация в `_running_tasks` выполняются под `_launch_lock`.
+> Раньше между ними был `await is_internet_alive()`, поэтому два
+> одновременных `_drain_queue` (тик + `finally` завершившейся задачи)
+> запускали одну задачу дважды. Два параллельных `proxy_check` по одному пулу
+> писали в общий `checked`/`checking_total` → 200% (доказано по
+> `stats.db.actions/events`: запуски `proxy_check` в 08:08:09 и 08:08:10,
+> `checked`=162336 при `checking_total`=81351).
 
 `start()` = `prepare()` + `start_loop()` (`:39-42`); `prepare()` грузит
 расписания, сидит дефолты, `restore_defaults()` (`:44-55`).
@@ -45,7 +57,7 @@ last_duration_s`.
 | `source_refresh` | скачать источники, поставить новые в очередь | — | нет | да | `_hunt_running` |
 | `ip_blacklist` | скачать IP-ЧС | — | нет | да | `_fetching_ip_blacklists` |
 | `blocklist` | скачать страновые блоклисты | — | нет | да | `_fetching_blocklists` |
-| `health_check` | ре-валидация живых | proxy_check | нет | да | — |
+| `health_check` | ре-валидация живых | proxy_check | нет | да | `_hunt_running` |
 | `history` | снапшот истории + retention | — | нет | нет | — |
 | `clear_dead` | удалить мёртвых | proxy_check, health_check | нет | нет | — |
 | `backup` | бэкап БД | — | нет | нет | — |
@@ -100,6 +112,37 @@ ValueError при дубле), `update_schedule`, `delete_schedule`, `toggle_sch
 
 HTTP: `/api/schedules` CRUD, `/toggle`, `/run`, `/stop`, `/status`, `/log`,
 `/pause`, `/resume`, `/restore-defaults` (`hunt/handlers/admin.py:72-192`).
+
+## Отмена всех задач и интернет-гейт (`hunt/scheduler_guard.py`, незакоммичено)
+
+- `cancel_all(reason)` — отменяет все `_running_tasks`, чистит `_queue`,
+  помечает расписания `cancelled`. Возвращает список типов.
+- `_cancel_check_tasks()` — отменяет только задачи с `respect_internet`.
+- `_internet_gate()` вызывается каждый тик `_run_loop` перед проверкой
+  `_paused`. Если canary сообщает «интернета нет» — планировщик встаёт на
+  паузу (`_paused_by_internet=True`) и отменяет запущенные проверки; при
+  восстановлении связи автоматически возобновляется. Ручную паузу не трогает.
+  Это исключает накопление ошибок, когда сервер сутки стоит без сети.
+- `_is_busy_flag_stale`/`_check_busy_flag` перенесены сюда из `scheduler.py`
+  (лимит 500 строк).
+
+## Ручной Hunt (exclusive, `hunt/manual_hunt.py`, незакоммичено)
+
+`hunt/handlers/hunt.py::_handle_hunt_start` (`POST /api/hunt/start`) вызывает
+`HuntState.manual_start_hunt()` (`hunt/manual_hunt.py`), а не `start_hunt()`:
+
+- отказывает, если нет интернета;
+- отменяет ручной/шедулерный health-check и ждёт его завершения;
+- отменяет предыдущий Hunt и ждёт его `finally`;
+- `scheduler.pause_all()` + `scheduler.cancel_all()` — планировщик встаёт на
+  паузу на всё время ручного Hunt;
+- `_reset_progress()` обнуляет `checked`/`checking_total`/`working`/`failed`/
+  `downloaded`/`bl_*` и `_active_checks`;
+- `start_hunt()`; по завершении `_hunt_cycle` вызывает `_end_manual_hunt()`,
+  который возобновляет планировщик.
+
+Кнопка «Старт Hunt» на фронте (`web/js/pages/hunt.js:114,154`) уже бьёт в этот
+эндпоинт — изменения только на бэкенде.
 
 ## Замечание
 

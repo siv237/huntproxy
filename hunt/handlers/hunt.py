@@ -13,9 +13,12 @@ class HuntHandlers:
         self.server = server
 
     async def _handle_hunt_start(self, raw_path, body):
-        ok = self.state.start_hunt()
-        self.state._log_action("hunt.start", "ok" if ok else "already-running")
-        return json.dumps({"ok": ok, "error": None if ok else "already running"}), 200, "application/json"
+        # The Start button is authoritative: interrupt all running work and
+        # start a fresh exclusive hunt (see HuntState.manual_start_hunt).
+        ok = await self.state.manual_start_hunt()
+        if ok:
+            self.state._log_action("hunt.start", "ok")
+        return json.dumps({"ok": ok, "error": None if ok else "cannot start (no internet)"}), 200, "application/json"
 
     async def _handle_hunt_stop(self, raw_path, body):
         self.state._log_action("hunt.stop")
@@ -99,6 +102,9 @@ class HuntHandlers:
             if self.state._health_running:
                 self.state._log_action("health.start", "already-running")
                 return json.dumps({"ok": False, "error": "already_running"}), 409, "application/json"
+            if getattr(self.state, "_hunt_running", False):
+                self.state._log_action("health.start", "hunt-running")
+                return json.dumps({"ok": False, "error": "hunt_running"}), 409, "application/json"
             self.state._log_action("health.start", "recheck-all")
             self.state._health_task = asyncio.create_task(self.state._health_check(manual=True))
             return json.dumps({"ok": True}), 200, "application/json"

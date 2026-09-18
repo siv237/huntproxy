@@ -53,9 +53,23 @@ def empty_config():
     }
 
 
+def _stub_internet_up(state):
+    """Pretend the canary says the internet is reachable.
+
+    Tests must not probe real canary hosts: offline they take seconds per
+    host and would make the manual-hunt/internet-gate paths flaky.  Tests
+    that exercise connectivity override this attribute themselves.
+    """
+    async def _up():
+        return True
+    state.is_internet_alive = _up
+
+
 @pytest.fixture
 def state(tmp_data_dir, empty_config):
-    return hunt.HuntState(empty_config)
+    state = hunt.HuntState(empty_config)
+    _stub_internet_up(state)
+    return state
 
 
 @pytest.fixture
@@ -64,6 +78,7 @@ def api_server(tmp_data_dir, empty_config):
     import threading
 
     state = hunt.HuntState(empty_config)
+    _stub_internet_up(state)
     server = hunt.HuntServer(state, "127.0.0.1", 0)
     ready_event = threading.Event()
 
@@ -189,6 +204,21 @@ def _put(s):
     _os.write(1, s.encode())
 
 
+def _skip_reason(report):
+    """Best-effort extraction of the human reason from a skipped report."""
+    lr = getattr(report, "longrepr", None)
+    if isinstance(lr, tuple) and len(lr) == 3:
+        reason = str(lr[2])
+    elif lr is not None:
+        reason = str(lr)
+    else:
+        reason = ""
+    for prefix in ("Skipped: ", "Skipped "):
+        if reason.startswith(prefix):
+            reason = reason[len(prefix):]
+    return reason.strip().replace("\n", " ")[:200]
+
+
 class _LiveReporter:
     def __init__(self):
         self.groups = {}
@@ -198,13 +228,21 @@ class _LiveReporter:
         self.failed = 0
         self.skipped = 0
         self.failures = []
+        self.skips = []
 
     def pytest_collection_finish(self, session):
         self.total = len(session.items)
         _put(f"\n  {self.total} tests collected\n\n")
 
     def pytest_runtest_logreport(self, report):
-        if report.when != "call":
+        # Count skips wherever they appear: inline pytest.skip() lands in the
+        # "call" phase, @pytest.mark.skip/skipif and importorskip land in
+        # "setup". Setup failures are surfaced too, otherwise they'd vanish.
+        if report.when == "call":
+            pass
+        elif report.when == "setup" and (report.skipped or report.failed):
+            pass
+        else:
             return
         f = report.location[0]
         g = _gname(f)
@@ -219,17 +257,18 @@ class _LiveReporter:
             _put(f"  {ts}  {g:<24} [")
         e = self.groups[g]
         e["count"] += 1
-        if report.passed:
+        if report.skipped:
+            # A skip is not a failure, but it must stay visible: a missing
+            # tool (bandit/pip-audit/pytest-cov/ruff) silently passing is worse
+            # than a red test. Reasons are collected and printed below.
+            e["skip"] += 1
+            self.skipped += 1
+            self.skips.append((g, report.location[2], _skip_reason(report)))
+            _put("s")
+        elif report.passed:
             e["ok"] += 1
             self.passed += 1
             _put(".")
-        elif report.skipped:
-            # A skip is not a failure: pytest.skip() inside a test reports at
-            # the "call" phase with passed=False, which used to be counted as
-            # FAIL and made missing tools / heavy opt-in checks look broken.
-            e["skip"] += 1
-            self.skipped += 1
-            _put("s")
         else:
             e["fail"] += 1
             self.failed += 1
@@ -249,6 +288,11 @@ class _LiveReporter:
         _put(f"\n  {'='*64}\n")
         tail = f", {self.skipped} skipped" if self.skipped else ""
         _put(f"  Total: {self.passed} passed, {self.failed} failed{tail}\n")
+        if self.skips:
+            _put("\n  Skipped (nothing wrong — but install/check if unexpected):\n")
+            for g, name, reason in self.skips:
+                _put(f"    s {g} :: {name}")
+                _put(f"\n        {reason}\n" if reason else "\n")
         if self.failures:
             _put(f"\n  Failed tests:\n")
             for g, name, _ in self.failures:
