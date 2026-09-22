@@ -103,6 +103,19 @@ class ProxyHandlers(ProxyGroupMixin):
     async def _handle_transparent_stop(self, raw_path, body):
         self.state._log_action("transparent.stop")
         await self.server.transparent.stop()
+        # The listener is gone, so any redirect rules now point at a dead port
+        # and would black-hole traffic. Drop ALL interception rules (both
+        # whole-machine and selective) and clear the selective master flag.
+        try:
+            import hunt.interception_reconcile as rec
+            import hunt.interception_selective as ise
+            ok, _ = await rec.run_setup_iptables(["stop"])
+            if ise.get_config(self.state).get("selective_enabled"):
+                ise.set_config(self.state, {"selective_enabled": False})
+            if not ok:
+                self.state._emit("Transparent stopped; interception rules may remain (no root)", "warn")
+        except Exception:
+            logger.debug("interception cleanup on transparent stop failed", exc_info=True)
         return json.dumps({"ok": True}), 200, "application/json"
 
     # ── Interception (whole-machine transparent redirect) ────────────────

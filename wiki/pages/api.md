@@ -92,9 +92,13 @@ tags: [entity]
 `GET /api/proxy/<addr>` (карточка), `GET /api/proxies` (список/группы),
 `GET /api/proxy-checks/<addr>` (история), `GET /api/proxy-heatmap`.
 
-### Interception (`handlers/interception.py`)
+### Interception (`handlers/interception.py`, `handlers/interception_selective.py`)
 
 `GET /api/interception`, `POST /api/interception/apply|stop`.
+Выборочный режим: `GET /api/interception/selective`,
+`POST /api/interception/selective/{config,apply,stop,panic,reconcile}`,
+`GET|POST /api/interception/resources`, `POST|DELETE /api/interception/resources/<id>`,
+`POST /api/interception/resources/<id>/toggle|resolve`. См. [interception](interception.md).
 
 ### Admin (`handlers/admin.py`)
 

@@ -12,6 +12,22 @@
 - **One bug = one commit.** If you re-fix the same bug, the previous fix was wrong. Find the root cause first, verify it actually works, then commit once.
 - **Verify for real, not just with tests.** Tests passing ≠ bug fixed. Use curl, logs, profiler to confirm the actual problem is gone.
 
+## Синхронизация прод ← dev (обязательный процесс)
+
+- Код правим **только в dev** (`/home/user/prj/huntproxy`). Прод — `/opt/huntproxy`;
+  руками в его файлы не лезем.
+- **«обнови прод» / «деплой»** = выполнить ровно одну команду из dev:
+  `sudo .venv/bin/python scripts/compare_env.py --sync`
+  (она пофайлово копирует отличия dev→prod, рестартит `huntproxy`, сверяет заново).
+- Готово, если вывод **`RESULT: IDENTICAL`**. Если нет — показать
+  `only in DEV` / `only in PROD` / `different content` и остановиться; обходных
+  путей не выдумывать (никаких ручных `cp`/`install`/правок `/opt`).
+- **«коммить»** = `git add -A && git commit && git push origin main` в dev; затем
+  прод приводится к origin штатным `/opt/huntproxy/update.sh`.
+- Не трогать: `data/`, `config.yaml`, `.venv`, `.git`; не запускать `uninstall.sh`.
+  Скрипт синхронизации их и так игнорирует.
+- Подробности — [wiki/pages/deploy.md](wiki/pages/deploy.md).
+
 ## LLM Wiki
 
 Вики — персистентная память проекта: компаундящий конспект кода и решений, чтобы

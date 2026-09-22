@@ -424,6 +424,30 @@ class DbMixin:
                     last_duration_s REAL NOT NULL DEFAULT 0,
                     last_error      TEXT NOT NULL DEFAULT ''
                 );
+                CREATE TABLE IF NOT EXISTS interception_resources (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    enabled INTEGER NOT NULL DEFAULT 1,
+                    created_at REAL NOT NULL DEFAULT 0,
+                    updated_at REAL NOT NULL DEFAULT 0
+                );
+                CREATE TABLE IF NOT EXISTS interception_entries (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    resource_id TEXT NOT NULL REFERENCES interception_resources(id) ON DELETE CASCADE,
+                    address TEXT NOT NULL,
+                    resolved TEXT NOT NULL DEFAULT '[]',
+                    status TEXT NOT NULL DEFAULT 'pending',
+                    error TEXT NOT NULL DEFAULT '',
+                    last_resolved_at REAL NOT NULL DEFAULT 0
+                );
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_interception_entries_uniq
+                    ON interception_entries(resource_id, address);
+                CREATE INDEX IF NOT EXISTS idx_interception_entries_res
+                    ON interception_entries(resource_id);
+                CREATE TABLE IF NOT EXISTS interception_config (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL
+                );
             """)
             conn.commit()
             self._migrate_state_db_columns(conn)

@@ -25,6 +25,12 @@ logger = logging.getLogger(__name__)
 # platforms / Python versions).
 SO_ORIGINAL_DST = 80
 
+# Plaintext HTTP request methods used to auto-detect the transport: an
+# intercepted HTTP request is proxied in *forward* mode (absolute-URI, no
+# CONNECT), because upstream proxies commonly deny CONNECT on port 80.
+_HTTP_METHODS = (b"GET", b"POST", b"HEAD", b"PUT", b"DELETE",
+                 b"OPTIONS", b"PATCH", b"TRACE")
+
 
 class TransparentRunner:
     def __init__(self, state: "HuntState", host: str = "127.0.0.1"):
@@ -130,6 +136,113 @@ class TransparentRunner:
         except (OSError, ValueError):
             return None
 
+    # -- transport auto-detection (optional) --------------------------------
+
+    def _cfg(self, key, default):
+        try:
+            from hunt.interception_selective import get_config
+            return get_config(self.state).get(key, default)
+        except Exception:
+            logger.debug("interception config read failed", exc_info=True)
+            return default
+
+    def _auto_ip_set(self) -> set:
+        """Destinations whose resource is in *auto* mode (cached ~5s).
+
+        Only for these do we peek the stream and pick the transport; manual
+        resources with explicit ports always use plain CONNECT.
+        """
+        cache = getattr(self, "_auto_cache", None)
+        now = time.monotonic()
+        if cache and now - cache[0] < 5:
+            return cache[1]
+        try:
+            from hunt.interception_selective import auto_addresses
+            ips = set(auto_addresses(self.state))
+        except Exception:
+            logger.debug("auto address read failed", exc_info=True)
+            ips = set()
+        self._auto_cache = (now, ips)
+        return ips
+
+    def _fallback_direct(self) -> bool:
+        return bool(self._cfg("fallback_direct", True))
+
+    def _resources(self) -> list:
+        cache = getattr(self, "_res_cache", None)
+        now = time.monotonic()
+        if cache and now - cache[0] < 5:
+            return cache[1]
+        try:
+            from hunt.interception_selective import list_resources
+            res = list_resources(self.state)
+        except Exception:
+            logger.debug("resource read failed", exc_info=True)
+            res = []
+        self._res_cache = (now, res)
+        return res
+
+    def _match_info(self, host: str, port: int) -> tuple[str, str]:
+        """Which resource/rule matched this destination (for the journal)."""
+        for res in self._resources():
+            if host in res.get("ips", []):
+                if res.get("auto"):
+                    return res.get("name", ""), "auto"
+                return res.get("name", ""), f"port {port}"
+        return "", ""
+
+    @staticmethod
+    async def _peek_request(reader, timeout=5):
+        """Classify the client stream without losing the consumed bytes.
+
+        Returns ``(kind, buffered)`` with kind ``tls``/``http``/``opaque``/
+        ``empty``.  Only called when transport auto-detection is enabled.
+        """
+        try:
+            first = await asyncio.wait_for(reader.readexactly(1), timeout=timeout)
+        except (asyncio.IncompleteReadError, asyncio.TimeoutError, OSError):
+            return "empty", b""
+        if first[0] == 0x16:  # TLS ClientHello
+            return "tls", first
+        buf = bytearray(first)
+        while b"\r\n" not in buf and len(buf) < 1024:
+            try:
+                chunk = await asyncio.wait_for(reader.read(256), timeout=timeout)
+            except (asyncio.TimeoutError, OSError):
+                break
+            if not chunk:
+                break
+            buf.extend(chunk)
+        line = bytes(buf).split(b"\r\n", 1)[0]
+        parts = line.split(b" ")
+        if len(parts) >= 3 and parts[0].upper() in _HTTP_METHODS:
+            return "http", bytes(buf)
+        return "opaque", bytes(buf)
+
+    @staticmethod
+    def _to_absolute_uri(data: bytes, host: str, port: int) -> bytes:
+        """Rewrite an HTTP request line to absolute-URI form for forward mode.
+
+        Also forces ``Connection: close`` so a single upstream request is
+        handled per connection (no mid-stream request-line rewriting).
+        """
+        header, sep, body = data.partition(b"\r\n\r\n")
+        lines = header.split(b"\r\n")
+        parts = lines[0].split(b" ") if lines else []
+        if len(parts) < 3:
+            return data
+        method, path, version = parts[0], parts[1], b" ".join(parts[2:])
+        if path.startswith((b"http://", b"https://")):
+            url = path
+        else:
+            hostport = host if port == 80 else f"{host}:{port}"
+            if not path.startswith(b"/"):
+                path = b"/" + path
+            url = b"http://" + hostport.encode() + path
+        rest = [ln for ln in lines[1:] if not ln.lower().startswith(b"connection:")]
+        out = [method + b" " + url + b" " + version] + rest + [b"Connection: close"]
+        return b"\r\n".join(out) + b"\r\n\r\n" + body
+
     async def _handle(self, reader, writer):
         peer = writer.get_extra_info("peername")
         target_host = "?"
@@ -144,8 +257,11 @@ class TransparentRunner:
 
             if self._is_self_target(target_host, target_port):
                 writer.close()
-                self._log(peer, f"{target_host}:{target_port}",
-                          "self-target dropped", duration=time.monotonic() - t0)
+                # Readiness probes connect to our own port every couple of
+                # seconds; logging them would flood the client journal with
+                # meaningless "self-target dropped" rows.
+                logger.debug("transparent self-target dropped: %s:%s",
+                             target_host, target_port)
                 return
 
             # Delegates to ProxyRunner._connect_upstream so that routing,
@@ -157,17 +273,44 @@ class TransparentRunner:
                 self._log(peer, target_host, "no proxy_runner", duration=time.monotonic() - t0)
                 return
 
-            upstream = await pr._connect_upstream(target_host, target_port)
+            kind = "opaque"
+            buffered = b""
+            if target_host in self._auto_ip_set():
+                kind, buffered = await self._peek_request(reader)
+                if kind == "empty":
+                    writer.close()
+                    self._log(peer, f"{target_host}:{target_port}", "empty request",
+                              duration=time.monotonic() - t0)
+                    return
+            need_connect = kind != "http"
+            res_name, rule = self._match_info(target_host, target_port)
+
+            upstream = await pr._connect_upstream(target_host, target_port,
+                                                  need_connect=need_connect)
+            if not upstream and self._fallback_direct():
+                chain = []
+                rd, wr, _ = await pr._connect_direct(target_host, target_port, chain)
+                if rd is not None:
+                    upstream = (rd, wr, chain or ["direct (fallback)"], False)
             if not upstream:
                 writer.close()
-                self._log(peer, f"{target_host}:{target_port}", "502 no upstream", duration=time.monotonic() - t0)
+                self._log(peer, f"{target_host}:{target_port}", "502 no upstream",
+                          duration=time.monotonic() - t0)
                 return
 
-            up_r, up_w, chain, _is_raw = upstream
+            up_r, up_w, chain, is_raw = upstream
+            if buffered:
+                if kind == "http" and is_raw:
+                    buffered = self._to_absolute_uri(buffered, target_host, target_port)
+                up_w.write(buffered)
+                await up_w.drain()
             bi, bo = await pr._relay(reader, writer, up_r, up_w)
+            if buffered:
+                bi += len(buffered)
             dur = time.monotonic() - t0
             self._log(peer, f"{target_host}:{target_port}", "ok",
-                      " → ".join(chain), bytes_in=bi, bytes_out=bo, duration=dur)
+                      " → ".join(chain), bytes_in=bi, bytes_out=bo, duration=dur,
+                      rule=rule, resource=res_name)
         except asyncio.CancelledError:
             pass
         except Exception as e:
@@ -181,10 +324,12 @@ class TransparentRunner:
 
     # -- helpers ------------------------------------------------------------
 
-    def _log(self, peer, target, status, upstream="", bytes_in=0, bytes_out=0, duration=0.0):
+    def _log(self, peer, target, status, upstream="", bytes_in=0, bytes_out=0, duration=0.0,
+             rule="", resource=""):
         entry = {"ts": time.time(), "client": peer[0] if peer else "?",
                  "target": target, "status": status, "upstream": upstream,
                  "bytes_in": bytes_in, "bytes_out": bytes_out,
+                 "rule": rule, "resource": resource,
                  "duration": round(duration, 3), "via": "transparent"}
         self.log.append(entry)
         if len(self.log) > 200:

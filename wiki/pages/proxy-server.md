@@ -137,3 +137,7 @@ Tor/anti-ban — это UI-подсказки, спец-обработки в б
 - Скрипт `setup_iptables.sh`: цепочка `HUNTPROXY_REDIRECT`, исключения по
   uid/cgroup/локальным сетям/`OWN_IP`, дефолт — redirect всего outbound TCP на
   17477. Коммит `99efc3e`.
+
+Дополнительно есть **выборочный режим** (redirect только заданных ресурсов,
+ipset + сверка реального состояния ядра) — см.
+[interception](interception.md).

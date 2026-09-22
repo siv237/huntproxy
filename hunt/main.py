@@ -47,6 +47,18 @@ async def amain(config: dict):
     if restored:
         state._emit(f"Restored services after restart: {', '.join(restored)}", "info")
 
+    # Reconcile the persisted interception config with the real iptables
+    # state: a crash/restart can leave leftover redirect rules while the
+    # feature is off (or a desired mode with no rules at all).
+    import hunt.interception_reconcile as rec
+    try:
+        recon = await rec.reconcile_on_startup(state)
+        if recon.get("leftover") or recon.get("pending"):
+            logger.warning("interception reconcile: %s", recon)
+    except Exception:
+        logger.debug("interception reconcile failed", exc_info=True)
+    rec.start_resolver(state)
+
     print("=" * 56)
     print(f"  huntproxy HUNT — web UI: http://{host}:{port}/")
     print(f"  data dir: {DATA_DIR}")

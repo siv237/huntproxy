@@ -41,6 +41,14 @@ BACKUP_GROUPS = {
         "label": "Custom proxies",
         "tables": [("state", "custom_proxies")],
     },
+    "interception": {
+        "label": "Selective interception",
+        "tables": [
+            ("state", "interception_resources"),
+            ("state", "interception_entries"),
+            ("state", "interception_config"),
+        ],
+    },
     "runtime_state": {
         "label": "Runtime state",
         "tables": [("state", "runtime_state")],

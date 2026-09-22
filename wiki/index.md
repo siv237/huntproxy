@@ -24,6 +24,8 @@
   proxy-sources, IP-ЧС, блоклисты, stall-detection, backup/restore · 2026-09-17.
 - [Мониторинг: снапшот, connectivity, события, трафик](pages/monitoring.md) —
   snapshot, canary, events/actions, TrafficStats, switch history · 2026-09-17.
+- [Перехват трафика (interception)](pages/interception.md) — общий и выборочный
+  перехват, ресурсы, ipset, сверка реального состояния · 2026-09-22.
 - [Web UI (frontend)](pages/frontend.md) — структура `web/`, ядро, страницы,
   локали, бандл · 2026-09-17.
 
@@ -41,6 +43,8 @@
   `_resolve_route`, паттерны · 2026-09-17.
 - [Инфраструктура и скрипты](pages/infra.md) — install/update/uninstall,
   daemon/hunt, iptables, конфигурация · 2026-09-17.
+- [Обновление среды (dev → prod)](pages/deploy.md) — два клона, штатный
+  update.sh и ad-hoc-копирование, проверки · 2026-09-22.
 - [Тесты и контроль качества](pages/quality.md) — test.sh, уровни тестов,
   пороги, pre-commit · 2026-09-17.
 

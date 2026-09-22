@@ -24,6 +24,7 @@ from hunt.handlers.sources import SourceHandlers
 from hunt.handlers.routing import RoutingHandlers
 from hunt.handlers.admin import AdminHandlers
 from hunt.handlers.interception import InterceptionHandlers
+from hunt.handlers.interception_selective import SelectiveInterceptionHandlers
 from hunt.handlers.version import VersionHandlers
 from hunt.handlers.pac import PacHandlers
 
@@ -55,6 +56,7 @@ class HuntServer:
         self._h_routing = RoutingHandlers(self.state, self)
         self._h_admin = AdminHandlers(self.state, self)
         self._h_interception = InterceptionHandlers(self.state, self)
+        self._h_interception_sel = SelectiveInterceptionHandlers(self.state, self)
         self._h_version = VersionHandlers(self.state, self)
         self._h_pac = PacHandlers(self.state, self)
         self._register_routes()
@@ -232,12 +234,16 @@ class HuntServer:
         self._router.add("GET", "/api/interception", self._h_interception._handle_interception)
         self._router.add("POST", "/api/interception/apply", self._h_interception._handle_interception_apply)
         self._router.add("POST", "/api/interception/stop", self._h_interception._handle_interception_stop)
+        self._router.add("GET", "/api/interception/selective", self._h_interception_sel._handle_selective_status)
+        self._router.add_prefix("POST", "/api/interception/selective/", self._h_interception_sel._handle_selective_post)
+        self._router.add("GET", "/api/interception/resources", self._h_interception_sel._handle_resources_list)
+        self._router.add("POST", "/api/interception/resources", self._h_interception_sel._handle_resource_create)
+        self._router.add_prefix("POST", "/api/interception/resources/", self._h_interception_sel._handle_resource_post)
+        self._router.add_prefix("DELETE", "/api/interception/resources/", self._h_interception_sel._handle_resource_delete)
         self._router.add_prefix("GET", "/api/proxy/", p._handle_proxy_detail)
-
         self._router.add("GET", "/api/channel/status", a._handle_channel_status)
         self._router.add("POST", "/api/channel/select", a._handle_channel_select)
         self._router.add_prefix("POST", "/api/settings/country_filter", a._handle_country_filter)
-
         self._router.add("GET", "/api/countries", c._handle_countries)
         self._router.add("GET", "/api/version", self._h_version._handle_version)
         self._router.add_prefix("GET", "/api/system", c._handle_system)
@@ -248,13 +254,11 @@ class HuntServer:
         self._router.add_prefix("GET", "/api/proxy-checks/", p._handle_proxy_checks)
         self._router.add_prefix("GET", "/api/proxy-heatmap", p._handle_proxy_heatmap)
         self._router.add_prefix("GET", "/api/blacklist", pl._handle_blacklist_list)
-
         self._router.add_prefix("POST", "/api/clear_dead", h._handle_clear_dead)
         self._router.add_prefix("POST", "/api/export", h._handle_export)
         self._router.add_prefix("POST", "/api/import", h._handle_import)
         self._router.add_prefix("POST", "/api/health/start", h._handle_health_start)
         self._router.add_prefix("POST", "/api/health/stop", h._handle_health_stop)
-
         self._router.add_prefix("GET", "/api/settings", c._handle_settings_get)
         self._router.add_prefix("POST", "/api/settings", c._handle_settings_post)
         self._router.add_prefix("GET", "/api/logs", c._handle_logs)

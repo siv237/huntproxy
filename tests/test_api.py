@@ -191,6 +191,73 @@ class TestApiProxy:
         assert status != 404
 
 
+class TestApiInterceptionSelective:
+    @pytest.mark.asyncio
+    async def test_selective_status(self, http_client):
+        resp = await http_client("GET", "/api/interception/selective")
+        status, data = json_body(resp)
+        assert status == 200
+        for key in ("config", "resources", "actual", "desired", "applied", "mismatch"):
+            assert key in data, f"selective status missing '{key}'"
+        assert isinstance(data["resources"], list)
+
+    @pytest.mark.asyncio
+    async def test_resource_crud_via_api(self, http_client, api_server):
+        resp = await http_client("POST", "/api/interception/resources", body={
+            "name": "Example", "addresses": ["example.com", "1.2.3.4"],
+        })
+        status, data = json_body(resp)
+        assert status == 200
+        assert data["ok"] is True
+        rid = data["resource"]["id"]
+        assert len(data["resource"]["entries"]) == 2
+
+        resp = await http_client("GET", "/api/interception/resources")
+        status, data = json_body(resp)
+        assert status == 200
+        assert any(r["id"] == rid for r in data["resources"])
+
+        resp = await http_client("POST", f"/api/interception/resources/{rid}/toggle", body={})
+        status, data = json_body(resp)
+        assert status == 200
+        assert data["resource"]["enabled"] is False
+
+        resp = await http_client("POST", f"/api/interception/resources/{rid}",
+                                 body={"name": "Renamed"})
+        status, data = json_body(resp)
+        assert status == 200
+        assert data["resource"]["name"] == "Renamed"
+
+        resp = await http_client("DELETE", f"/api/interception/resources/{rid}")
+        status, data = json_body(resp)
+        assert status == 200
+        assert data["ok"] is True
+
+    @pytest.mark.asyncio
+    async def test_resource_create_requires_name(self, http_client):
+        resp = await http_client("POST", "/api/interception/resources", body={"addresses": ["x.com"]})
+        status, data = json_body(resp)
+        assert status == 400
+        assert data["ok"] is False
+
+    @pytest.mark.asyncio
+    async def test_selective_config_saves(self, http_client):
+        resp = await http_client("POST", "/api/interception/selective/config",
+                                 body={"iface": "eth0", "drop_quic": False})
+        status, data = json_body(resp)
+        assert status == 200
+        assert data["config"]["iface"] == "eth0"
+        assert data["config"]["drop_quic"] is False
+        assert "ports" not in data["config"]
+
+    @pytest.mark.asyncio
+    async def test_selective_apply_requires_readiness(self, http_client):
+        resp = await http_client("POST", "/api/interception/selective/apply")
+        status, data = json_body(resp)
+        assert status == 409
+        assert data["ok"] is False
+
+
 class TestApiSettings:
     @pytest.mark.asyncio
     async def test_settings_get(self, http_client):
