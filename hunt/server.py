@@ -235,6 +235,7 @@ class HuntServer:
         self._router.add("POST", "/api/interception/apply", self._h_interception._handle_interception_apply)
         self._router.add("POST", "/api/interception/stop", self._h_interception._handle_interception_stop)
         self._router.add("GET", "/api/interception/selective", self._h_interception_sel._handle_selective_status)
+        self._router.add("GET", "/api/interception/selective/rules", self._h_interception_sel._handle_selective_rules)
         self._router.add_prefix("POST", "/api/interception/selective/", self._h_interception_sel._handle_selective_post)
         self._router.add("GET", "/api/interception/resources", self._h_interception_sel._handle_resources_list)
         self._router.add("POST", "/api/interception/resources", self._h_interception_sel._handle_resource_create)

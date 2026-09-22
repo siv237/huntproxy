@@ -939,8 +939,6 @@
       "masterOnLabel": "Selective interception is ON",
       "applySelective": "Enable selective",
       "stopSelective": "Disable selective",
-      "panic": "PANIC (clear all)",
-      "panicConfirm": "Remove ALL interception rules now?",
       "ports": "Ports (default 443; port 80 is often denied by proxies)",
       "iface": "Interface (auto)",
       "dropQuic": "Drop UDP/443 (QUIC) for selected resources",

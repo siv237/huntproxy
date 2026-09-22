@@ -36,6 +36,8 @@ class SelectiveInterceptionHandlers:
             actual = {"available": False}
         desired = bool(cfg["selective_enabled"])
         applied = bool(actual.get("selective_jump"))
+        st = rec.read_state_file()
+        whole_active = bool(st.get("active") and st.get("mode") != "selective")
         mismatch = ""
         if applied and not desired:
             mismatch = "leftover"
@@ -49,6 +51,7 @@ class SelectiveInterceptionHandlers:
             "readiness": await self._readiness(),
             "desired": desired,
             "applied": applied,
+            "whole_active": whole_active,
             "mismatch": mismatch,
             "enabled_resources": len(active),
             "ip_count": len(ise.active_addresses(self.state)),
@@ -62,7 +65,6 @@ class SelectiveInterceptionHandlers:
             "config": self._handle_selective_config,
             "apply": self._handle_selective_apply,
             "stop": self._handle_selective_stop,
-            "panic": self._handle_selective_panic,
             "reconcile": self._handle_selective_reconcile,
         }
         handler = handlers.get(action)
@@ -73,12 +75,25 @@ class SelectiveInterceptionHandlers:
     async def _handle_selective_status(self, raw_path, body):
         return json.dumps(await self._status_payload()), 200, "application/json"
 
+    async def _handle_selective_rules(self, raw_path, body):
+        try:
+            lines = await rec.active_rules()
+        except Exception:
+            lines = []
+        return json.dumps({"lines": lines}), 200, "application/json"
+
     async def _handle_selective_config(self, raw_path, body):
         data = _json_body(body)
         cfg = ise.set_config(self.state, data)
         return json.dumps({"ok": True, "config": cfg}), 200, "application/json"
 
     async def _handle_selective_apply(self, raw_path, body):
+        st = rec.read_state_file()
+        if st.get("active") and st.get("mode") != "selective":
+            return json.dumps({
+                "ok": False,
+                "error": "whole-machine interception is active — disable it first",
+            }), 409, "application/json"
         readiness = await self._readiness()
         if not readiness or not readiness.get("ready"):
             return json.dumps({
@@ -129,13 +144,6 @@ class SelectiveInterceptionHandlers:
         ise.set_config(self.state, {"selective_enabled": False})
         self.state._log_action("interception.selective.stop")
         return json.dumps({"ok": ok, "output": output}), 200, "application/json"
-
-    async def _handle_selective_panic(self, raw_path, body):
-        _, output = await rec.run_setup_iptables(["stop"])
-        ise.set_config(self.state, {"selective_enabled": False})
-        self.state._log_action("interception.selective.panic")
-        self.state._emit("Selective interception PANIC — all rules removed", "warn")
-        return json.dumps({"ok": True, "output": output}), 200, "application/json"
 
     async def _handle_selective_reconcile(self, raw_path, body):
         result = await rec.reconcile_on_startup(self.state)

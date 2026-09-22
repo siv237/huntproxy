@@ -901,8 +901,6 @@
       "masterOnLabel": "选择性拦截已开启",
       "applySelective": "启用选择性拦截",
       "stopSelective": "停用选择性拦截",
-      "panic": "PANIC（清除全部）",
-      "panicConfirm": "立即移除所有拦截规则？",
       "ports": "端口（默认 443；代理通常拒绝 80 端口）",
       "iface": "网络接口（自动）",
       "dropQuic": "对所选资源丢弃 UDP/443 (QUIC)",

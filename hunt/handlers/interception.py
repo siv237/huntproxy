@@ -62,6 +62,14 @@ def _read_interception_state():
     return {"active": False}
 
 
+def _interception_status():
+    """Whole-machine status only: a selective run must not light up this tab."""
+    data = _read_interception_state()
+    if isinstance(data, dict) and data.get("mode") == "selective":
+        data = {**data, "active": False}
+    return data
+
+
 class InterceptionHandlers:
     def __init__(self, state, server=None):
         self.state = state
@@ -187,6 +195,7 @@ class InterceptionHandlers:
             f"--exclude-cgroup huntproxy --cgroup-pid {pid}"
         )
         revert_cmd = "sudo ./setup_iptables.sh stop"
+        import hunt.interception_selective as ise
         return json.dumps({
             "own_ips": own_ips,
             "proxy_pid": pid,
@@ -194,7 +203,8 @@ class InterceptionHandlers:
             "apply_command": apply_cmd,
             "revert_command": revert_cmd,
             "readiness": readiness,
-            "status": _read_interception_state(),
+            "selective_enabled": bool(ise.get_config(self.state).get("selective_enabled")),
+            "status": _interception_status(),
         }), 200, "application/json"
 
     async def _handle_interception_apply(self, raw_path, body):
@@ -214,6 +224,13 @@ class InterceptionHandlers:
             }), 409, "application/json"
         port = readiness["transparent_port"]
         pid = os.getpid()
+        import hunt.interception_selective as ise
+        if ise.get_config(self.state).get("selective_enabled"):
+            # Enabling whole-machine replaces selective: both capture everything
+            # selective would, so selective is switched off automatically and
+            # its resources/settings stay stored for later.
+            await self._run_setup_iptables(["stop"])
+            ise.set_config(self.state, {"selective_enabled": False})
         ok, output = await self._run_setup_iptables([
             "start", "--redirect-port", port,
             "--exclude-cgroup", "huntproxy", "--cgroup-pid", pid,
@@ -234,14 +251,17 @@ class InterceptionHandlers:
         return json.dumps({
             "ok": True,
             "readiness": readiness,
-            "status": _read_interception_state(),
+            "status": _interception_status(),
         }), 200, "application/json"
 
     async def _handle_interception_stop(self, raw_path, body):
         """Disable whole-machine redirection (removes iptables rules)."""
         ok, output = await self._run_setup_iptables(["stop"])
+        import hunt.interception_selective as ise
+        if ise.get_config(self.state).get("selective_enabled"):
+            ise.set_config(self.state, {"selective_enabled": False})
         return json.dumps({
             "ok": ok,
             "output": output,
-            "status": _read_interception_state(),
+            "status": _interception_status(),
         }), 200, "application/json"

@@ -871,8 +871,6 @@
       "masterOnLabel": "La interceptación selectiva está ACTIVADA",
       "applySelective": "Activar selectivo",
       "stopSelective": "Desactivar selectivo",
-      "panic": "PANIC (quitar todo)",
-      "panicConfirm": "¿Quitar TODAS las reglas de interceptación ahora?",
       "ports": "Puertos (por defecto 443; el 80 suele estar denegado por los proxies)",
       "iface": "Interfaz (auto)",
       "dropQuic": "Descartar UDP/443 (QUIC) para los recursos seleccionados",

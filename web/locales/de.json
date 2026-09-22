@@ -871,8 +871,6 @@
       "masterOnLabel": "Selektive Abfangung ist EIN",
       "applySelective": "Selektiv aktivieren",
       "stopSelective": "Selektiv deaktivieren",
-      "panic": "PANIC (alles entfernen)",
-      "panicConfirm": "JETZT alle Abfangregeln entfernen?",
       "ports": "Ports (Standard 443; Port 80 wird oft von Proxys abgelehnt)",
       "iface": "Schnittstelle (auto)",
       "dropQuic": "UDP/443 (QUIC) für ausgewählte Ressourcen verwerfen",

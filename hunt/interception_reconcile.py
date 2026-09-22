@@ -14,6 +14,7 @@ from hunt.constants import DATA_DIR, PROJECT_DIR, logger
 from hunt.interception_selective import get_config, resolve_all_enabled
 
 SELECTIVE_CHAIN = "HUNTPROXY_SELECTIVE"
+REDIRECT_CHAIN = "HUNTPROXY_REDIRECT"
 QUIC_CHAIN = "HUNTPROXY_SELECTIVE_QUIC"
 STATE_FILE = DATA_DIR / "transparent_state.json"
 
@@ -78,6 +79,60 @@ async def actual_state():
                 if ln.strip().startswith(("huntproxy_sel", "huntproxy_selective"))
             ]
     return result
+
+
+async def active_rules():
+    """Real state of the kernel: all nat/filter rules and ipset sets.
+
+    Returns a list of ``[line, ours]`` pairs. ``ours`` marks only the lines our
+    system installed (chains/rules of ``HUNTPROXY*`` and the ``huntproxy_*`` sets
+    with their members); everything else is shown as-is, so the tab always
+    reflects reality regardless of who added the rules or whether interception
+    is on.
+    """
+    ipt = shutil.which("iptables-legacy") or shutil.which("iptables")
+    ipset_bin = shutil.which("ipset")
+
+    def ours(ln):
+        return ("HUNTPROXY" in ln) or ("huntproxy_sel" in ln) or ("huntproxy_selective" in ln)
+
+    lines = []
+    if not ipt:
+        return [["(iptables not found)", False]]
+    seen = set()
+    backends = []
+    for label, path in (("iptables-legacy", shutil.which("iptables-legacy")),
+                        ("iptables", shutil.which("iptables"))):
+        if path and path not in seen:
+            seen.add(path)
+            backends.append((label, path))
+    for label, path in backends:
+        for table in ("nat", "filter"):
+            ok, out = await _iptables(path, table, "-S")
+            lines.append([f"# {label} {table}", False])
+            if ok:
+                lines.extend([ln, ours(ln)] for ln in out.splitlines())
+            else:
+                lines.append(["(unavailable)", False])
+    if ipset_bin:
+        code, out, _ = await _run(ipset_bin, "list", "-n")
+        if code == 0:
+            for name in [ln.strip() for ln in out.splitlines() if ln.strip()]:
+                is_ours = name.startswith(("huntproxy_sel", "huntproxy_selective"))
+                lines.append([f"# ipset {name}", is_ours])
+                code, entries, _ = await _run(ipset_bin, "list", name)
+                if code != 0 or not entries.strip():
+                    continue
+                in_members = False
+                for ln in entries.strip().splitlines():
+                    if ln.startswith("Members:"):
+                        in_members = True
+                        lines.append([ln, False])
+                    elif in_members:
+                        lines.append([ln, is_ours])
+                    else:
+                        lines.append([ln, False])
+    return lines
 
 
 async def run_setup_iptables(args):

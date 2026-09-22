@@ -19,7 +19,8 @@ router.register('interception', (container) => {
   const panelStyle = 'display:flex;flex-direction:column;gap:10px;min-height:0;flex:1';
 
   const tabBar = ui.tabs(
-    [t('page.interception.tabGeneral'), t('page.interception.tabSelective'), t('page.interception.tabLog')],
+    [t('page.interception.tabGeneral'), t('page.interception.tabSelective'),
+     t('page.interception.tabLog'), t('page.interception.actualRules')],
     (_name, i) => { currentTab = i; applyTab(); }
   );
   container.appendChild(tabBar);
@@ -30,14 +31,18 @@ router.register('interception', (container) => {
   const generalPanel = ui.el('div', '', { style: panelStyle });
   const selectivePanel = ui.el('div', '', { style: panelStyle + ';display:none' });
   const logPanel = ui.el('div', '', { style: panelStyle + ';display:none' });
+  const rulesPanel = ui.el('div', '', { style: panelStyle + ';display:none' });
   container.appendChild(generalPanel);
   container.appendChild(selectivePanel);
   container.appendChild(logPanel);
+  container.appendChild(rulesPanel);
 
   function applyTab() {
     generalPanel.style.display = currentTab === 0 ? 'flex' : 'none';
     selectivePanel.style.display = currentTab === 1 ? 'flex' : 'none';
     logPanel.style.display = currentTab === 2 ? 'flex' : 'none';
+    rulesPanel.style.display = currentTab === 3 ? 'flex' : 'none';
+    if (currentTab === 3) loadRules();
   }
   applyTab();
 
@@ -136,6 +141,39 @@ router.register('interception', (container) => {
   tpCard.append(tpDot, tpLabel, tpText, tpPortInp, tpStartBtn, tpStopBtn, tpConn);
   sharedPanel.appendChild(tpCard);
 
+  // ── Tab: the real interception rules currently in the kernel ──
+  const rulesCard = ui.el('div', 'card', { style: 'display:flex;flex-direction:column;min-height:0;flex:1' });
+  const rulesHead = ui.el('div', '', { style: 'display:flex;align-items:center;gap:8px;margin-bottom:8px' });
+  rulesHead.appendChild(ui.el('div', 'card-title', { text: t('page.interception.actualRules'), style: 'margin:0' }));
+  const rulesRefresh = ui.el('button', 'btn btn-xs', { id: 'btn-rules-refresh', text: t('common.refresh') });
+  rulesHead.appendChild(rulesRefresh);
+  rulesCard.appendChild(rulesHead);
+  const rulesPre = ui.el('pre', '', {
+    id: 'rules-dump',
+    style: 'font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11px;line-height:1.5;white-space:pre-wrap;word-break:break-all;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-xs);padding:8px 10px;margin:0;overflow:auto;min-height:0;flex:1;color:var(--text-primary)',
+  });
+  rulesCard.appendChild(rulesPre);
+  rulesPanel.appendChild(rulesCard);
+
+  async function loadRules() {
+    try {
+      const r = await api.interceptionSelectiveRules();
+      const lines = (r && r.lines) || [];
+      if (!lines.length) {
+        rulesPre.textContent = t('page.interception.rulesOff');
+        return;
+      }
+      rulesPre.innerHTML = lines.map(pair => {
+        const [text, ours] = pair;
+        const safe = ui.escHtml(text);
+        return ours ? `<span style="color:var(--accent);font-weight:600">${safe}</span>` : safe;
+      }).join('\n');
+    } catch (e) {
+      rulesPre.textContent = t('common.error', { message: e.message });
+    }
+  }
+  rulesRefresh.addEventListener('click', loadRules);
+
   // ── Card 3: live intercepted connections (own tab, filtered) ──
   const logCard = ui.el('div', 'card');
   logCard.id = 'interception-tp-log-card';
@@ -188,6 +226,14 @@ router.register('interception', (container) => {
       html += '<div style="margin-top:4px;color:var(--success)">' + t('page.interception.readyHint') + '</div>';
     }
     el.innerHTML = html;
+  }
+
+  function applyModeVisibility(d) {
+    const wholeOn = !!(d.status && d.status.active);
+    const selTab = tabBar.children[1];
+    if (!selTab) return;
+    selTab.style.display = wholeOn ? 'none' : '';
+    if (wholeOn && currentTab === 1 && tabBar.children[0]) tabBar.children[0].click();
   }
 
   function updateToggleBtn(d) {
@@ -370,13 +416,7 @@ router.register('interception', (container) => {
       reloadSelective();
     }
   });
-  const selReconBtn = ui.el('button', 'btn btn-xs', { id: 'btn-sel-recon', text: t('page.interception.actualRules') });
-  selReconBtn.addEventListener('click', () => selAct(() => api.interceptionSelectiveReconcile()));
-  const selPanicBtn = ui.el('button', 'btn btn-xs btn-danger', { id: 'btn-sel-panic', text: t('page.interception.panic') });
-  selPanicBtn.addEventListener('click', () => {
-    if (window.confirm(t('page.interception.panicConfirm'))) selAct(() => api.interceptionSelectivePanic());
-  });
-  selBtns.append(masterWrap, selReconBtn, selPanicBtn);
+  selBtns.append(masterWrap);
   selectivePanel.appendChild(selBtns);
 
   function selAct(fn) {
@@ -539,7 +579,10 @@ router.register('interception', (container) => {
       `<span>${masterLabel}` +
       ` · ${d.enabled_resources} ${t('page.interception.resourcesEnabled')}` +
       ` · ${d.ip_count} ${t('page.interception.addressCount')}` +
-      ` · ${t('page.interception.actualRules')}: ${rulesLabel}</span>`;
+      (on ? ` · ${t('page.interception.actualRules')}: ${rulesLabel}` : '') +
+      `</span>`;
+    // Off = inactive look, but the list stays editable.
+    listCard.style.opacity = on ? '1' : '0.55';
 
     let mismatchText = '';
     let mismatchColor = '#f85149';
@@ -704,6 +747,7 @@ router.register('interception', (container) => {
       renderInterceptStatus(d.status);
       renderReadiness(d.readiness);
       updateToggleBtn(d);
+      applyModeVisibility(d);
     } catch (e) {
       console.error('interception load', e);
     }

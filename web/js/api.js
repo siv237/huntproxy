@@ -47,7 +47,7 @@ const api = {
   interceptionSelectiveConfig(body) { return this.request('/api/interception/selective/config', 'POST', body); },
   interceptionSelectiveApply() { return this.request('/api/interception/selective/apply', 'POST'); },
   interceptionSelectiveStop() { return this.request('/api/interception/selective/stop', 'POST'); },
-  interceptionSelectivePanic() { return this.request('/api/interception/selective/panic', 'POST'); },
+  interceptionSelectiveRules() { return this.request('/api/interception/selective/rules'); },
   interceptionSelectiveReconcile() { return this.request('/api/interception/selective/reconcile', 'POST'); },
   interceptionResources() { return this.request('/api/interception/resources'); },
   interceptionResourceCreate(body) { return this.request('/api/interception/resources', 'POST', body); },

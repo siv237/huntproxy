@@ -96,7 +96,8 @@ tags: [entity]
 
 `GET /api/interception`, `POST /api/interception/apply|stop`.
 Выборочный режим: `GET /api/interception/selective`,
-`POST /api/interception/selective/{config,apply,stop,panic,reconcile}`,
+`GET /api/interception/selective/rules`,
+`POST /api/interception/selective/{config,apply,stop,reconcile}`,
 `GET|POST /api/interception/resources`, `POST|DELETE /api/interception/resources/<id>`,
 `POST /api/interception/resources/<id>/toggle|resolve`. См. [interception](interception.md).
 

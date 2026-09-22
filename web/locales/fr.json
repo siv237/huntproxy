@@ -871,8 +871,6 @@
       "masterOnLabel": "L'interception sélective est ACTIVÉE",
       "applySelective": "Activer le sélectif",
       "stopSelective": "Désactiver le sélectif",
-      "panic": "PANIC (tout retirer)",
-      "panicConfirm": "Retirer TOUTES les règles d'interception maintenant ?",
       "ports": "Ports (par défaut 443 ; le port 80 est souvent refusé par les proxys)",
       "iface": "Interface (auto)",
       "dropQuic": "Rejeter UDP/443 (QUIC) pour les ressources sélectionnées",
