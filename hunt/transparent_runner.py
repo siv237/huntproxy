@@ -60,6 +60,16 @@ async def _fill_ptr(entry: dict, ip: str):
 # Cache of socket-inode -> owning PID (rebuilt at most every couple of seconds)
 # used to label local intercepted connections with the originating process.
 _inode_pid_cache: dict = {"ts": 0.0, "map": {}}
+_self_netns: list = [None]
+
+
+def _own_netns() -> str:
+    if _self_netns[0] is None:
+        try:
+            _self_netns[0] = os.readlink("/proc/self/ns/net")
+        except OSError:
+            _self_netns[0] = ""
+    return _self_netns[0]
 
 
 def _hex_addr(ip: str) -> str:
@@ -80,7 +90,17 @@ def _inode_pid_map(force: bool = False) -> dict:
         pids = [p for p in os.listdir("/proc") if p.isdigit()]
     except OSError:
         pids = []
+    own_ns = _own_netns()
     for pid in pids:
+        # Socket inode numbers are only unique within a network namespace; a
+        # process in another netns (Firefox content sandbox, containers) would
+        # otherwise overwrite the real owner's entry.
+        if own_ns:
+            try:
+                if os.readlink(f"/proc/{pid}/ns/net") != own_ns:
+                    continue
+            except OSError:
+                continue
         fddir = f"/proc/{pid}/fd"
         try:
             fds = os.listdir(fddir)
@@ -137,6 +157,14 @@ def _local_process(ip: str, port: int) -> str:
         pid = _inode_pid_map(force=True).get(inode)
     if not pid:
         return ""
+    # Prefer the executable name: Firefox does its networking in a helper whose
+    # comm is a generic "Socket Process", which is useless in the journal.
+    try:
+        exe = os.readlink(f"/proc/{pid}/exe")
+        if exe:
+            return os.path.basename(exe)
+    except OSError:
+        pass
     try:
         with open(f"/proc/{pid}/comm", "r", encoding="utf-8", errors="replace") as fh:
             return fh.read().strip()

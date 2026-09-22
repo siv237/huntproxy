@@ -184,3 +184,13 @@ Append-only журнал **операций вики** (ingest / query / lint), 
 - Журнал: колонка «Приложение» (локальный процесс по исходному порту, кэш ~2 c) и
   обратный DNS в «Назначении» (PTR в скобках, асинхронно, таймаут 2 c).
 - Страницы: [interception](pages/interception.md).
+
+## [2026-09-22] ingest | Приложение в журнале: netns и exe-имя
+
+- Пробелы в колонке «Приложение» у Firefox: content-процессы живут в отдельном
+  network namespace, а inode сокетов уникальны только внутри netns → чужой ns
+  перетирал запись. Карта `inode→PID` теперь строится только по процессам в
+  нашем netns.
+- Имя процесса берётся по basename `exe` (для Firefox — `firefox-bin`), а не по
+  служебному `comm` вроде «Socket Process».
+- Страницы: [interception](pages/interception.md).
