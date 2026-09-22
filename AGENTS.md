@@ -1,32 +1,53 @@
 # Agent Guide
 
+## Манифест разработки — три правила (читать первыми)
+
+dev (`/home/user/prj/huntproxy`) — рабочая система разработки; prod
+(`/opt/huntproxy`) — система эксплуатации. Git — общий репозиторий, с которым
+синхронизируются обе.
+
+1. **Все правки делаются в dev и коммитятся в git только из dev.** dev также
+   **принимает** изменения из git — правки могут прийти из других мест.
+2. **Перед коммитом правка проверяется в проде**: изменения копируются из dev в
+   prod (тестовый деплой). Пока проверка не пройдена — в git ничего не
+   фиксируется.
+3. **После проверки и коммита прод приводится к состоянию git и впредь штатно
+   принимает обновления из него.** Копирование оставляет прод грязным; штатный
+   скрипт обновления в корне репозитория сам удаляет грязные и лишние изменения
+   и берёт данные из git, не трогая исключения (`data/`, `config.yaml`, `.venv`).
+
+Цепочка разработки:
+
+1. Правка — в dev.
+2. Копирование dev → prod (тестовый деплой) → проверка в проде.
+3. После подтверждения — `commit` + `push` из dev. Коммит проходит проверки:
+   pre-commit hook запускает `./test.sh` (не использовать `--no-verify`).
+4. `update.sh` в prod → прод снова равен git и штатно принимает обновления.
+
+Инструменты (в репозитории):
+
+- сверка dev и прод: `python scripts/compare_env.py` → `RESULT: IDENTICAL`;
+- тестовый деплой (копирование dev → prod + рестарт):
+  `sudo python scripts/compare_env.py --sync`;
+- приведение прода к git: `./update.sh` в `/opt/huntproxy`
+  (`git fetch` → `git clean -fd` → `git reset --hard origin/main` → бандл → рестарт).
+
+Файлы развёрнутой копии вручную не редактируются. `.gitignore`-исключения
+(`data/`, `config.yaml`, `.venv`) не затрагиваются.
+
 ## CRITICAL RULES
 
 - **NEVER commit without explicit user permission.** No exceptions. Wait for "commit" / "пиши в гит".
 - **NEVER restart, start, stop or deploy services on your own.** No exceptions.
-  This includes `systemctl restart/start/stop`, `daemon.sh start/stop/restart`,
-  `hunt.sh`, killing processes, and any action that interrupts the running
-  service or user traffic. Prepare the exact commands first, then **ask in chat
-  and wait for explicit confirmation** ("перезапусти" / "давай"). Do not treat a
-  general task (e.g. "make the fix work live") as permission to restart.
+  Это включает `systemctl restart/start/stop`, `daemon.sh start/stop/restart`,
+  `hunt.sh`, убийство процессов и любые действия, прерывающие работу службы или
+  трафик пользователя. Единственное исключение — шаги манифеста выше (тестовый
+  деплой и `update.sh`), и только по прямой команде пользователя. Готовь точные
+  команды, затем **спроси в чате и дождись явного подтверждения**
+  ("перезапусти" / "давай"). Не считать общую задачу (например, «сделай, чтобы
+  фикс заработал в бою») разрешением на рестарт.
 - **One bug = one commit.** If you re-fix the same bug, the previous fix was wrong. Find the root cause first, verify it actually works, then commit once.
 - **Verify for real, not just with tests.** Tests passing ≠ bug fixed. Use curl, logs, profiler to confirm the actual problem is gone.
-
-## Синхронизация прод ← dev (обязательный процесс)
-
-- Код правим **только в dev** (`/home/user/prj/huntproxy`). Прод — `/opt/huntproxy`;
-  руками в его файлы не лезем.
-- **«обнови прод» / «деплой»** = выполнить ровно одну команду из dev:
-  `sudo .venv/bin/python scripts/compare_env.py --sync`
-  (она пофайлово копирует отличия dev→prod, рестартит `huntproxy`, сверяет заново).
-- Готово, если вывод **`RESULT: IDENTICAL`**. Если нет — показать
-  `only in DEV` / `only in PROD` / `different content` и остановиться; обходных
-  путей не выдумывать (никаких ручных `cp`/`install`/правок `/opt`).
-- **«коммить»** = `git add -A && git commit && git push origin main` в dev; затем
-  прод приводится к origin штатным `/opt/huntproxy/update.sh`.
-- Не трогать: `data/`, `config.yaml`, `.venv`, `.git`; не запускать `uninstall.sh`.
-  Скрипт синхронизации их и так игнорирует.
-- Подробности — [wiki/pages/deploy.md](wiki/pages/deploy.md).
 
 ## LLM Wiki
 

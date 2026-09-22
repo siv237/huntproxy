@@ -1,17 +1,15 @@
 #!/usr/bin/env python3
 """Compare the dev and prod working trees file-by-file.
 
-Read-only by default: it never writes to either tree. Exit code is 0 when every
-compared file is byte-identical, 1 when there are differences.
-
-With ``--sync`` it mirrors the differences dev -> prod (copies changed/new files,
-removes prod-only project files), restarts the ``huntproxy`` service, then
-re-checks and reports. It never touches runtime paths (``.git``, ``data*``,
-``.venv``, ``node_modules``, caches, ``config.yaml``).
+Read-only by default (exit 0 = identical, 1 = differences). With ``--sync`` it
+copies changed/new project files dev -> prod, removes prod-only project files and
+restarts ``huntproxy`` — this is the *testing deploy* (prod is later brought back
+to git with ``/opt/huntproxy/update.sh``). Runtime paths are never touched
+(``.git``, ``data*``, ``.venv``, ``node_modules``, caches, ``config.yaml``).
 
 Usage:
     python scripts/compare_env.py                 # check only
-    sudo python scripts/compare_env.py --sync     # bring prod to dev + restart
+    sudo python scripts/compare_env.py --sync     # copy dev -> prod + restart (test deploy)
     sudo python scripts/compare_env.py --sync --no-restart
     python scripts/compare_env.py --json
 """
@@ -102,7 +100,7 @@ def _copy_file(src: Path, dst: Path) -> None:
 
 
 def sync(dev_root: Path, prod_root: Path, result: dict) -> None:
-    """Mirror changed/new/extra project files dev -> prod (runtime skipped)."""
+    """Test deploy: mirror changed/new/extra project files dev -> prod."""
     for rel in result["only_dev"] + result["differ"]:
         _copy_file(dev_root / rel, prod_root / rel)
     for rel in result["only_prod"]:
@@ -126,13 +124,13 @@ def restart_service(name: str = "huntproxy") -> None:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="Compare (and optionally sync) dev and prod trees.")
+    ap = argparse.ArgumentParser(description="Compare (and optionally test-deploy) dev and prod trees.")
     ap.add_argument("--dev", default="/home/user/prj/huntproxy")
     ap.add_argument("--prod", default="/opt/huntproxy")
     ap.add_argument("--json", action="store_true", help="machine-readable output")
     ap.add_argument("--limit", type=int, default=200, help="max paths shown per section")
     ap.add_argument("--sync", action="store_true",
-                    help="mirror diffs dev->prod, then restart the service and re-check")
+                    help="test deploy: copy dev -> prod, restart, re-check")
     ap.add_argument("--no-restart", action="store_true", help="with --sync: do not restart the service")
     args = ap.parse_args()
 

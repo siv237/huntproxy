@@ -43,8 +43,6 @@
   `_resolve_route`, паттерны · 2026-09-17.
 - [Инфраструктура и скрипты](pages/infra.md) — install/update/uninstall,
   daemon/hunt, iptables, конфигурация · 2026-09-17.
-- [Обновление среды (dev → prod)](pages/deploy.md) — два клона, штатный
-  update.sh и ad-hoc-копирование, проверки · 2026-09-22.
 - [Тесты и контроль качества](pages/quality.md) — test.sh, уровни тестов,
   пороги, pre-commit · 2026-09-17.
 

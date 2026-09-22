@@ -1,20 +1,18 @@
 #!/usr/bin/env bash
 #
-# huntproxy updater — обновляет код, зависимости и фронтенд, не трогая
-# настройки службы (data/, config.yaml, systemd-юнит, локальные правки).
+# huntproxy updater — жёстко приводит прод к origin, не трогая настройки
+# и данные (data/, config.yaml, .venv — в .gitignore).
 #
 # Поведение:
-#   1. проверяет на удалённом репозитории наличие новой версии;
-#   2. если новая версия найдена — показывает, что изменилось, и спрашивает
-#      подтверждение (обновить или нет);
-#   3. при подтверждении: бэкап локальных правок -> git pull -> зависимости
-#      (если изменились) -> пересборка JS-бандла -> тесты -> перезапуск службы.
+#   1. git fetch origin/<branch>;
+#   2. git reset --hard origin/<branch> + git clean -fd — прод не хранит
+#      собственных изменений, лишние (не игнорируемые) файлы удаляются;
+#   3. зависимости (если изменился requirements.txt), пересборка JS-бандла,
+#      проверка на месте ли настройки, перезапуск службы.
 #
 # Использование:
-#   ./update.sh               обычное обновление с подтверждением
-#   ./update.sh -y            без запроса подтверждения
-#   ./update.sh -f            принудительно, даже если версия та же
-#   ./update.sh --test        запустить ./test.sh перед перезапуском (по умолчанию НЕ запускается)
+#   ./update.sh               жёстко привести прод к origin и перезапустить
+#   ./update.sh --test        прогнать ./test.sh перед перезапуском
 #   ./update.sh --no-restart  не перезапускать службу
 #
 set -euo pipefail
@@ -100,60 +98,27 @@ REMOTE_SHORT=$(git rev-parse --short "origin/$BRANCH")
 LOCAL_DATE=$(git show -s --format=%cs "$LOCAL" 2>/dev/null || echo "?")
 REMOTE_DATE=$(git show -s --format=%cs "$REMOTE" 2>/dev/null || echo "?")
 
-if [ "$LOCAL" = "$REMOTE" ] && ! $FORCE; then
-    if git diff --quiet HEAD && [ -z "$(git diff --name-only HEAD)" ]; then
-        c_ok "Уже установлена последняя версия: $LOCAL_DATE ($LOCAL_SHORT)"
-        echo ""
-        echo "  Для принудительной переустановки: ./update.sh -f"
-        echo ""
-        exit 0
-    fi
-    c_ok "Установлена последняя версия: $LOCAL_DATE ($LOCAL_SHORT)"
-    c_info "Есть локальные незакоммиченные правки — они не будут затронуты."
-    echo ""
-    exit 0
-fi
-
 echo ""
 echo "  Текущая версия:  $LOCAL_DATE ($LOCAL_SHORT)"
+echo "  Версия в git:    $REMOTE_DATE ($REMOTE_SHORT)"
 if [ "$LOCAL" != "$REMOTE" ]; then
-    echo "  Найдена новая:   $REMOTE_DATE ($REMOTE_SHORT)"
     echo ""
     echo "  Новые коммиты:"
     git log --oneline "$LOCAL..origin/$BRANCH" | sed 's/^/    /' | head -25
-    echo ""
-else
-    echo "  Новая версия не найдена (принудительная переустановка -f)."
-    echo ""
 fi
-
-if ! confirm "Найдена новая версия — обновить?" "y"; then
-    echo ""
-    c_info "Обновление отменено. Установленная версия не изменена."
-    echo ""
-    exit 0
-fi
-
-# --- предупреждение о незакоммиченных правках -------------------------------
-UNCOMMITTED=$(git diff --name-only HEAD 2>/dev/null || true)
-if [ -n "$UNCOMMITTED" ]; then
-    c_warn "Найдены незакоммиченные правки — обновление их удалит:"
-    echo "$UNCOMMITTED" | sed 's/^/      /'
-    if ! confirm "Сначала закоммитьте их, затем обновитесь. Продолжить обновление (правки будут удалены)?" "n"; then
-        echo ""
-        c_info "Обновление отменено. Закоммитьте изменения и запустите ./update.sh снова."
-        echo ""
-        exit 0
-    fi
-fi
+echo ""
 
 OLD_REQ_HASH=$(git show HEAD:requirements.txt 2>/dev/null | sha256sum | cut -d' ' -f1)
 NEW_REQ_HASH=$(git show "origin/$BRANCH:requirements.txt" 2>/dev/null | sha256sum | cut -d' ' -f1)
 
-# --- обновление кода --------------------------------------------------------
-c_info "Обновляю код до origin/$BRANCH..."
+# --- жёсткое приведение к origin -------------------------------------------
+# Прод не хранит собственных изменений: сбрасываем tracked-файлы к origin и
+# удаляем лишние untracked-файлы. Исключения (.gitignore: data/, config.yaml,
+# .venv, node_modules, логи) остаются на месте — git clean без -x их не трогает.
+c_info "Жёстко привожу код к origin/$BRANCH (reset + удаление лишних файлов)..."
+git clean -fd >/dev/null
 git reset --hard "origin/$BRANCH" >/dev/null
-c_ok "Код обновлён"
+c_ok "Код приведён к origin; свои изменения и лишние файлы удалены"
 
 # --- зависимости ------------------------------------------------------------
 if [ ! -d .venv ]; then
@@ -207,9 +172,8 @@ if $RUN_TESTS; then
 fi
 
 # --- перезапуск службы ----------------------------------------------------------
-RESTART_NEEDED=false
-[ "$LOCAL" != "$REMOTE" ] && RESTART_NEEDED=true
-$FORCE && RESTART_NEEDED=true
+# После жёсткого reset к origin служба всегда перезапускается (кроме --no-restart).
+RESTART_NEEDED=true
 if [ "$OLD_REQ_HASH" != "$NEW_REQ_HASH" ]; then RESTART_NEEDED=true; fi
 if ! .venv/bin/python scripts/build_js_bundle.py --check; then RESTART_NEEDED=true; fi
 
