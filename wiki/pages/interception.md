@@ -1,6 +1,6 @@
 ---
 updated: 2026-09-22
-commit: 84da2a2
+commit: f2216e3
 tags: [entity]
 ---
 
