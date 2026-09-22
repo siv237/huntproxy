@@ -921,6 +921,7 @@
       "viewLog": "Log",
       "colTime": "Time",
       "colClient": "Client",
+      "colApp": "Application",
       "colTarget": "Destination",
       "colVia": "Route",
       "colTraffic": "Traffic",

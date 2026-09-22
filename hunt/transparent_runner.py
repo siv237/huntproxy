@@ -14,6 +14,8 @@ port (see ``setup_iptables.sh``).
 """
 
 import asyncio
+import ipaddress
+import os
 import socket
 import time
 from typing import Optional
@@ -24,6 +26,122 @@ logger = logging.getLogger(__name__)
 # Linux SO_ORIGINAL_DST constant (not exposed by the socket module on all
 # platforms / Python versions).
 SO_ORIGINAL_DST = 80
+
+# reverse-DNS cache: ip -> PTR name ("" when there is none)
+_ptr_cache: dict = {}
+
+
+def _is_ip(text: str) -> bool:
+    try:
+        ipaddress.ip_address(text)
+        return True
+    except ValueError:
+        return False
+
+
+async def _ptr_lookup(ip: str) -> str:
+    if ip in _ptr_cache:
+        return _ptr_cache[ip]
+    ptr = ""
+    try:
+        loop = asyncio.get_running_loop()
+        res = await asyncio.wait_for(
+            loop.run_in_executor(None, socket.gethostbyaddr, ip), timeout=2.0)
+        ptr = res[0] if res and res[0] else ""
+    except Exception:
+        ptr = ""
+    _ptr_cache[ip] = ptr
+    return ptr
+
+
+async def _fill_ptr(entry: dict, ip: str):
+    entry["target_ptr"] = await _ptr_lookup(ip)
+
+# Cache of socket-inode -> owning PID (rebuilt at most every couple of seconds)
+# used to label local intercepted connections with the originating process.
+_inode_pid_cache: dict = {"ts": 0.0, "map": {}}
+
+
+def _hex_addr(ip: str) -> str:
+    """IPv4 in /proc/net/tcp form: bytes reversed, uppercase hex."""
+    try:
+        raw = socket.inet_aton(ip)
+    except OSError:
+        return ""
+    return raw[::-1].hex().upper()
+
+
+def _inode_pid_map(force: bool = False) -> dict:
+    now = time.monotonic()
+    if not force and now - _inode_pid_cache["ts"] < 2 and _inode_pid_cache["map"]:
+        return _inode_pid_cache["map"]
+    mapping = {}
+    try:
+        pids = [p for p in os.listdir("/proc") if p.isdigit()]
+    except OSError:
+        pids = []
+    for pid in pids:
+        fddir = f"/proc/{pid}/fd"
+        try:
+            fds = os.listdir(fddir)
+        except OSError:
+            continue
+        for fd in fds:
+            try:
+                link = os.readlink(f"{fddir}/{fd}")
+            except OSError:
+                continue
+            if link.startswith("socket:["):
+                mapping[link[8:-1]] = pid
+    _inode_pid_cache["ts"] = now
+    _inode_pid_cache["map"] = mapping
+    return mapping
+
+
+def _local_process(ip: str, port: int) -> str:
+    """Name of the local process owning a socket with this source ip:port.
+
+    Only meaningful for connections originated on this machine; for remote
+    (gateway) clients nothing is found and an empty string is returned.
+    """
+    want_port = f"{port:04X}"
+    want_addr = _hex_addr(ip)
+    inode = None
+    for path in ("/proc/net/tcp", "/proc/net/tcp6"):
+        try:
+            with open(path, "r", encoding="utf-8", errors="replace") as fh:
+                next(fh, None)
+                for line in fh:
+                    cols = line.split()
+                    if len(cols) < 10:
+                        continue
+                    local = cols[1]
+                    addr, _, lport = local.partition(":")
+                    if lport != want_port:
+                        continue
+                    if path.endswith("tcp") and addr != want_addr:
+                        continue
+                    if path.endswith("tcp6") and want_addr and not addr.endswith(want_addr):
+                        continue
+                    inode = cols[9]
+                    break
+        except OSError:
+            continue
+        if inode:
+            break
+    if not inode:
+        return ""
+    pid = _inode_pid_map().get(inode)
+    if not pid:
+        # The socket appeared after the cached scan — rescan once for it.
+        pid = _inode_pid_map(force=True).get(inode)
+    if not pid:
+        return ""
+    try:
+        with open(f"/proc/{pid}/comm", "r", encoding="utf-8", errors="replace") as fh:
+            return fh.read().strip()
+    except OSError:
+        return ""
 
 # Plaintext HTTP request methods used to auto-detect the transport: an
 # intercepted HTTP request is proxied in *forward* mode (absolute-URI, no
@@ -245,13 +363,19 @@ class TransparentRunner:
 
     async def _handle(self, reader, writer):
         peer = writer.get_extra_info("peername")
+        app = ""
+        if peer:
+            try:
+                app = _local_process(peer[0], peer[1])
+            except Exception:
+                logger.debug("local process lookup failed", exc_info=True)
         target_host = "?"
         t0 = time.monotonic()
         try:
             dst = self._get_original_dst(writer)
             if not dst:
                 writer.close()
-                self._log(peer, "?", "no original dst", duration=time.monotonic() - t0)
+                self._log(peer, "?", "no original dst", duration=time.monotonic() - t0, app=app)
                 return
             target_host, target_port = dst
 
@@ -270,7 +394,7 @@ class TransparentRunner:
             pr = getattr(self.state, 'proxy_runner', None)
             if not pr:
                 writer.close()
-                self._log(peer, target_host, "no proxy_runner", duration=time.monotonic() - t0)
+                self._log(peer, target_host, "no proxy_runner", duration=time.monotonic() - t0, app=app)
                 return
 
             kind = "opaque"
@@ -280,7 +404,7 @@ class TransparentRunner:
                 if kind == "empty":
                     writer.close()
                     self._log(peer, f"{target_host}:{target_port}", "empty request",
-                              duration=time.monotonic() - t0)
+                              duration=time.monotonic() - t0, app=app)
                     return
             need_connect = kind != "http"
             res_name, rule = self._match_info(target_host, target_port)
@@ -295,7 +419,7 @@ class TransparentRunner:
             if not upstream:
                 writer.close()
                 self._log(peer, f"{target_host}:{target_port}", "502 no upstream",
-                          duration=time.monotonic() - t0)
+                          duration=time.monotonic() - t0, app=app)
                 return
 
             up_r, up_w, chain, is_raw = upstream
@@ -310,12 +434,12 @@ class TransparentRunner:
             dur = time.monotonic() - t0
             self._log(peer, f"{target_host}:{target_port}", "ok",
                       " → ".join(chain), bytes_in=bi, bytes_out=bo, duration=dur,
-                      rule=rule, resource=res_name)
+                      rule=rule, resource=res_name, app=app)
         except asyncio.CancelledError:
             pass
         except Exception as e:
             dur = time.monotonic() - t0
-            self._log(peer, target_host, f"err: {e}", duration=dur)
+            self._log(peer, target_host, f"err: {e}", duration=dur, app=app)
         finally:
             try:
                 writer.close()
@@ -325,12 +449,19 @@ class TransparentRunner:
     # -- helpers ------------------------------------------------------------
 
     def _log(self, peer, target, status, upstream="", bytes_in=0, bytes_out=0, duration=0.0,
-             rule="", resource=""):
+             rule="", resource="", app=""):
         entry = {"ts": time.time(), "client": peer[0] if peer else "?",
                  "target": target, "status": status, "upstream": upstream,
                  "bytes_in": bytes_in, "bytes_out": bytes_out,
-                 "rule": rule, "resource": resource,
+                 "rule": rule, "resource": resource, "app": app,
                  "duration": round(duration, 3), "via": "transparent"}
+        host = str(target).split(":", 1)[0]
+        entry["target_ptr"] = _ptr_cache.get(host, "")
+        if _is_ip(host) and host not in _ptr_cache:
+            try:
+                asyncio.get_running_loop().create_task(_fill_ptr(entry, host))
+            except RuntimeError:
+                pass
         self.log.append(entry)
         if len(self.log) > 200:
             self.log = self.log[-150:]

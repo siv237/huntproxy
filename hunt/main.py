@@ -55,6 +55,12 @@ async def amain(config: dict):
         recon = await rec.reconcile_on_startup(state)
         if recon.get("leftover") or recon.get("pending"):
             logger.warning("interception reconcile: %s", recon)
+        # Rules survive a restart but the self-exclusion cgroup holds the old
+        # PID; re-apply with the current PID so the proxy does not intercept
+        # itself (which would loop and break networking).
+        reen = await rec.reenforce_on_startup(state)
+        if reen.get("reenforced") is False and reen.get("reason") not in ("no active rules", "transparent not running"):
+            logger.warning("interception reenforce: %s", reen)
     except Exception:
         logger.debug("interception reconcile failed", exc_info=True)
     rec.start_resolver(state)

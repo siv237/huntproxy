@@ -883,6 +883,7 @@
       "viewLog": "日志",
       "colTime": "时间",
       "colClient": "客户端",
+      "colApp": "应用",
       "colTarget": "目标",
       "colVia": "线路",
       "colTraffic": "流量",

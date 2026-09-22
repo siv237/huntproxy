@@ -853,6 +853,7 @@
       "viewLog": "Protokoll",
       "colTime": "Zeit",
       "colClient": "Client",
+      "colApp": "Anwendung",
       "colTarget": "Ziel",
       "colVia": "Route",
       "colTraffic": "Daten",

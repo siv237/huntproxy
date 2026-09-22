@@ -11,7 +11,7 @@ import os
 import shutil
 
 from hunt.constants import DATA_DIR, PROJECT_DIR, logger
-from hunt.interception_selective import get_config, resolve_all_enabled
+from hunt.interception_selective import get_config, resolve_all_enabled, write_ipset_spec, IPSET_SPEC_FILE
 
 SELECTIVE_CHAIN = "HUNTPROXY_SELECTIVE"
 REDIRECT_CHAIN = "HUNTPROXY_REDIRECT"
@@ -186,6 +186,55 @@ async def reconcile_on_startup(state):
     elif status["pending"]:
         state._emit("Interception: enabled but no active rules — re-apply from UI", "warn")
     return status
+
+
+async def reenforce_on_startup(state):
+    """Re-apply active interception after a restart.
+
+    Rules survive a restart, but the loop-prevention cgroup still holds the OLD
+    proxy PID, so the new process would redirect its own traffic to the
+    transparent port and loop (100% CPU, broken networking). Re-applying with
+    the current PID rebuilds the rules and restores self-exclusion.
+    """
+    if not getattr(state, "_transparent_running", False):
+        # No listener → any surviving redirect would black-hole traffic.
+        actual = await actual_state()
+        if actual.get("root") and (actual.get("all_chain") or actual.get("selective_jump")
+                                   or actual.get("selective_chain") or actual.get("quic_drop")
+                                   or actual.get("ipsets")):
+            await run_setup_iptables(["stop"])
+            state._emit("Transparent down — stale interception rules removed", "warn")
+        return {"reenforced": False, "reason": "transparent not running"}
+    actual = await actual_state()
+    if not actual.get("root"):
+        return {"reenforced": False, "reason": "not root"}
+    st = read_state_file()
+    cfg = get_config(state)
+    mode = st.get("mode") or "all"
+    port = st.get("redirect_port") or getattr(state, "_transparent_port", 17477)
+    pid = os.getpid()
+    if cfg["selective_enabled"]:
+        write_ipset_spec(state)
+        args = ["start", "--selective", "--redirect-port", str(port),
+                "--ipset-spec", str(IPSET_SPEC_FILE),
+                "--exclude-cgroup", "huntproxy", "--cgroup-pid", str(pid)]
+        if cfg.get("iface"):
+            args += ["--iface", cfg["iface"]]
+        if cfg.get("drop_quic"):
+            args += ["--drop-quic"]
+    elif st.get("active") and mode != "selective":
+        args = ["start", "--redirect-port", str(port),
+                "--exclude-cgroup", "huntproxy", "--cgroup-pid", str(pid)]
+    else:
+        return {"reenforced": False, "reason": "no active rules"}
+    ok, output = await run_setup_iptables(args)
+    if ok:
+        state._emit("Interception re-applied after restart (self-exclusion restored)", "info")
+    else:
+        # Never leave the machine black-holed: drop the stale rules.
+        await run_setup_iptables(["stop"])
+        state._emit("Interception re-apply failed — stale rules removed", "warn")
+    return {"reenforced": ok, "output": output}
 
 
 async def resolver_loop(state):

@@ -921,6 +921,7 @@
       "viewLog": "Журнал",
       "colTime": "Время",
       "colClient": "Клиент",
+      "colApp": "Приложение",
       "colTarget": "Назначение",
       "colVia": "Маршрут",
       "colTraffic": "Трафик",

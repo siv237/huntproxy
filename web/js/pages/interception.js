@@ -338,6 +338,7 @@ router.register('interception', (container) => {
     const cell = (extra = '') => `padding:2px 8px;border-bottom:1px solid var(--border);white-space:nowrap;${extra}`;
     const headers = [
       t('page.interception.colTime'), t('page.interception.colClient'),
+      t('page.interception.colApp'),
       t('page.interception.logResource'), t('page.interception.colRule'),
       t('page.interception.colTarget'), t('page.interception.colStatus'),
       t('page.interception.colVia'), t('page.interception.colTraffic'),
@@ -358,12 +359,15 @@ router.register('interception', (container) => {
       const viaProxy = via.includes('proxy') || via.includes('pool');
       const resName = e.resource || resourceNameForTarget(e.target);
       const rule = e.rule || '';
+      const app = e.app || '';
+      const targetText = (e.target || '?') + (e.target_ptr ? ` (${e.target_ptr})` : '');
       return '<tr>'
         + `<td style="${cell('color:var(--text-muted)')}">${ui.fmtTime(e.ts)}</td>`
         + `<td style="${cell('color:var(--text-secondary)')}">${ui.escHtml(e.client || '?')}</td>`
+        + `<td style="${cell(app ? 'color:var(--accent);font-weight:600' : 'color:var(--text-muted)')}">${ui.escHtml(app || '—')}</td>`
         + `<td style="${cell(resName ? 'color:var(--accent);font-weight:600' : 'color:var(--text-muted)')}">${ui.escHtml(resName || '—')}</td>`
         + `<td style="${cell('color:var(--text-secondary)')}">${ui.escHtml(rule || '—')}</td>`
-        + `<td style="${cell('color:var(--text-primary)')}">${ui.escHtml(e.target || '?')}</td>`
+        + `<td style="${cell('color:var(--text-primary)')}">${ui.escHtml(targetText)}</td>`
         + `<td style="${cell('color:' + stColor + ';font-weight:600')}">${ui.escHtml(st)}</td>`
         + `<td style="${cell('color:' + (viaProxy ? 'var(--info)' : 'var(--text-muted)') + '')}">${ui.escHtml(via)}</td>`
         + `<td style="${cell('color:var(--text-muted)')}">${e.bytes_in || 0}↑ ${e.bytes_out || 0}↓ · ${e.duration != null ? e.duration + 's' : ''}</td>`

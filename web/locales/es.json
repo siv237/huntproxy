@@ -853,6 +853,7 @@
       "viewLog": "Registro",
       "colTime": "Hora",
       "colClient": "Cliente",
+      "colApp": "Aplicación",
       "colTarget": "Destino",
       "colVia": "Ruta",
       "colTraffic": "Tráfico",

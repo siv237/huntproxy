@@ -208,8 +208,17 @@ class TestDbRecovery:
 
 
 class TestStaleRevalidation:
-    def test_revalidate_stale_proxies_from_working_file(self, state, tmp_data_dir):
+    def test_revalidate_stale_proxies_from_working_file(self, state, tmp_data_dir, monkeypatch):
         import asyncio
+
+        async def _unreachable(addr):
+            raise OSError("unreachable (test)")
+
+        # Never touch the real network: on a machine with interception enabled
+        # an outbound probe would be redirected and could hang until the
+        # re-validation timeout, leaving the counter un-incremented.
+        monkeypatch.setattr(state, "_check_proxy", _unreachable)
+        monkeypatch.setattr(state, "_check_ssl", _unreachable)
         wf = tmp_data_dir / "working.txt"
         wf.write_text("1.2.3.4:8080 US 0.66\n")
         state._load_working_file()
@@ -218,8 +227,8 @@ class TestStaleRevalidation:
         r.last_check = time.time() - 7200
         assert r.checks_total == 1
         asyncio.run(state._revalidate_stale_proxies())
-        # The re-check will fail because 1.2.3.4 is unreachable, but it will
-        # still increment the check counter and update the status.
+        # The re-check fails (unreachable), but it still increments the check
+        # counter and updates the status.
         assert state.ratings["1.2.3.4:8080"].checks_total >= 2
 
     def test_revalidate_skips_fresh_proxies(self, state, tmp_data_dir):

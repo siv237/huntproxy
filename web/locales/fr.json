@@ -853,6 +853,7 @@
       "viewLog": "Journal",
       "colTime": "Heure",
       "colClient": "Client",
+      "colApp": "Application",
       "colTarget": "Destination",
       "colVia": "Route",
       "colTraffic": "Trafic",
