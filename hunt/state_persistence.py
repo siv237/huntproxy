@@ -152,6 +152,9 @@ class StatePersistenceMixin(StateWorkingMixin):
                 pr = json.loads(row["value"])
                 self._proxy_direct_mode = pr.get("direct_mode", False)
                 self._proxy_active_addr = pr.get("active_proxy_addr")
+                eff = pr.get("effective_upstream")
+                if isinstance(eff, dict):
+                    self._effective_upstream = eff
                 self._socks5_port = pr.get("socks5_port", 17278)
             elif row["key"] == "services":
                 services = json.loads(row["value"])
@@ -204,6 +207,7 @@ class StatePersistenceMixin(StateWorkingMixin):
                     ("proxy_runner", json.dumps({
                         "direct_mode": getattr(self, '_proxy_direct_mode', False),
                         "active_proxy_addr": getattr(self, '_proxy_active_addr', None),
+                        "effective_upstream": getattr(self, '_effective_upstream', {}),
                         "socks5_port": getattr(self, '_socks5_port', 17278),
                     })),
                     ("services", json.dumps({

@@ -13,6 +13,10 @@ from hunt.switch_history_stats import _period_durations, _traffic_by_period
 logger = logging.getLogger(__name__)
 
 _HISTORY_LIMIT = 500
+# Kinds recorded for the effective (user-traffic) upstream path.  Manual
+# selections use "select", the automatic pool "pool"/"fallback", direct and
+# the legacy clear path "direct".
+_EFFECTIVE_KINDS = ("select", "pool", "fallback", "direct")
 # Memoize enrich_switch_history for this long; the proxy-status endpoint is
 # polled every couple of seconds but old switch intervals never change their
 # traffic retroactively, so recomputing the whole traffic_log scan each poll
@@ -26,6 +30,45 @@ def record_switch(history: list[dict], action: str, address: str) -> None:
     history.append(entry)
     if len(history) > _HISTORY_LIMIT:
         del history[:-_HISTORY_LIMIT]
+
+
+def effective_from_chain(chain: list) -> tuple:
+    """Map a connection chain to the (address, kind) that actually carried
+    the request — the last token: ``pool:ADDR``, ``proxy:ADDR`` or ``direct``.
+
+    A chain that rerouted after the selected proxy failed is marked
+    ``fallback`` so the history tells an auto-failover from a plain pick.
+    """
+    if not chain:
+        return "", ""
+    tok = str(chain[-1])
+    fallback = any("fallback" in str(c) for c in chain)
+    if tok.startswith("pool:"):
+        addr = tok[5:].split(" (", 1)[0].strip()
+        return addr, ("fallback" if fallback else "pool")
+    if tok.startswith("proxy:"):
+        return tok[6:].split(" (", 1)[0].strip(), "select"
+    if tok.startswith("direct"):
+        return "", "direct"
+    return "", ""
+
+
+def record_effective_upstream(state, addr: str, kind: str) -> None:
+    """Remember the proxy that really carried traffic and append a switch
+    entry when the carrier changes.
+
+    Without this the switch history and the topbar ping badge only ever
+    reflected manually selected proxies — automatic pool picks and failover
+    reroutes stayed invisible even though they served most of the traffic.
+    """
+    if kind not in _EFFECTIVE_KINDS:
+        return
+    addr = addr or ""
+    prev = getattr(state, "_effective_upstream", None) or {}
+    if prev.get("addr", "") == addr and prev.get("kind", "") == kind:
+        return
+    state._effective_upstream = {"addr": addr, "kind": kind, "ts": time.time()}
+    record_switch(state._proxy_switch_history, kind, addr)
 
 
 def enrich_switch_history(state) -> list[dict]:

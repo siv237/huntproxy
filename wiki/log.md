@@ -235,3 +235,21 @@ Append-only журнал **операций вики** (ingest / query / lint), 
   пустой пул, target скорости; тавтологичный тест убран.
 - Страницы: [checks](pages/checks.md), [proxy-server](pages/proxy-server.md),
   [routing](pages/routing.md), [wip](pages/wip.md).
+
+## [2026-09-23] ingest | Фактический upstream: история переключений и топбар-пинг
+
+- `state._effective_upstream` (адрес/тип/ts) заполняется в `_connect_upstream`
+  по последнему токену цепочки (`effective_from_chain`) и пишется в
+  `switch_history` (`record_effective_upstream`, `hunt/switch_history.py`).
+  Раньше история и бейдж видели только ручной `select`, поэтому авто-выбор пула
+  и фолбэк (основной трафик) в них отсутствовали.
+- `_ping_source` (`hunt/proxy_ping.py`) пингует фактический carrier с откатом
+  на `_proxy_active_addr`; в пейлоаде `upstream_kind`, в бейдже пометка
+  «фолбэк». `/api/proxy/status` отдаёт `effective_upstream`.
+- UI: чекбокс «Скрыть без трафика» (по умолчанию вкл.) и метки типа
+  переключения в карточке «История переключений».
+- Атрибуция байтов не менялась: совпадение по суффиксу `%:ADDR` уже указывает
+  на последний (фактический) токен цепочки. Проверено на проде: за период
+  сессии `pool:185.87.255.47:1080` — 682 МБ, `pool:5.42.111.165:10808` —
+  29.6 МБ, `proxy:5.42.111.165:10808` — 3 МБ.
+- Страницы: [proxy-server](pages/proxy-server.md), [frontend](pages/frontend.md).

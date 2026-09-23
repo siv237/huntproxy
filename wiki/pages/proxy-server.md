@@ -27,7 +27,8 @@ web-host (обычно `127.0.0.1`, `hunt/main.py:19,23`). SOCKS5 и transparent
   точка commit.
 - `_relay` (`:292`) — двунаправленный pipe 64КБ, считает `bytes_in/out`.
 - `_log` (`:326`) — `traffic_log` через `state._queue_traffic_log`.
-- `get_status` (`:338`) — running, порт, active proxy, direct mode, fallback,
+- `get_status` (`:338`) — running, порт, active proxy (ручной выбор),
+  `effective_upstream` (фактический carrier), direct mode, fallback,
   счётчики, последние логи, `switch_history`.
 - `select(address)` (`:40`) — выбор upstream, угадывание протокола по порту
   (1080/10808/9050 → socks5, 4145 → socks4), запись в switch-history.
@@ -99,6 +100,19 @@ UI — кнопка в карточке «Выбранный апстрим».
 (`:8-12`). TCP-отказ и обрыв рукопожатия ретраятся; «прокси ответил, но отказал
 в target» — нет (`:159-161`). SSL-прокси оборачиваются TLS при `ssl_supported`
 (`_open_proxy_conn`, `:215`).
+
+### Фактический upstream и история переключений
+
+`_effective_upstream` (`hunt/state.py`) — адрес + тип (`pool`/`fallback`/
+`select`/`direct`) + ts того прокси, который реально пронёс последний
+пользовательский запрос. Пишется в `_connect_upstream` по последнему токену
+цепочки (`effective_from_chain`, `hunt/switch_history.py`) и попадает в
+`switch_history` через `record_effective_upstream` — поэтому в списке видны
+авто-выбор пула и переход по отказу, а не только ручные `select`.
+
+Топбар-пинг (`_ping_source`, `hunt/proxy_ping.py`) пингует именно
+`_effective_upstream` (с откатом на `_proxy_active_addr`), поэтому бейдж
+показывает реальный маршрут; тип «фолбэк» помечается в бейдже.
 
 ### Известные особенности
 

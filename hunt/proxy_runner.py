@@ -292,6 +292,7 @@ class ProxyRunner(ProxyRouteMixin, ProxyHttpMixin):
             "port": self.port,
             "bind_host": self.proxy_host,
             "active_proxy": self.selected_proxy.to_dict() if self.selected_proxy else None,
+            "effective_upstream": dict(getattr(self.state, "_effective_upstream", {}) or {}),
             "direct_mode": self.direct_mode,
             "pool_fallback": self._pool_fallback_enabled(),
             "connections": len(self.log),

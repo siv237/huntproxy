@@ -13,6 +13,8 @@ router.register('proxy-pool', (container) => {
     hideFraud: false,
     groupByProtocol: true,
     collapsedGroups: {},
+    hideZeroTraffic: true,
+    lastProxyStatus: null,
   };
 
   function setProxySort(key) {
@@ -279,6 +281,14 @@ router.register('proxy-pool', (container) => {
     card.style.minHeight = '0';
     const header = ui.el('div', 'card-header');
     header.appendChild(ui.el('div', 'card-title', { text: t('page.proxyPool.switchHistory') }));
+    const zeroLbl = ui.el('label', '', { style: 'display:flex;align-items:center;gap:4px;cursor:pointer;font-size:11px;margin-left:8px' });
+    const zeroCb = ui.el('input', '', { id: 'hide-zero-traffic', type: 'checkbox', checked: 'checked' });
+    zeroCb.addEventListener('change', () => { state.hideZeroTraffic = zeroCb.checked; updateSwitchHistory(state.lastProxyStatus); });
+    zeroLbl.appendChild(zeroCb);
+    zeroLbl.appendChild(ui.el('span', '', { text: t('page.proxyPool.hideZeroTraffic') }));
+    header.appendChild(zeroLbl);
+    const spacer = ui.el('div', '', { style: 'flex:1' });
+    header.appendChild(spacer);
     header.appendChild(ui.el('div', '', { style: 'font-size:11px;color:var(--text-secondary)', text: t('page.proxyPool.switchHistoryHint') }));
     card.appendChild(header);
     const body = ui.el('div', '', { id: 'switch-history-body', style: 'flex:1;overflow-y:auto;min-height:0;font-size:11px' });
@@ -463,10 +473,18 @@ router.register('proxy-pool', (container) => {
     body.appendChild(btnRow);
   }
 
+  const SWITCH_KIND_LABELS = {
+    pool: 'page.proxyPool.switchKindPool',
+    fallback: 'page.proxyPool.switchKindFallback',
+    select: 'page.proxyPool.switchKindSelect',
+  };
+
   function updateSwitchHistory(ps) {
     const body = document.getElementById('switch-history-body');
     if (!body) return;
-    const history = (ps && ps.switch_history) || [];
+    if (ps) state.lastProxyStatus = ps;
+    const all = (ps && ps.switch_history) || [];
+    const history = state.hideZeroTraffic ? all.filter(e => (e.bytes || 0) > 0) : all;
     if (!history.length) {
       body.innerHTML = `<div class="empty" style="padding:8px">${t('page.proxyPool.noSwitches')}</div>`;
       return;
@@ -498,7 +516,11 @@ router.register('proxy-pool', (container) => {
       const when = `<span style="color:var(--text-muted)" title="${ui.escHtml(fmtFullTime(e.ts))}">${fmtAgo(e.ts)}</span>`;
       const favStar = e.is_favorite ? '<svg width="10" height="10" style="vertical-align:-1px;color:var(--warning);flex-shrink:0;width:10px;height:10px;margin-right:2px"><use href="#icon-star"/></svg>' : '<span style="width:12px;flex-shrink:0;display:inline-block"></span>';
       const addr = `<span class="addr proxy-address-link" data-card-addr="${ui.escHtml(e.address)}" style="font-family:monospace;font-size:10px;cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px">${favStar}${ui.escHtml(e.address)}</span>`;
-      return [addr, flag, exitLoc, egressIp, ssl, traffic, active, when];
+      const kindKey = SWITCH_KIND_LABELS[e.action];
+      const kindBadge = kindKey
+        ? `<span class="badge badge-gray" style="font-size:9px;margin-left:4px">${t(kindKey)}</span>`
+        : '';
+      return [`<span style="display:inline-flex;align-items:center">${addr}${kindBadge}</span>`, flag, exitLoc, egressIp, ssl, traffic, active, when];
     });
     body.innerHTML = '';
     const tbl = ui.table(headers, rows);

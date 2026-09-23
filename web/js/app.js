@@ -335,9 +335,10 @@ const app = {
       badge.style.cursor = clickable ? 'pointer' : 'default';
       const srcLabel = src === 'direct' ? '↔' : '⬢';
       if (proxyEl) {
+        const kindSuffix = p.upstream_kind === 'fallback' ? ' · ' + t('topbar.pingFallback') : '';
         proxyEl.textContent = src === 'direct'
           ? (srcLabel + ' ' + t('topbar.pingDirect'))
-          : (srcLabel + ' ' + (p.proxy_addr || '') + (ok ? '' : ' — ' + (last.error || t('topbar.pingFail'))));
+          : (srcLabel + ' ' + (p.proxy_addr || '') + kindSuffix + (ok ? '' : ' — ' + (last.error || t('topbar.pingFail'))));
         proxyEl.title = proxyEl.textContent;
       }
       if (geoEl) {

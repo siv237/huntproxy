@@ -100,6 +100,9 @@ class HuntState(DbMixin, EventsMixin, SnapshotMixin, HuntControlMixin, HuntCycle
             self._transparent_port: int = 17477
             self._proxy_direct_mode: bool = False
             self._proxy_active_addr: Optional[str] = None
+            # The upstream that actually carried the last user request
+            # (pool auto-pick, failover reroute, manual select or direct).
+            self._effective_upstream: dict = {"addr": "", "kind": "", "ts": 0.0}
             # Chronology of upstream proxy switches (select/clear/direct),
             # persisted in runtime_state so it survives restarts.
             self._proxy_switch_history: list[dict] = []

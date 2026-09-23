@@ -1,6 +1,7 @@
 """Proxy route selection — extracted from proxy_runner.py."""
 import asyncio
 from hunt.models import ProxyRating
+from hunt.switch_history import effective_from_chain, record_effective_upstream
 import logging
 
 logger = logging.getLogger(__name__)
@@ -32,6 +33,9 @@ class ProxyRouteMixin:
         if result is None:
             return None
         reader, writer, is_raw_proxy = result
+        addr, kind = effective_from_chain(chain)
+        if kind:
+            record_effective_upstream(self.state, addr, kind)
         return reader, writer, chain, is_raw_proxy
 
     def _pool_fallback_enabled(self) -> bool:

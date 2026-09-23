@@ -51,7 +51,8 @@
     "ping": "Ping",
     "pingTitle": "代理实时延迟",
     "pingDirect": "直连",
-    "pingFail": "失败"
+    "pingFail": "失败",
+    "pingFallback": "回退"
   },
   "sidebar": {
     "allSystemsOperational": "所有系统正常运行",
@@ -452,7 +453,11 @@
       "countriesSelected": "已选 {n} 个",
       "countriesSaved": "国家筛选已保存",
       "countriesEmpty": "无国家",
-      "countriesEmptyPoolWarn": "所选国家/地区没有可用代理——自动池与故障转移将返回错误。"
+      "countriesEmptyPoolWarn": "所选国家/地区没有可用代理——自动池与故障转移将返回错误。",
+      "hideZeroTraffic": "隐藏无流量",
+      "switchKindPool": "自动",
+      "switchKindFallback": "回退",
+      "switchKindSelect": "已选"
     },
     "server": {
       "title": "服务器",

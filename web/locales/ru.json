@@ -51,7 +51,8 @@
     "ping": "Пинг",
     "pingTitle": "Живой пинг прокси — задержка через активный прокси",
     "pingDirect": "напрямую",
-    "pingFail": "ошибка"
+    "pingFail": "ошибка",
+    "pingFallback": "фолбэк"
   },
   "sidebar": {
     "allSystemsOperational": "Все системы работают",
@@ -452,7 +453,11 @@
       "countriesSelected": "Выбрано: {n}",
       "countriesSaved": "Фильтр по странам сохранён",
       "countriesEmpty": "Нет стран",
-      "countriesEmptyPoolWarn": "В выбранных странах нет ни одного прокси — авто-пул и переход по отказу будут отдавать ошибки."
+      "countriesEmptyPoolWarn": "В выбранных странах нет ни одного прокси — авто-пул и переход по отказу будут отдавать ошибки.",
+      "hideZeroTraffic": "Скрыть без трафика",
+      "switchKindPool": "авто",
+      "switchKindFallback": "фолбэк",
+      "switchKindSelect": "выбрано"
     },
     "server": {
       "title": "Сервер",

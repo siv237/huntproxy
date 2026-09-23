@@ -38,6 +38,7 @@ class ProxyPingMixin:
         self._ping_last: dict = {
             "ts": 0.0, "ok": False, "latency": -1, "error": "",
             "source": "none", "proxy_addr": "", "host": "",
+            "upstream_kind": "none",
         }
         self._ping_channel_last: dict = {
             "ts": 0.0, "ok": False, "latency": -1, "error": "", "addr": "",
@@ -80,7 +81,9 @@ class ProxyPingMixin:
         the primary source: the badge must show the end-to-end path user
         traffic takes, with the channel measured separately.
         """
-        addr = getattr(self, "_proxy_active_addr", None) or ""
+        eff = getattr(self, "_effective_upstream", None) or {}
+        addr = eff.get("addr") or getattr(self, "_proxy_active_addr", None) or ""
+        upstream_kind = eff.get("kind") or ("select" if addr else "direct")
         if addr and addr in self.ratings:
             r = self.ratings[addr]
             host, port_str = addr.rsplit(":", 1)
@@ -89,7 +92,7 @@ class ProxyPingMixin:
             except ValueError:
                 port = 80
             return {
-                "kind": "pool", "addr": addr,
+                "kind": "pool", "upstream_kind": upstream_kind, "addr": addr,
                 "protocol": r.protocol or "http", "host": host, "port": port,
                 "geo": {
                     "country": r.egress_country or "",
@@ -99,7 +102,7 @@ class ProxyPingMixin:
                     "ip": r.egress_ip or "",
                 },
             }
-        return {"kind": "direct", "addr": "", "geo": {
+        return {"kind": "direct", "upstream_kind": "direct", "addr": "", "geo": {
             "country": getattr(self, "_canary_last_country", ""),
             "country_code": "",
             "city": getattr(self, "_canary_last_city", ""),
@@ -169,6 +172,7 @@ class ProxyPingMixin:
         self._ping_last = {
             "ts": time.time(), "ok": ok, "latency": latency, "error": err,
             "source": src["kind"], "proxy_addr": src["addr"], "host": host,
+            "upstream_kind": src.get("upstream_kind", src["kind"]),
         }
         self._ping_samples.append(
             {"ts": self._ping_last["ts"], "ok": ok, "latency": latency}
@@ -239,6 +243,7 @@ class ProxyPingMixin:
             "source": src["kind"],
             "route": src.get("route", ""),
             "proxy_addr": last["proxy_addr"],
+            "upstream_kind": last.get("upstream_kind", ""),
             "geo": last["geo"],
             "last": last,
             "samples": samples,

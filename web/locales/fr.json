@@ -51,7 +51,8 @@
     "ping": "Ping",
     "pingTitle": "Ping proxy en direct",
     "pingDirect": "direct",
-    "pingFail": "erreur"
+    "pingFail": "erreur",
+    "pingFallback": "secours"
   },
   "sidebar": {
     "allSystemsOperational": "Tous les systèmes opérationnels",
@@ -452,7 +453,11 @@
       "countriesSelected": "{n} sélectionnés",
       "countriesSaved": "Filtre pays enregistré",
       "countriesEmpty": "Aucun pays",
-      "countriesEmptyPoolWarn": "Aucun proxy dans les pays sélectionnés — le pool automatique et le failover renverront des erreurs."
+      "countriesEmptyPoolWarn": "Aucun proxy dans les pays sélectionnés — le pool automatique et le failover renverront des erreurs.",
+      "hideZeroTraffic": "Masquer sans trafic",
+      "switchKindPool": "auto",
+      "switchKindFallback": "secours",
+      "switchKindSelect": "choisi"
     },
     "server": {
       "title": "Serveur",

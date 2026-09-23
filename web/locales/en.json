@@ -51,7 +51,8 @@
     "ping": "Ping",
     "pingTitle": "Live proxy ping — latency through the active proxy",
     "pingDirect": "direct",
-    "pingFail": "failed"
+    "pingFail": "failed",
+    "pingFallback": "fallback"
   },
   "sidebar": {
     "allSystemsOperational": "All Systems Operational",
@@ -452,7 +453,11 @@
       "countriesSelected": "{n} selected",
       "countriesSaved": "Country filter saved",
       "countriesEmpty": "No countries",
-      "countriesEmptyPoolWarn": "No proxy in the selected countries — automatic pool and failover will return errors."
+      "countriesEmptyPoolWarn": "No proxy in the selected countries — automatic pool and failover will return errors.",
+      "hideZeroTraffic": "Hide zero traffic",
+      "switchKindPool": "auto",
+      "switchKindFallback": "fallback",
+      "switchKindSelect": "selected"
     },
     "server": {
       "title": "Server",

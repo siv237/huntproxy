@@ -66,7 +66,9 @@ domain-lists, logs, actions, settings, schedules, downloads, api, about.
 Компоненты: `proxy-card.js` (`window.proxyCard.show`), `client-card.js`.
 Карточка «Выбранный апстрим» (`proxy-pool.js`) содержит кнопку фильтра стран
 пула — модалка с режимами «все / только эти / кроме этих» и списком стран с
-количеством прокси ([proxy-server](proxy-server.md)).
+количеством прокси ([proxy-server](proxy-server.md)). В карточке «История
+переключений» есть чекбокс «Скрыть без трафика» (включён по умолчанию) и
+метки типа переключения (авто/фолбэк/выбрано).
 
 Секции sidebar: overview, engine, proxies, lists, insights, system
 (`web/index.html:66-223`).
