@@ -51,6 +51,117 @@ def mock_resolve_geo(state, cc, country, hosting=False, proxy=False):
     state._resolve_geo = fake
 
 
+EGRESS_JSON = b'{"query":"1.2.3.4","country":"Germany","countryCode":"DE","city":"Berlin","isp":"Test ISP"}'
+
+
+class FakeSocksProxyServer:
+    """Local SOCKS server speaking both SOCKS5 and SOCKS4 (sniffed from the
+    first byte), accepts any target and answers in-tunnel ip-api GET requests
+    with a fixed JSON payload."""
+
+    def __init__(self, deny: bool = False):
+        self.deny = deny
+        self.host = "127.0.0.1"
+        self.port = 0
+        self.server = None
+        self.targets = []
+        self.requests = []
+
+    async def start(self):
+        self.server = await asyncio.start_server(self._handle, self.host, self.port)
+        self.port = self.server.sockets[0].getsockname()[1]
+
+    async def stop(self):
+        if self.server:
+            self.server.close()
+            await self.server.wait_closed()
+
+    async def _serve_get(self, reader, writer):
+        try:
+            head = await asyncio.wait_for(reader.readuntil(b"\r\n\r\n"), timeout=5)
+            self.requests.append(head)
+            if head.startswith(b"GET "):
+                writer.write(
+                    b"HTTP/1.0 200 OK\r\nContent-Length: "
+                    + str(len(EGRESS_JSON)).encode()
+                    + b"\r\nConnection: close\r\n\r\n" + EGRESS_JSON)
+                await writer.drain()
+        except Exception:
+            pass
+
+    async def _handle(self, reader, writer):
+        try:
+            first = await reader.readexactly(1)
+            if first == b"\x05":
+                ok = await self._socks5_handshake(reader, writer)
+            elif first == b"\x04":
+                ok = await self._socks4_handshake(reader, writer)
+            else:
+                return
+            if ok:
+                await self._serve_get(reader, writer)
+        except Exception:
+            pass
+        finally:
+            try:
+                writer.close()
+                await writer.wait_closed()
+            except Exception:
+                pass
+
+    async def _socks5_handshake(self, reader, writer) -> bool:
+        nmethods = (await reader.readexactly(1))[0]
+        await reader.readexactly(nmethods)
+        if self.deny:
+            writer.write(bytes([5, 0xFF]))
+            await writer.drain()
+            return False
+        writer.write(bytes([5, 0]))
+        await writer.drain()
+        req = await reader.readexactly(4)
+        if req[0] != 5 or req[1] != 1:
+            return False
+        if req[3] == 1:
+            raw = await reader.readexactly(4)
+            host = ".".join(str(b) for b in raw)
+        elif req[3] == 3:
+            host = (await reader.readexactly((await reader.readexactly(1))[0])).decode()
+        elif req[3] == 4:
+            await reader.readexactly(16)
+            host = ""
+        else:
+            return False
+        port = int.from_bytes(await reader.readexactly(2), "big")
+        self.targets.append((host, port))
+        writer.write(bytes([5, 0, 0, 1, 127, 0, 0, 1, 0, 0]))
+        await writer.drain()
+        return True
+
+    async def _socks4_handshake(self, reader, writer) -> bool:
+        # request: [4][CMD][DSTPORT:2][DSTIP:4][USERID\0][HOST\0] — first byte consumed
+        hdr = await reader.readexactly(7)
+        if hdr[0] != 1:
+            return False
+        host = b""
+        while True:
+            b = await reader.readexactly(1)
+            if b == b"\x00":
+                break
+            host += b
+        if int.from_bytes(hdr[3:7], "big") == 1:
+            host = b""
+            while True:
+                b = await reader.readexactly(1)
+                if b == b"\x00":
+                    break
+                host += b
+        self.targets.append((host.decode(), int.from_bytes(hdr[1:3], "big")))
+        reply = bytes([0, 0x5B if self.deny else 0x5A]) + hdr[1:]
+        writer.write(reply)
+        await writer.drain()
+        return not self.deny
+
+
 class TestCheckProxyHttp:
     def test_check_proxy_http_ok(self, state):
         resp = b'{"query":"1.2.3.4","country":"United States","countryCode":"US","city":"New York","isp":"Test ISP"}'
@@ -318,6 +429,197 @@ class TestCheckProxyHttp:
                 assert ok is True
                 assert country == "United States"
                 assert country_code == "US"
+            finally:
+                await proxy.stop()
+
+        asyncio.run(run())
+
+
+class TestSocksTestMethods:
+    """Regression: 8496c53 deleted _socks5_test/_socks4_test along with the
+    old curl-based MITM code, but check_proxy/check_speed kept calling them —
+    the AttributeError was swallowed by gather(return_exceptions=True) and
+    every SOCKS proxy silently failed the check."""
+
+    def test_methods_defined_on_hunt_state(self):
+        assert callable(hunt.HuntState._socks5_test)
+        assert callable(hunt.HuntState._socks4_test)
+
+    def test_socks5_test_accepts_working_proxy(self, state):
+        proxy = FakeSocksProxyServer()
+
+        async def run():
+            await proxy.start()
+            try:
+                r, w = await state._outbound_connect(proxy.host, proxy.port)
+                try:
+                    assert await state._socks5_test(r, w) is True
+                finally:
+                    w.close()
+            finally:
+                await proxy.stop()
+
+        asyncio.run(run())
+
+    def test_socks5_test_rejects_refusal(self, state):
+        proxy = FakeSocksProxyServer(deny=True)
+
+        async def run():
+            await proxy.start()
+            try:
+                r, w = await state._outbound_connect(proxy.host, proxy.port)
+                try:
+                    assert await state._socks5_test(r, w) is False
+                finally:
+                    w.close()
+            finally:
+                await proxy.stop()
+
+        asyncio.run(run())
+
+    def test_socks4_test_accepts_working_proxy(self, state):
+        proxy = FakeSocksProxyServer()
+
+        async def run():
+            await proxy.start()
+            try:
+                r, w = await state._outbound_connect(proxy.host, proxy.port)
+                try:
+                    assert await state._socks4_test(r, w) is True
+                finally:
+                    w.close()
+            finally:
+                await proxy.stop()
+
+        asyncio.run(run())
+
+    def test_socks4_test_rejects_refusal(self, state):
+        proxy = FakeSocksProxyServer(deny=True)
+
+        async def run():
+            await proxy.start()
+            try:
+                r, w = await state._outbound_connect(proxy.host, proxy.port)
+                try:
+                    assert await state._socks4_test(r, w) is False
+                finally:
+                    w.close()
+            finally:
+                await proxy.stop()
+
+        asyncio.run(run())
+
+
+class TestCheckSocksProxyPipeline:
+    def test_check_socks_proxy_socks5_ok(self, state):
+        proxy = FakeSocksProxyServer()
+
+        async def run():
+            await proxy.start()
+            try:
+                mock_resolve_geo(state, "DE", "Germany")
+                listen_task = asyncio.create_task(state._resolve_geo("127.0.0.1"))
+                r, w = await state._outbound_connect(proxy.host, proxy.port)
+                result = await state._check_socks_proxy(
+                    r, w, proxy.host, proxy.port, 0.0, listen_task)
+                ok, country, supports_connect, mitm, egress, listen, latency, cc = result
+                assert ok is True
+                assert egress.get("egress_ip") == "1.2.3.4"
+            finally:
+                await proxy.stop()
+
+        asyncio.run(run())
+
+    def test_check_socks_proxy_socks4(self, state):
+        """Port 4145 selects the SOCKS4 branch; remap outbound connections so
+        the in-tunnel egress probe reaches the same fake (no real 4145 here)."""
+        proxy = FakeSocksProxyServer()
+        orig = state._outbound_connect
+
+        async def run():
+            await proxy.start()
+            try:
+                mock_resolve_geo(state, "DE", "Germany")
+
+                async def fake_outbound(host, port, **kw):
+                    return await orig(proxy.host, proxy.port, **kw)
+                state._outbound_connect = fake_outbound
+                listen_task = asyncio.create_task(state._resolve_geo("127.0.0.1"))
+                r, w = await orig(proxy.host, proxy.port)
+                result = await state._check_socks_proxy(
+                    r, w, proxy.host, 4145, 0.0, listen_task)
+                ok, country, supports_connect, mitm, egress, listen, latency, cc = result
+                assert ok is True
+                assert egress.get("egress_ip") == "1.2.3.4"
+            finally:
+                await proxy.stop()
+
+        asyncio.run(run())
+
+    def test_check_socks_proxy_refused(self, state):
+        proxy = FakeSocksProxyServer(deny=True)
+
+        async def run():
+            await proxy.start()
+            try:
+                async def fake_geo(ip):
+                    return {}
+                state._resolve_geo = fake_geo
+                listen_task = asyncio.create_task(state._resolve_geo("127.0.0.1"))
+                r, w = await state._outbound_connect(proxy.host, proxy.port)
+                result = await state._check_socks_proxy(
+                    r, w, "127.0.0.1", 1080, 0.0, listen_task)
+                ok = result[0]
+                assert ok is False
+            finally:
+                await proxy.stop()
+
+        asyncio.run(run())
+
+
+class TestSpeedOverSocks:
+    def test_speed_open_socks5_establishes_tunnel(self, state):
+        proxy = FakeSocksProxyServer()
+
+        async def run():
+            await proxy.start()
+            try:
+                conn = await state._speed_open(proxy.host, proxy.port, True, False)
+                assert conn is not None
+                r, w = conn
+                w.close()
+            finally:
+                await proxy.stop()
+
+        asyncio.run(run())
+
+    def test_speed_single_socks5_measures(self, state):
+        proxy = FakeSocksProxyServer()
+
+        async def run():
+            await proxy.start()
+            try:
+                speed = await state._speed_single(
+                    proxy.host, proxy.port, is_socks=True,
+                    srv_host="example.com", srv_path="/file",
+                    expected_size=len(EGRESS_JSON), use_ssl=False,
+                    supports_connect=False)
+                assert speed > 0.0
+                assert ("example.com", 80) in proxy.targets
+                assert proxy.requests and proxy.requests[-1].startswith(b"GET /file ")
+            finally:
+                await proxy.stop()
+
+        asyncio.run(run())
+
+    def test_speed_open_socks5_refused_returns_none(self, state):
+        proxy = FakeSocksProxyServer(deny=True)
+
+        async def run():
+            await proxy.start()
+            try:
+                conn = await state._speed_open(proxy.host, proxy.port, True, False)
+                assert conn is None
             finally:
                 await proxy.stop()
 

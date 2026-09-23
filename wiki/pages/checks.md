@@ -47,8 +47,10 @@ tags: [concept]
 ### HTTP/SOCKS — `_check_proxy` (`hunt/check_proxy.py:11-45`)
 - `_outbound_connect` (через канал, если активен) → `_check_socks_proxy`
   (`:47-80`) или `_check_http_proxy` (`:82-126`).
-- SOCKS: `_socks4_test`/`_socks5_test` + `_socks_egress` (отдельный туннель к
-  `ip-api.com:80`, `hunt/check_geo.py:83-131`).
+- SOCKS: `_socks4_test`/`_socks5_test` (обёртки над `hunt/conn.py`, цель по
+  умолчанию `httpbin.org:443`; параметры target нужны замеру скорости) +
+  `_socks_egress` (отдельный туннель к `ip-api.com:80`,
+  `hunt/check_geo.py:83-131`).
 - HTTP: `GET http://ip-api.com/json/?fields=query,city,isp,country,hosting,proxy,mobile`
   абсолютным URI.
 - `_authoritative_egress` (`hunt/check_geo.py:60-81`): прямой lookup заявленного
@@ -76,8 +78,11 @@ GET; префикс `CONNECT_OK` выставляет `supports_connect`. Кон
 ### Скорость — `check_speed.py`
 Серверы `SPEED_SERVERS` (`hunt/state.py:231`), семафор `speed_parallel`, общий
 дедлайн 45с. Три способа: plain GET, CONNECT :80, CONNECT :443+TLS
-(`_speed_single`, `:69-82`). Чтение чанками 64 КиБ с ранним выходом при
-throughput < 5 KB/s после grace 3с (`_read_speed_stream`, `:193-238`).
+(`_speed_single`). Для SOCKS туннель открывается на сам speed-сервер
+(`_speed_open(tunnel_host, tunnel_port=80)`) и запрос идёт в origin-form
+(`_socks_speed_single`) — иначе замер уходил бы на проверочный хост и всегда
+давал 0. Чтение чанками 64 КиБ с ранним выходом при throughput < 5 KB/s после
+grace 3с (`_read_speed_stream`).
 
 ### Fraud — `hunt/fraudscore.py`
 proxycheck.io, raw-скор 0–100. Используется как справочная величина;
@@ -105,15 +110,21 @@ proxycheck.io, raw-скор 0–100. Используется как справ�
 - Fast-fail: обрыв коннекта <0.3с трактуется как «провайдер/сеть», не как
   мёртвый прокси (`hunt/check_proxy.py:22-25`).
 
-## ⚠ Найденный дефект: отсутствуют `_socks4_test`/`_socks5_test`
+## Исправлено: отсутствовали `_socks4_test`/`_socks5_test`
 
-Вызовы есть в `hunt/check_proxy.py:49,51` и `hunt/check_speed.py:56,58`, но
-определений в репозитории нет (`hasattr(HuntState, '_socks5_test') == False`).
-Определения жили в `hunt/check_mitm.py` и были удалены коммитом `8496c53`,
-а вызовы остались. Эффект: `AttributeError`, который в
-`asyncio.gather(..., return_exceptions=True)` (`hunt/check_validation.py:164-168`)
-поглощается и трактуется как неуспех — **SOCKS-прокси систематически не
-проходят проверку**. Требует подтверждения и отдельного фикса.
+Определения жили в `hunt/check_mitm.py` и были удалены коммитом `8496c53`
+вместе со старым MITM-кодом, а вызовы в `hunt/check_proxy.py` и
+`hunt/check_speed.py` остались: `AttributeError` поглощался в
+`asyncio.gather(..., return_exceptions=True)` (`hunt/check_validation.py`) и
+трактовался как неуспех — SOCKS-прокси систематически не проходили проверку.
+
+Восстановлены как обёртки над `hunt/conn.py` (`hunt/check_proxy.py`), цель по
+умолчанию `httpbin.org:443`. Попутно найден и исправлен второй дефект:
+`_socks5_egress_handshake` (`hunt/check_geo.py`) слал длину домена `9` при
+`ip-api.com` = 10 байт — битый кадр SOCKS5, который не проявлялся, пока
+`_socks_egress` не вызывался. Замер скорости для SOCKS туннелируется на
+speed-сервер (`_speed_open` + `_socks_speed_single`), иначе `speed_fails`
+рос и `dead_by_speed` не пускал SOCKS в пул.
 
 ## Мёртвый код (наблюдения)
 

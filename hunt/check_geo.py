@@ -113,7 +113,7 @@ class CheckGeoMixin:
         resp = await asyncio.wait_for(r.readexactly(2), timeout=8)
         if resp[1] != 0:
             return False
-        req = bytes([5, 1, 0, 3, 9]) + b"ip-api.com" + b"\x00\x50"
+        req = bytes([5, 1, 0, 3, 10]) + b"ip-api.com" + b"\x00\x50"
         w.write(req); await asyncio.wait_for(w.drain(), timeout=8)
         hdr = await asyncio.wait_for(r.readexactly(4), timeout=8)
         if hdr[1] != 0:

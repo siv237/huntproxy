@@ -4,10 +4,13 @@ import asyncio
 import json
 import time
 from hunt.constants import logger
+from hunt.conn import socks4_connect, socks5_connect
 from hunt.geo import country_code_from_name
 
 class CheckProxyMixin:
     _SOCKS_PORTS = frozenset({1080, 10808, 9050, 4145})
+    _SOCKS_TEST_HOST = "httpbin.org"
+
     async def _check_proxy(self, addr: str) -> tuple:
             host, port_str = addr.rsplit(":", 1)
             try:
@@ -43,6 +46,16 @@ class CheckProxyMixin:
             if not ok or not connect_ok:
                 return False, country, False, mitm_suspect, egress, listen, http_latency, country_code, False
             return True, country, True, mitm_suspect, egress, listen, http_latency, country_code, False
+
+    async def _socks5_test(self, reader, writer, host=None, port=443) -> bool:
+            timeout = min(self.effective_timeout + 7, 20)
+            return await socks5_connect(reader, writer, host or self._SOCKS_TEST_HOST, port,
+                                        handshake_timeout=timeout)
+
+    async def _socks4_test(self, reader, writer, host=None, port=443) -> bool:
+            timeout = min(self.effective_timeout + 7, 20)
+            return await socks4_connect(reader, writer, host or self._SOCKS_TEST_HOST, port,
+                                        handshake_timeout=timeout)
 
     async def _check_socks_proxy(self, reader, writer, host, port, t0, listen_task) -> tuple:
         if port == 4145:

@@ -1,5 +1,5 @@
 ---
-updated: 2026-09-18
+updated: 2026-09-23
 commit: 8b0c0c0
 tags: [analysis]
 ---
@@ -8,16 +8,11 @@ tags: [analysis]
 
 Единый список незавершённого — чтобы перед правкой кода сразу видеть, что уже
 известно и не закрыто. Детали и ссылки `файл:строка` — на профильных страницах.
-Если список пуст — открытых дефектов нет. Незакоммиченного в рабочем дереве нет
-(синхронизировано с `b028d67`).
+Если список пуст — открытых дефектов нет.
 
 ## Открытые дефекты (pre-existing)
 
-1. **`_socks4_test`/`_socks5_test` не определены** — вызовы в
-   `hunt/check_proxy.py:49,51` и `hunt/check_speed.py:56,58`, но определений в
-   репозитории нет. `AttributeError` поглощается `asyncio.gather(...,
-   return_exceptions=True)` и трактуется как неуспех — SOCKS-прокси
-   систематически не проходят проверку. См. [checks](checks.md).
+1. **`_socks4_test`/`_socks5_test` были не определены** — закрыто (см. ниже).
 2. **`DOMAIN-KEYWORD`/`DOMAIN-REGEXP` без спец-семантики** — уходят в обычный
    паттерн. См. [routing](routing.md).
 3. **Кастомный `https`-прокси не оборачивается в TLS** —
@@ -28,6 +23,14 @@ tags: [analysis]
    [quality](quality.md), [infra](infra.md).
 6. **`docs/ANALYSIS.md` хранит устаревшую формулу рейтинга**. См.
    [sources-docs](sources-docs.md), [rating](rating.md).
+
+## Закрыто в рабочем дереве (2026-09-23)
+
+- **SOCKS-прокси не проходили проверку / не попадали в пул** — восстановлены
+  `_socks4_test`/`_socks5_test` (`hunt/check_proxy.py`, обёртки над
+  `hunt/conn.py`), исправлена длина домена в `_socks5_egress_handshake`
+  (`hunt/check_geo.py`, 9→10), замер скорости SOCKS туннелируется на
+  speed-сервер (`hunt/check_speed.py`). См. [checks](checks.md).
 
 ## Закрыто в рабочем дереве (незакоммичено, 2026-09-18)
 

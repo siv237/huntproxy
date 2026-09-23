@@ -47,15 +47,22 @@ class CheckSpeedMixin:
                 return 0.0
 
 
-    async def _speed_open(self, host: str, port: int, is_socks: bool, use_ssl: bool) -> tuple:
-            """Open a fresh connection for a speed measurement attempt."""
+    async def _speed_open(self, host: str, port: int, is_socks: bool, use_ssl: bool,
+                          tunnel_host: str | None = None, tunnel_port: int = 443) -> tuple:
+            """Open a fresh connection for a speed measurement attempt.
+
+            For SOCKS the tunnel must terminate at the server we are about to
+            download from (`tunnel_host`/`tunnel_port`); connecting it to a
+            fixed probe host sends the speed request to the wrong server and
+            always measures zero."""
             r, w = await self._outbound_connect(
                 host, port, use_ssl=use_ssl, server_hostname=host, timeout=self.effective_timeout)
             if is_socks:
+                target_host = tunnel_host or self._SOCKS_TEST_HOST
                 if port == 4145:
-                    ok = await self._socks4_test(r, w)
+                    ok = await self._socks4_test(r, w, target_host, tunnel_port)
                 else:
-                    ok = await self._socks5_test(r, w)
+                    ok = await self._socks5_test(r, w, target_host, tunnel_port)
                 if not ok:
                     w.close()
                     try:
@@ -69,7 +76,8 @@ class CheckSpeedMixin:
     async def _speed_single(self, host: str, port: int, is_socks: bool,
                                  srv_host: str, srv_path: str, expected_size: int,
                                  use_ssl: bool = False, supports_connect: bool = False) -> float:
-            speed = await self._try_speed(host, port, is_socks, use_ssl, self._direct_speed_single, srv_host, srv_path, expected_size)
+            speed_fn = self._socks_speed_single if is_socks else self._direct_speed_single
+            speed = await self._try_speed(host, port, is_socks, use_ssl, speed_fn, srv_host, srv_path, expected_size)
             if speed > 0:
                 return speed
             if not use_ssl:
@@ -81,14 +89,16 @@ class CheckSpeedMixin:
                 return await self._try_speed(host, port, is_socks, use_ssl, self._https_speed_single, srv_host, srv_path, expected_size)
             return 0.0
 
-    async def _try_speed(self, host, port, is_socks, use_ssl, speed_fn, *args) -> float:
+    async def _try_speed(self, host, port, is_socks, use_ssl, speed_fn, srv_host, *args) -> float:
         w = None
         try:
-            conn = await self._speed_open(host, port, is_socks, use_ssl)
+            conn = await self._speed_open(
+                host, port, is_socks, use_ssl,
+                tunnel_host=srv_host if is_socks else None, tunnel_port=80)
             if conn is None:
                 return 0.0
             r, w = conn
-            return await speed_fn(r, w, *args)
+            return await speed_fn(r, w, srv_host, *args)
         except Exception:
             return 0.0
         finally:
@@ -99,6 +109,26 @@ class CheckSpeedMixin:
             except Exception:
                 logger.debug("suppressed", exc_info=True)
 
+
+    async def _socks_speed_single(self, r, w, srv_host: str, srv_path: str, expected_size: int) -> float:
+            """Download from the speed server through an established SOCKS tunnel.
+
+            The tunnel already terminates at srv_host:80, so the request must be
+            origin-form — the absolute-form URL used for HTTP proxies would be
+            sent to a server that is not a forward proxy."""
+            try:
+                req = (
+                    f"GET {srv_path} HTTP/1.0\r\n"
+                    f"Host: {srv_host}\r\n"
+                    "User-Agent: huntproxy\r\n"
+                    "Connection: close\r\n"
+                    "\r\n"
+                )
+                w.write(req.encode())
+                await asyncio.wait_for(w.drain(), timeout=10)
+                return await self._read_speed_stream(r, expected_size)
+            except Exception:
+                return 0.0
 
     async def _direct_speed_single(self, r, w, srv_host: str, srv_path: str, expected_size: int) -> float:
             """Send a plain HTTP GET through the existing connection.
