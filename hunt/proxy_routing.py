@@ -197,8 +197,15 @@ class ProxyRouteMixin:
         return await self._connect_via_pool(host, port, chain, need_connect)
 
     def _build_pool(self, need_connect: bool) -> list:
+        country_policy = self.state._pool_country_policy_cached()
+        country_mode = country_policy["mode"]
+        country_codes = set(country_policy["countries"])
+
         def _eligible(r: ProxyRating) -> bool:
             if not r.pool_eligible:
+                return False
+            if not self.state.pool_country_allows_code(
+                    r.egress_country_code or r.country_code, country_mode, country_codes):
                 return False
             return need_connect is False or r.supports_connect or r.protocol in ("socks4", "socks5")
 

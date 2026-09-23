@@ -211,6 +211,8 @@ class HuntServer:
         self._router.add("POST", "/api/favorites/add", pl._handle_favorites_add)
         self._router.add("POST", "/api/favorites/remove", pl._handle_favorites_remove)
         self._router.add("GET", "/api/favorites", pl._handle_favorites_list)
+        self._router.add("GET", "/api/pool/countries", pl._handle_pool_countries_get)
+        self._router.add("POST", "/api/pool/countries", pl._handle_pool_countries_set)
 
         self._router.add("GET", "/api/proxy/status", p._handle_proxy_status)
         self._router.add("GET", "/api/proxy/alive", p._handle_proxy_alive)

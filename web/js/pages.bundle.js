@@ -8889,6 +8889,8 @@ router.register('proxy-pool', (container) => {
   let state = {
     proxies: [],
     selected: null,
+    countryPolicy: { mode: 'off', countries: [] },
+    countryAvailable: [],
     proxySortKey: 'score',
     proxySortDir: -1,
     hideNoHttps: true,
@@ -8897,6 +8899,7 @@ router.register('proxy-pool', (container) => {
     hideBlacklisted: true,
     hideFraud: false,
     groupByProtocol: true,
+    collapsedGroups: {},
   };
 
   function setProxySort(key) {
@@ -8971,7 +8974,12 @@ router.register('proxy-pool', (container) => {
   function buildSelectedProxyCard() {
     const card = ui.el('div', 'card');
     card.id = 'selected-proxy-card';
-    card.appendChild(ui.el('div', 'card-title', { text: t('page.proxyPool.selectedUpstream'), style: 'margin-bottom:8px' }));
+    const titleRow = ui.el('div', '', { style: 'display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px' });
+    titleRow.appendChild(ui.el('div', 'card-title', { text: t('page.proxyPool.selectedUpstream') }));
+    const countriesBtn = ui.el('button', 'btn btn-xs btn-secondary', { id: 'pool-countries-btn', title: t('page.proxyPool.countriesHint') });
+    countriesBtn.addEventListener('click', openCountriesModal);
+    titleRow.appendChild(countriesBtn);
+    card.appendChild(titleRow);
 
     const fbRow = ui.el('div', '', { style: 'display:flex;align-items:center;gap:8px;margin-bottom:8px' });
     const fbCb = ui.el('input', '', { id: 'pool-fallback-checkbox', type: 'checkbox', style: 'display:none' });
@@ -8997,8 +9005,161 @@ router.register('proxy-pool', (container) => {
     return card;
   }
 
-  function buildSwitchHistoryCard() {
-    const card = ui.el('div', 'card');
+  const COUNTRY_INPUT_STYLE = 'padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius-xs);background:var(--bg);color:var(--text-primary);font-size:12px';
+
+  function countryBadgeText(policy) {
+    if (!policy || policy.mode === 'off' || !(policy.countries || []).length) return t('page.proxyPool.countriesAll');
+    const list = policy.countries.join(', ');
+    return policy.mode === 'only'
+      ? t('page.proxyPool.countriesOnly', { list })
+      : t('page.proxyPool.countriesExcept', { list });
+  }
+
+  function updateCountriesButton() {
+    const btn = document.getElementById('pool-countries-btn');
+    if (!btn) return;
+    btn.textContent = '🌍 ' + countryBadgeText(state.countryPolicy);
+    const active = !!state.countryPolicy && state.countryPolicy.mode !== 'off' && (state.countryPolicy.countries || []).length > 0;
+    btn.classList.toggle('btn-primary', active);
+    btn.classList.toggle('btn-secondary', !active);
+  }
+
+  async function loadCountryPolicy() {
+    try {
+      const data = await api.poolCountries();
+      state.countryPolicy = { mode: data.mode || 'off', countries: data.countries || [] };
+      state.countryAvailable = data.available || [];
+    } catch (e) {
+      console.error('poolCountries', e);
+    }
+    updateCountriesButton();
+  }
+
+  function openCountriesModal() {
+    let mode = state.countryPolicy.mode || 'off';
+    let filter = '';
+    const draft = new Set(state.countryPolicy.countries || []);
+
+    const overlay = ui.el('div', '', { style: 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;display:flex;align-items:center;justify-content:center;overflow:auto;padding:16px' });
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+    const modal = ui.el('div', '', { style: 'background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);width:min(540px,100%);max-height:88vh;display:flex;flex-direction:column;overflow:hidden;padding:14px' });
+
+    modal.appendChild(ui.el('div', '', { style: 'font-size:14px;font-weight:700;margin-bottom:2px', text: t('page.proxyPool.countriesTitle') }));
+    modal.appendChild(ui.el('div', '', { style: 'font-size:11px;color:var(--text-secondary);margin-bottom:10px', text: t('page.proxyPool.countriesHint') }));
+
+    const modeRow = ui.el('div', '', { style: 'display:flex;flex-direction:column;gap:4px;margin-bottom:8px' });
+    [['off', 'page.proxyPool.countriesModeAll'],
+     ['only', 'page.proxyPool.countriesModeOnly'],
+     ['exclude', 'page.proxyPool.countriesModeExcept']].forEach(([value, key]) => {
+      const lbl = ui.el('label', '', { style: 'display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer' });
+      const radio = ui.el('input', '', { type: 'radio', name: 'pool-country-mode' });
+      radio.checked = mode === value;
+      radio.addEventListener('change', () => { if (radio.checked) { mode = value; refreshList(); } });
+      lbl.appendChild(radio);
+      lbl.appendChild(ui.el('span', '', { text: t(key) }));
+      modeRow.appendChild(lbl);
+    });
+    modal.appendChild(modeRow);
+
+    const search = ui.el('input', '', { type: 'text', placeholder: t('page.proxyPool.countriesSearch'), style: COUNTRY_INPUT_STYLE + ';margin-bottom:6px' });
+    search.addEventListener('input', () => { filter = search.value.trim().toLowerCase(); refreshList(); });
+    modal.appendChild(search);
+
+    const list = ui.el('div', '', { style: 'flex:1;overflow-y:auto;min-height:140px;max-height:46vh;border:1px solid var(--border);border-radius:var(--radius-xs);padding:4px' });
+    modal.appendChild(list);
+
+    const addRow = ui.el('div', '', { style: 'display:flex;gap:6px;margin-top:6px' });
+    const addInput = ui.el('input', '', { type: 'text', maxLength: 2, placeholder: t('page.proxyPool.countriesAddPlaceholder'), style: COUNTRY_INPUT_STYLE + ';width:80px;text-transform:uppercase' });
+    const addBtn = ui.el('button', 'btn btn-xs btn-secondary', { text: t('page.proxyPool.countriesAdd') });
+    addBtn.addEventListener('click', () => {
+      const code = (addInput.value || '').trim().toUpperCase();
+      if (!/^[A-Z]{2}$/.test(code)) { app.toast(t('page.proxyPool.countriesInvalid'), 'warn'); return; }
+      if (!state.countryAvailable.some(c => c.country_code === code)) {
+        state.countryAvailable.push({ country_code: code, country: code, count: 0 });
+      }
+      draft.add(code);
+      addInput.value = '';
+      refreshList();
+    });
+    addRow.appendChild(addInput);
+    addRow.appendChild(addBtn);
+    modal.appendChild(addRow);
+
+    const footer = ui.el('div', '', { style: 'display:flex;align-items:center;gap:8px;margin-top:10px' });
+    const countLbl = ui.el('div', '', { style: 'flex:1;font-size:11px;color:var(--text-secondary)' });
+    const cancelBtn = ui.el('button', 'btn btn-sm btn-secondary', { text: t('common.cancel') });
+    cancelBtn.addEventListener('click', () => overlay.remove());
+    const saveBtn = ui.el('button', 'btn btn-sm btn-primary', { text: t('common.save') });
+    saveBtn.addEventListener('click', async () => {
+      saveBtn.disabled = true;
+      try {
+        const data = await api.poolCountriesSet(mode, Array.from(draft));
+        state.countryPolicy = { mode: data.mode || 'off', countries: data.countries || [] };
+        state.countryAvailable = data.available || [];
+        updateCountriesButton();
+        if (data.warning) {
+          app.toast(t('page.proxyPool.countriesEmptyPoolWarn'), 'warn');
+        } else {
+          app.toast(t('page.proxyPool.countriesSaved'));
+        }
+        overlay.remove();
+      } catch (e) {
+        saveBtn.disabled = false;
+        app.toast(t('common.error', { message: e.message }), 'error');
+      }
+    });
+    footer.appendChild(countLbl);
+    footer.appendChild(cancelBtn);
+    footer.appendChild(saveBtn);
+    modal.appendChild(footer);
+
+    function visibleCountries() {
+      const items = state.countryAvailable.slice();
+      const known = new Set(items.map(c => c.country_code));
+      draft.forEach(code => { if (!known.has(code)) items.push({ country_code: code, country: code, count: 0 }); });
+      items.sort((a, b) => (b.count || 0) - (a.count || 0) || a.country_code.localeCompare(b.country_code));
+      return items.filter(c => !filter
+        || c.country_code.toLowerCase().includes(filter)
+        || (c.country || '').toLowerCase().includes(filter));
+    }
+
+    function refreshList() {
+      const disabled = mode === 'off';
+      search.disabled = disabled;
+      addInput.disabled = disabled;
+      addBtn.disabled = disabled;
+      list.style.opacity = disabled ? '0.45' : '1';
+      list.style.pointerEvents = disabled ? 'none' : 'auto';
+      countLbl.textContent = disabled ? '' : t('page.proxyPool.countriesSelected', { n: draft.size });
+      list.innerHTML = '';
+      const items = visibleCountries();
+      if (!items.length) {
+        list.appendChild(ui.el('div', '', { style: 'padding:8px;color:var(--text-muted);font-size:11px', text: t('page.proxyPool.countriesEmpty') }));
+        return;
+      }
+      items.forEach(c => {
+        const row = ui.el('label', '', { style: 'display:flex;align-items:center;gap:6px;padding:3px 4px;font-size:12px;cursor:pointer;border-radius:var(--radius-xs)' });
+        const cb = ui.el('input', '', { type: 'checkbox' });
+        cb.checked = draft.has(c.country_code);
+        cb.addEventListener('change', () => {
+          if (cb.checked) draft.add(c.country_code); else draft.delete(c.country_code);
+          countLbl.textContent = t('page.proxyPool.countriesSelected', { n: draft.size });
+        });
+        row.appendChild(cb);
+        const flag = ui.flag(c.country_code);
+        if (flag) row.appendChild(ui.el('span', '', { text: flag }));
+        row.appendChild(ui.el('span', '', { style: 'flex:1', text: c.country || c.country_code }));
+        row.appendChild(ui.el('span', '', { style: 'color:var(--text-muted);font-size:10px', text: c.country_code + (c.count ? ' · ' + c.count : '') }));
+        list.appendChild(row);
+      });
+    }
+
+    refreshList();
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+  }
+
+  function buildSwitchHistoryCard() {    const card = ui.el('div', 'card');
     card.id = 'switch-history-card';
     card.style.display = 'flex';
     card.style.flexDirection = 'column';
@@ -9103,6 +9264,7 @@ router.register('proxy-pool', (container) => {
   }
 
   build();
+  loadCountryPolicy();
 
   // --- Updaters ---
   function updateSelectedProxy(ps) {
@@ -9377,10 +9539,12 @@ router.register('proxy-pool', (container) => {
           ];
         });
         const tbl = ui.table(headers, rows);
-        let collapsed = false;
-        tbl.style.display = '';
+        let collapsed = !!state.collapsedGroups[g];
+        tbl.style.display = collapsed ? 'none' : '';
+        arrow.textContent = collapsed ? '▸' : '▾';
         hdr.addEventListener('click', () => {
           collapsed = !collapsed;
+          state.collapsedGroups[g] = collapsed;
           tbl.style.display = collapsed ? 'none' : '';
           arrow.textContent = collapsed ? '▸' : '▾';
         });

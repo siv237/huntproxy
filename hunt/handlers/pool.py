@@ -43,6 +43,34 @@ class PoolHandlers:
         favs.sort(key=lambda r: r.score, reverse=True)
         return json.dumps([r.to_dict() for r in favs]), 200, "application/json"
 
+    async def _handle_pool_countries_get(self, raw_path, body):
+        return json.dumps(self._pool_countries_payload()), 200, "application/json"
+
+    async def _handle_pool_countries_set(self, raw_path, body):
+        data = _json_body(body)
+        policy = self.state.set_pool_country_policy(
+            str(data.get("mode", "off")), data.get("countries", []))
+        if not policy.get("persisted", True):
+            return json.dumps({"error": "country policy was not persisted"}), 500, "application/json"
+        self.state._log_action("pool.countries", f"{policy['mode']}:{','.join(policy['countries'])}")
+        return json.dumps(self._pool_countries_payload()), 200, "application/json"
+
+    def _pool_countries_payload(self) -> dict:
+        payload = self.state.get_pool_country_policy()
+        payload["available"] = self.state.get_pool_countries()
+        payload["warning"] = self._pool_countries_warning(payload)
+        return payload
+
+    def _pool_countries_warning(self, payload) -> str:
+        """Warn when an allow-list matches no selectable proxy: the pool would
+        be empty and every pool/failover connection would fail with 502."""
+        if payload["mode"] != "only" or not payload["countries"]:
+            return ""
+        available = {c["country_code"] for c in payload["available"]}
+        if available & set(payload["countries"]):
+            return ""
+        return "no_proxies_in_selected_countries"
+
     async def _handle_blacklist_list(self, raw_path, body):
         qs = _qs(raw_path)
         page = _int_param(qs, "page", 1)

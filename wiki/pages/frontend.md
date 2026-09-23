@@ -1,5 +1,5 @@
 ---
-updated: 2026-09-17
+updated: 2026-09-23
 commit: 8b0c0c0
 tags: [entity]
 ---
@@ -64,6 +64,9 @@ interception, routes, traffic-flow, pac, proxy-pool, proxies, favorites,
 analytics, custom-proxies, proxy-sources, blacklist, ip-blacklists, blocklists,
 domain-lists, logs, actions, settings, schedules, downloads, api, about.
 Компоненты: `proxy-card.js` (`window.proxyCard.show`), `client-card.js`.
+Карточка «Выбранный апстрим» (`proxy-pool.js`) содержит кнопку фильтра стран
+пула — модалка с режимами «все / только эти / кроме этих» и списком стран с
+количеством прокси ([proxy-server](proxy-server.md)).
 
 Секции sidebar: overview, engine, proxies, lists, insights, system
 (`web/index.html:66-223`).

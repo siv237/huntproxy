@@ -4,6 +4,7 @@ import os
 import time
 from collections import Counter
 from hunt.constants import logger
+from hunt.geo import country_name_from_code
 from hunt.models import ProxyRating
 
 class SnapshotMixin:
@@ -142,6 +143,21 @@ class SnapshotMixin:
                 result.append({"country": name, "country_code": code, "count": count, "pct": round(count / total * 100, 1)})
             self._countries_cache = (time.time(), result)
             return result
+
+    def get_pool_countries(self) -> list:
+            """Exit-country counts over the selectable pool, for the
+            automatic-selection country filter UI."""
+            counts = Counter()
+            for r in self.ratings.values():
+                if not r.pool_eligible:
+                    continue
+                code = (r.egress_country_code or r.country_code or "").upper()
+                if code:
+                    counts[code] += 1
+            return [
+                {"country_code": code, "country": country_name_from_code(code), "count": count}
+                for code, count in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+            ]
 
     def get_events(self, limit: int = 200, event_type: str | None = None) -> list:
             # Serve from the in-memory ring first: it holds the most recent

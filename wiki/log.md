@@ -194,3 +194,44 @@ Append-only журнал **операций вики** (ingest / query / lint), 
 - Имя процесса берётся по basename `exe` (для Firefox — `firefox-bin`), а не по
   служебному `comm` вроде «Socket Process».
 - Страницы: [interception](pages/interception.md).
+
+## [2026-09-23] ingest | Фильтр стран пула (авто-выбор и фолбэк)
+
+- Новая политика `routing_config`: `pool_country_mode` (`off|only|exclude`) +
+  `pool_countries` (JSON-список ISO-кодов). Логика — `RoutingMixin`
+  (`hunt/routing.py`): `get_pool_country_policy` / `set_pool_country_policy` /
+  `pool_country_allows`.
+- Применяется в `_build_pool` (`hunt/proxy_routing.py`) — то есть к
+  автоматическому выбору из пула и к переходу по отказу в пул; ручной выбор
+  конкретного прокси не ограничен. Страна выхода —
+  `egress_country_code or country_code`; в режиме `only` прокси без известной
+  страны выхода отбрасывается, в `exclude` — остаётся.
+- API: `GET|POST /api/pool/countries` (`hunt/handlers/pool.py`) возвращает
+  `{mode, countries, available}`; `available` — страны пула с количеством
+  (`get_pool_countries`, `hunt/snapshot.py`). Политика также видна в
+  `GET /api/routing/status`.
+- UI (`web/js/pages/proxy-pool.js`): кнопка в шапке карточки «Выбранный
+  апстрим» открывает модалку с режимами «все / только эти / кроме этих»,
+  поиском, чекбоксами стран (флаг, название, количество) и добавлением
+  произвольного 2-буквенного кода. Ключи локалей добавлены в 6 языков.
+- Страницы: [proxy-server](pages/proxy-server.md), [routing](pages/routing.md),
+  [api](pages/api.md), [frontend](pages/frontend.md).
+
+## [2026-09-23] ingest | Ревью: правки по фильтру стран пула и SOCKS-скорости
+
+- SOCKS-замер скорости: `_speed_open` принимает `tunnel_host/tunnel_port` и
+  открывает SOCKS-туннель на сам speed-сервер; запрос идёт origin-form
+  (`_socks_speed_single`, `hunt/check_speed.py`). До этого туннель вёл на
+  `httpbin.org:443`, скорость всегда 0 → `speed_fails` рос → `dead_by_speed`
+  не пускал SOCKS в авто-пул.
+- Политика стран хранится одним ключом `routing_config["pool_country_policy"]`
+  (атомарно), читается через TTL-кеш `_pool_country_policy_cached` — убраны
+  два SQLite-чтения с горячего пути `_build_pool`; setter возвращает
+  `persisted`, handler отдаёт 500 при неудаче записи.
+- Если `only` не пересекается с доступными странами, API отдаёт
+  `warning=no_proxies_in_selected_countries` (иначе пустой пул = 502 на всем
+  пул-трафике); UI показывает предупреждение.
+- Тесты: ручной выбор (fallback off/on) не подпадает под фильтр, grace-ветка,
+  пустой пул, target скорости; тавтологичный тест убран.
+- Страницы: [checks](pages/checks.md), [proxy-server](pages/proxy-server.md),
+  [routing](pages/routing.md), [wip](pages/wip.md).

@@ -1,5 +1,5 @@
 ---
-updated: 2026-09-17
+updated: 2026-09-23
 commit: 8b0c0c0
 tags: [entity]
 ---
@@ -81,6 +81,8 @@ tags: [entity]
 
 `POST /api/blacklist/add|remove`, `POST /api/favorites/add|remove`,
 `GET /api/favorites`, `GET /api/blacklist` (пагинация).
+`GET|POST /api/pool/countries` — политика стран авто-выбора пула и фолбэка
+(`{mode, countries, available}`; см. [proxy-server](proxy-server.md)).
 
 ### Proxy / SOCKS5 / Transparent (`handlers/proxy.py`)
 

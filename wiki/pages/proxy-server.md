@@ -1,5 +1,5 @@
 ---
-updated: 2026-09-17
+updated: 2026-09-23
 commit: 8b0c0c0
 tags: [concept]
 ---
@@ -68,6 +68,22 @@ web-host (обычно `127.0.0.1`, `hunt/main.py:19,23`). SOCKS5 и transparent
 `_build_pool` (`:199`): только `pool_eligible`; для CONNECT нужен
 `supports_connect` или socks4/5; сортировка `live` и `grace` по score desc.
 `_connect_via_pool` пробует **до 8** прокси в порядке пула (`:168`).
+
+### Фильтр стран пула (авто-выбор и фолбэк)
+
+Политика — один ключ `routing_config["pool_country_policy"]` (JSON:
+`mode` ∈ `off|only|exclude`, `countries` — ISO-коды; `hunt/routing.py`),
+читается через короткий TTL-кеш `_pool_country_policy_cached`, чтобы не
+ходить в SQLite на каждое соединение. Проверка
+`pool_country_allows_code(code, mode, codes)`: страна выхода —
+`egress_country_code or country_code`. В `only` прокси без измеренной страны
+выхода отбрасывается (нельзя подтвердить соответствие), в `exclude` —
+остаётся. Применяется только к `_build_pool` (авто-пул и переход по отказу
+в пул); ручной выбор конкретного прокси не ограничен. Если `only`
+не пересекается с доступными странами, API отдаёт `warning`
+(`no_proxies_in_selected_countries`) — пул был бы пуст и весь пул-трафик
+получал бы 502. API — `/api/pool/countries` (`hunt/handlers/pool.py`).
+UI — кнопка в карточке «Выбранный апстрим».
 
 ### Строгий режим без фолбэка
 

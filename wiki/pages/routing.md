@@ -1,5 +1,5 @@
 ---
-updated: 2026-09-17
+updated: 2026-09-23
 commit: 8b0c0c0
 tags: [concept]
 ---
@@ -15,7 +15,7 @@ Custom). Реализация — `hunt/routing.py` (миксин `RoutingMixin`
 
 | Таблица | Поля |
 |---|---|
-| `routing_config` | key/value: `routing_enabled`, `default_route`, `fallback_pool`, `channel_route` |
+| `routing_config` | key/value: `routing_enabled`, `default_route`, `fallback_pool`, `pool_country_policy`, `channel_route` |
 | `domain_lists` | id, name, source, url, route, enabled, priority, created_at, updated_at |
 | `domain_entries` | list_id, pattern |
 

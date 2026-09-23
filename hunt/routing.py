@@ -1,8 +1,11 @@
 """Functional split of the huntproxy backend."""
 
+import json
 import time
 from hunt.constants import logger
 from typing import Optional
+
+POOL_COUNTRY_MODES = ("off", "only", "exclude")
 
 class RoutingMixin:
     def _routing_get(self, key: str, default: str = "") -> str:
@@ -31,6 +34,7 @@ class RoutingMixin:
                 "enabled": enabled,
                 "default_route": default_route,
                 "fallback_pool": self._routing_get("fallback_pool", "false") == "true",
+                "pool_countries": self._pool_country_policy_cached(),
                 "lists": lists,
                 "custom_proxies": self.get_custom_proxies(),
             }
@@ -56,6 +60,85 @@ class RoutingMixin:
         "no other proxy" guarantee)."""
         self._routing_set("fallback_pool", "true" if enabled else "false")
         self._emit("Pool fallback on failure: " + ("enabled" if enabled else "disabled (strict)"), "info")
+
+    def get_pool_country_policy(self) -> dict:
+        """Country restriction applied to automatic pool selection and to
+        the failover reroute into the pool (manual selection is unaffected)."""
+        raw = self._routing_get("pool_country_policy", "")
+        data = None
+        if raw:
+            try:
+                data = json.loads(raw)
+            except Exception:
+                data = None
+        if not isinstance(data, dict):
+            data = {}
+        mode = data.get("mode", "off")
+        if mode not in POOL_COUNTRY_MODES:
+            mode = "off"
+        return {"mode": mode, "countries": self._parse_country_codes(data.get("countries", []))}
+
+    def _pool_country_policy_cached(self, ttl: float = 5.0) -> dict:
+        """Short-TTL memo: `_build_pool` runs per pool-routed connection and
+        must not read routing_config from SQLite on that hot path (the same
+        reason `_resolve_route` is compiled into `_route_cache`)."""
+        now = time.monotonic()
+        cached = getattr(self, "_pool_country_cache", None)
+        if cached is not None and now - cached[0] < ttl:
+            return cached[1]
+        policy = self.get_pool_country_policy()
+        self._pool_country_cache = (now, policy)
+        return policy
+
+    def set_pool_country_policy(self, mode: str, countries) -> dict:
+        if mode not in POOL_COUNTRY_MODES:
+            mode = "off"
+        codes = self._parse_country_codes(countries)
+        wanted = {"mode": mode, "countries": codes}
+        self._routing_set("pool_country_policy", json.dumps(wanted))
+        self._pool_country_cache = (time.monotonic(), wanted)
+        stored = self.get_pool_country_policy()
+        if mode == "off":
+            self._emit("Pool country restriction removed", "info")
+        else:
+            verb = "only" if mode == "only" else "except"
+            self._emit(f"Pool country restriction: {verb} {', '.join(codes) or '—'}", "info")
+        return {"mode": stored["mode"], "countries": stored["countries"],
+                "persisted": stored == wanted}
+
+    def pool_country_allows(self, code: str, policy: dict | None = None) -> bool:
+        """True when an exit country code passes the active policy.
+
+        An unknown exit country cannot be proven compliant with an allow-list,
+        so mode 'only' rejects it; an exclusion list keeps it — there is
+        nothing to exclude."""
+        policy = policy if policy is not None else self._pool_country_policy_cached()
+        return self.pool_country_allows_code(code, policy["mode"], set(policy["countries"]))
+
+    @staticmethod
+    def pool_country_allows_code(code: str, mode: str, codes: set) -> bool:
+        if mode == "off" or not codes:
+            return True
+        code = (code or "").upper()
+        if mode == "only":
+            return bool(code) and code in codes
+        return not (code and code in codes)
+
+    @staticmethod
+    def _parse_country_codes(value) -> list:
+        if isinstance(value, str):
+            try:
+                value = json.loads(value)
+            except Exception:
+                value = []
+        if not isinstance(value, (list, tuple, set)):
+            return []
+        codes = set()
+        for item in value:
+            code = str(item or "").strip().upper()
+            if len(code) == 2 and code.isalpha():
+                codes.add(code)
+        return sorted(codes)
 
     def routing_test(self, domain: str) -> dict:
             enabled = self._routing_get("routing_enabled", "false") == "true"

@@ -17,7 +17,7 @@
 - [Состояние: HuntState и хранилище](pages/state.md) — композиция миксинов,
   две базы SQLite, события, действия, TrafficStats · 2026-09-17.
 - [HTTP-сервер, роутер и API](pages/api.md) — HuntServer, Router, хелперы,
-  полный каталог endpoints, кэши · 2026-09-17.
+  полный каталог endpoints, кэши · 2026-09-23.
 - [Планировщик задач](pages/scheduler.md) — SchedulerEngine, типы задач,
   дефолтные расписания, TaskExecutor, API · 2026-09-17.
 - [Источники данных, загрузка и бэкап](pages/data-sources.md) —
@@ -28,7 +28,7 @@
   взаимоисключающих режима (общий/выборочный), ресурсы, ipset, журнал, активные
   правила, сверка реального состояния · 2026-09-22.
 - [Web UI (frontend)](pages/frontend.md) — структура `web/`, ядро, страницы,
-  локали, бандл · 2026-09-17.
+  локали, бандл · 2026-09-23.
 
 ## Понятия (concepts)
 
@@ -39,9 +39,9 @@
 - [Конвейер проверки прокси](pages/checks.md) — hunt-цикл, validate,
   health-check, MITM, speed, fraud, canary · 2026-09-17.
 - [Прокси-серверы и выбор upstream](pages/proxy-server.md) — раннеры, пул,
-  строгий fallback, канал, PAC, кастомные прокси, transparent · 2026-09-17.
+  строгий fallback, канал, PAC, кастомные прокси, transparent · 2026-09-23.
 - [Маршрутизация по доменам](pages/routing.md) — хранение, алгоритм
-  `_resolve_route`, паттерны · 2026-09-17.
+  `_resolve_route`, паттерны · 2026-09-23.
 - [Инфраструктура и скрипты](pages/infra.md) — install/update/uninstall,
   daemon/hunt, iptables, конфигурация · 2026-09-17.
 - [Тесты и контроль качества](pages/quality.md) — test.sh, уровни тестов,
