@@ -1,6 +1,6 @@
 ---
 updated: 2026-09-23
-commit: 87b1c79
+commit: 5caf90b
 tags: [concept]
 ---
 
