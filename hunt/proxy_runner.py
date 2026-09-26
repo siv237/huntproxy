@@ -13,6 +13,10 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# How long a pool-carried request keeps the badge pointing at its proxy.
+_POOL_CARRIER_TTL = 300.0
+
+
 class ProxyRunner(ProxyRouteMixin, ProxyHttpMixin):
     # Replay attempts for headless HTTP forward requests whose upstream died
     # before the response head completed (nothing was sent to the client yet).
@@ -241,6 +245,7 @@ class ProxyRunner(ProxyRouteMixin, ProxyHttpMixin):
     async def _relay(self, client_reader, client_writer, upstream_reader, upstream_writer):
         bytes_in = 0   # client → upstream (upload)
         bytes_out = 0  # upstream → client (download)
+        state = self.state
         async def pipe(r, w, label):
             nonlocal bytes_in, bytes_out
             try:
@@ -250,8 +255,10 @@ class ProxyRunner(ProxyRouteMixin, ProxyHttpMixin):
                     n = len(data)
                     if label == "c2u":
                         bytes_in += n
+                        state._live_bytes_in += n
                     else:
                         bytes_out += n
+                        state._live_bytes_out += n
                     w.write(data); await w.drain()
             except asyncio.CancelledError:
                 pass
@@ -284,6 +291,31 @@ class ProxyRunner(ProxyRouteMixin, ProxyHttpMixin):
         except Exception:
             logger.debug("suppressed", exc_info=True)
 
+    def current_pool_upstream(self) -> dict:
+        """The pool's current upstream — what the topbar badge must show.
+
+        Pool-only and routing-agnostic:
+          * a hard selection wins — that proxy, kind "select";
+          * if the hard selection fell back, the pool proxy that took over,
+            kind "fallback";
+          * otherwise the pool proxy that carried traffic most recently,
+            kind "pool" ("auto" in the UI);
+          * nothing to show (direct mode / no pool traffic) → empty dict,
+            the badge hides.
+        """
+        if self.direct_mode:
+            return {}
+        last = getattr(self.state, "_effective_upstream", None) or {}
+        fresh = last.get("addr") and (time.time() - last.get("ts", 0)) < _POOL_CARRIER_TTL
+        sel = self.active_proxy_addr
+        if sel and sel in self.state.ratings:
+            if fresh and last.get("kind") == "fallback" and last.get("addr") != sel:
+                return {"addr": last["addr"], "kind": "fallback"}
+            return {"addr": sel, "kind": "select"}
+        if fresh:
+            return {"addr": last["addr"], "kind": last.get("kind") or "pool"}
+        return {}
+
     def get_status(self) -> dict:
         ok = sum(1 for e in self.log if e["status"] == "ok")
         failed = len(self.log) - ok
@@ -292,7 +324,7 @@ class ProxyRunner(ProxyRouteMixin, ProxyHttpMixin):
             "port": self.port,
             "bind_host": self.proxy_host,
             "active_proxy": self.selected_proxy.to_dict() if self.selected_proxy else None,
-            "effective_upstream": dict(getattr(self.state, "_effective_upstream", {}) or {}),
+            "effective_upstream": self.current_pool_upstream(),
             "direct_mode": self.direct_mode,
             "pool_fallback": self._pool_fallback_enabled(),
             "connections": len(self.log),

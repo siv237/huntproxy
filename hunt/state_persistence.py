@@ -172,6 +172,22 @@ class StatePersistenceMixin(StateWorkingMixin):
                     self._proxy_switch_history = json.loads(row["value"] or "[]")
                 except Exception:
                     self._proxy_switch_history = []
+        self._migrate_switch_history()
+
+    def _migrate_switch_history(self):
+        """One-time purge of switch-history rows written by the old buggy
+        recorder (route-kind flips and per-domain carriers produced hundreds
+        of 'switches' for one unchanged proxy)."""
+        try:
+            if self._routing_get("switch_hist_v2", "") == "true":
+                return
+            if self._proxy_switch_history:
+                logger.info("switch history: purging %d pre-v2 entries",
+                            len(self._proxy_switch_history))
+                self._proxy_switch_history.clear()
+            self._routing_set("switch_hist_v2", "true")
+        except Exception as e:
+            logger.error("switch history migration: %s", e)
 
     def _save_state(self):
             try:

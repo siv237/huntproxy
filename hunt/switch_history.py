@@ -53,31 +53,43 @@ def effective_from_chain(chain: list) -> tuple:
     return "", ""
 
 
-def record_effective_upstream(state, addr: str, kind: str) -> None:
-    """Remember the proxy that really carried traffic and append a switch
-    entry when the carrier changes.
+def note_served_upstream(state, addr: str, kind: str) -> None:
+    """Remember the upstream that actually served a request.
 
-    Without this the switch history and the topbar ping badge only ever
-    reflected manually selected proxies — automatic pool picks and failover
-    reroutes stayed invisible even though they served most of the traffic.
+    Called from the traffic-log funnel, i.e. only for requests that were
+    really relayed with an ok status — never for a connection attempt that
+    carried nothing.  The topbar badge reads this value, so it shows the real
+    proxy from the pool, not the last proxy we tried to reach.
     """
     if kind not in _EFFECTIVE_KINDS:
         return
+    state._effective_upstream = {"addr": addr or "", "kind": kind, "ts": time.time()}
+
+
+def record_upstream_switch(state, addr: str, kind: str) -> None:
+    """Append a switch entry when the *current* (default-route) upstream
+    address changes.  Per-domain list routing must never call this: it would
+    turn route changes into hundreds of fake "proxy switches"."""
     addr = addr or ""
-    prev = getattr(state, "_effective_upstream", None) or {}
-    if prev.get("addr", "") == addr and prev.get("kind", "") == kind:
+    if not addr or kind == "direct":
         return
-    state._effective_upstream = {"addr": addr, "kind": kind, "ts": time.time()}
-    record_switch(state._proxy_switch_history, kind, addr)
+    history = getattr(state, "_proxy_switch_history", None)
+    if history is None:
+        return
+    if history and history[-1].get("address", "") == addr:
+        history[-1]["action"] = kind
+        return
+    record_switch(history, kind, addr)
 
 
 def enrich_switch_history(state) -> list[dict]:
     """Return switch history (newest first) enriched with proxy details
     and traffic served during each entry's active period.
 
-    Consecutive entries with the same action + address are collapsed
-    into one row (keeping the earliest ts) so the timeline shows only
-    actual switches, not repeated re-selections of the same proxy.
+    Consecutive entries with the same proxy address are collapsed into one
+    row (earliest ts kept), and entries without a proxy (direct route) are
+    dropped — this is a chronology of upstream proxy switches, not of
+    per-domain route changes.
 
     Each merged entry covers [ts_j, ts_{j+1}) — from this switch until
     the next different one (or now for the latest).  Traffic is summed
@@ -98,6 +110,7 @@ def enrich_switch_history(state) -> list[dict]:
 
 
 def _build_switch_history(state, hist, now) -> list[dict]:
+    hist = [e for e in hist if e.get("address")]
     merged = _merge_consecutive(hist)
     traffic = _traffic_by_period(state, merged, now)
     durations = _period_durations(merged, now)
@@ -126,12 +139,17 @@ def _build_switch_history(state, hist, now) -> list[dict]:
 
 
 def _merge_consecutive(hist: list[dict]) -> list[dict]:
-    """Collapse consecutive entries with the same action + address,
-    keeping the earliest ts of each group."""
+    """Collapse consecutive entries with the same proxy address.
+
+    The route kind (selected/pool/fallback) is metadata, not a switch: the
+    same proxy serving the selected default route and a pool-list route must
+    stay ONE period so its traffic is not split into pieces.  The kept entry
+    takes the earliest ts and the latest route kind.
+    """
     merged: list[dict] = []
     for e in hist:
-        if merged and merged[-1].get("action") == e.get("action") \
-                and merged[-1].get("address") == e.get("address"):
+        if merged and merged[-1].get("address") == e.get("address"):
+            merged[-1]["action"] = e.get("action")
             continue
         merged.append(dict(e))
     return merged

@@ -214,6 +214,11 @@ class HuntState(DbMixin, EventsMixin, SnapshotMixin, HuntControlMixin, HuntCycle
             # Hourly traffic rollup: rebuilt once here so dashboard endpoints
             # read pre-aggregated counters instead of scanning traffic_log.
             self._traffic_stats = TrafficStats()
+            # Live byte counters, bumped per relay chunk: the topbar speed must
+            # update while a transfer is in flight, not only when the request
+            # finishes and its row reaches the (buffered) DB.
+            self._live_bytes_in = 0
+            self._live_bytes_out = 0
             try:
                 conn = self._stats_db()
                 self._traffic_stats.load_from_db(conn, time.time())

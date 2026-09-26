@@ -3,8 +3,17 @@
 import asyncio
 import json
 
+from hunt.proxy_runner import ProxyRunner
 from hunt.scheduler import SchedulerEngine
 from hunt.task_executor import TaskExecutor
+
+
+def _attach_runner(state, selected=None, direct=False):
+    runner = ProxyRunner(state)
+    runner.active_proxy_addr = selected
+    runner.direct_mode = direct
+    state.proxy_runner = runner
+    return runner
 
 
 class TestProxyPingStatus:
@@ -14,7 +23,7 @@ class TestProxyPingStatus:
     def test_status_shape_without_proxy(self, state):
         async def run():
             status = await self._status(state)
-            assert status["source"] in ("pool", "direct")
+            assert status["source"] in ("pool", "direct", "none")
             assert status["window"] == 60
             assert status["interval"] == 1.0
             assert isinstance(status["samples"], list)
@@ -37,8 +46,8 @@ class TestProxyPingStatus:
 
     def test_ping_source_pool_proxy(self, state):
         async def run():
-            state._proxy_active_addr = "1.2.3.4:8080"
             state.ratings["1.2.3.4:8080"] = state._create_rating("1.2.3.4:8080", "RU", "ru")
+            _attach_runner(state, selected="1.2.3.4:8080")
             src = state._ping_source()
             assert src["kind"] == "pool"
             assert src["addr"] == "1.2.3.4:8080"
@@ -47,19 +56,19 @@ class TestProxyPingStatus:
 
         asyncio.run(run())
 
-    def test_ping_source_direct_fallback(self, state):
+    def test_ping_source_none_without_pool(self, state):
         async def run():
-            src = state._ping_source()
-            assert src["kind"] == "direct"
+            _attach_runner(state)
+            assert state._ping_source()["kind"] == "none"
 
         asyncio.run(run())
 
     def test_primary_stays_on_pool_when_channel_set(self, state):
         """The badge must show the client-path proxy, not the engine channel."""
         async def run():
-            state._proxy_active_addr = "1.2.3.4:8080"
             state.ratings["1.2.3.4:8080"] = state._create_rating("1.2.3.4:8080", "RU", "ru")
             state.ratings["5.6.7.8:1080"] = state._create_rating("5.6.7.8:1080", "US", "us")
+            _attach_runner(state, selected="1.2.3.4:8080")
             state.set_channel("proxy:5.6.7.8:1080")
             src = state._ping_source()
             assert src["kind"] == "pool"
@@ -126,6 +135,8 @@ class TestProxyPingStatus:
                 return r, w
 
             state._ping_probe = fake_probe
+            state.ratings["1.2.3.4:8080"] = state._create_rating("1.2.3.4:8080", "RU", "ru")
+            _attach_runner(state, selected="1.2.3.4:8080")
             state.start_proxy_ping()
             for _ in range(200):
                 if state._ping_samples:

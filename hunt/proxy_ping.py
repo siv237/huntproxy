@@ -22,6 +22,7 @@ import time
 
 from hunt.constants import logger
 from hunt.conn import socks5_connect, socks4_connect, http_connect
+from hunt.switch_history import record_upstream_switch
 
 PING_HOSTS = ("ya.ru", "google.com", "2ip.ru")
 PING_WINDOW = 60
@@ -81,9 +82,10 @@ class ProxyPingMixin:
         the primary source: the badge must show the end-to-end path user
         traffic takes, with the channel measured separately.
         """
-        eff = getattr(self, "_effective_upstream", None) or {}
-        addr = eff.get("addr") or getattr(self, "_proxy_active_addr", None) or ""
-        upstream_kind = eff.get("kind") or ("select" if addr else "direct")
+        runner = getattr(self, "proxy_runner", None)
+        cur = runner.current_pool_upstream() if runner else {}
+        addr = cur.get("addr") or ""
+        upstream_kind = cur.get("kind") or ""
         if addr and addr in self.ratings:
             r = self.ratings[addr]
             host, port_str = addr.rsplit(":", 1)
@@ -102,13 +104,7 @@ class ProxyPingMixin:
                     "ip": r.egress_ip or "",
                 },
             }
-        return {"kind": "direct", "upstream_kind": "direct", "addr": "", "geo": {
-            "country": getattr(self, "_canary_last_country", ""),
-            "country_code": "",
-            "city": getattr(self, "_canary_last_city", ""),
-            "isp": getattr(self, "_canary_last_isp", ""),
-            "ip": getattr(self, "_canary_last_ip", ""),
-        }}
+        return {"kind": "none", "upstream_kind": "none", "addr": "", "geo": {}}
 
     def _ping_channel_source(self) -> dict | None:
         """Resolve the engine channel proxy, or None when no channel is set."""
@@ -151,6 +147,17 @@ class ProxyPingMixin:
 
     async def _ping_once(self):
         src = self._ping_source()
+        if src["kind"] == "none":
+            # No pool upstream to show (direct mode / no pool traffic): keep
+            # the badge hidden and record nothing.
+            self._ping_last = {
+                "ts": time.time(), "ok": False, "latency": -1, "error": "",
+                "source": "none", "proxy_addr": "", "host": "",
+                "upstream_kind": "none",
+            }
+            return
+        if src.get("addr"):
+            record_upstream_switch(self, src["addr"], src.get("upstream_kind") or "pool")
         host = PING_HOSTS[self._ping_host_idx % len(PING_HOSTS)]
         t0 = time.monotonic()
         ok, latency, err = False, -1, ""

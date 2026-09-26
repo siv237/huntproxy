@@ -394,6 +394,7 @@ class RoutingMixin:
                     return route
         return cache["default"]
 
+
     @staticmethod
     def _domain_matches(host: str, patterns: list) -> bool:
             host_lower = host.lower()

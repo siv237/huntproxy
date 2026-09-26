@@ -4,6 +4,7 @@ import sqlite3
 import logging
 
 from hunt.db_writer import _DbWriter, _SharedConn
+from hunt.switch_history import effective_from_chain, note_served_upstream
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +17,13 @@ class DbMixin:
     TRAFFIC_FLUSH_BATCH = 500
 
     def _queue_traffic_log(self, row: tuple):
+            try:
+                if row[3] == "ok" and row[4]:
+                    addr, kind = effective_from_chain(str(row[4]).split(" → "))
+                    if kind:
+                        note_served_upstream(self, addr, kind)
+            except Exception:
+                logger.debug("suppressed", exc_info=True)
             agg = getattr(self, "_traffic_stats", None)
             if agg is not None:
                 try:
