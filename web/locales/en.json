@@ -52,7 +52,8 @@
     "pingTitle": "Live proxy ping — latency through the active proxy",
     "pingDirect": "direct",
     "pingFail": "failed",
-    "pingFallback": "fallback"
+    "pingFallback": "fallback",
+    "pingAuto": "auto"
   },
   "sidebar": {
     "allSystemsOperational": "All Systems Operational",

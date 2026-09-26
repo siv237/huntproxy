@@ -1,7 +1,7 @@
 # Карта модулей
 Автоматически сгенерировано из исходного кода. Не редактировать руками.
 Запуск: `python scripts/module_map.py`
-Всего модулей: 83 | Всего строк: 14474
+Всего модулей: 83 | Всего строк: 14555
 ---
 ## Сводка
 | Модуль | Строк | Публичные классы/функции | Импортирует из hunt |
@@ -25,7 +25,7 @@
 | `hunt/conn.py` | 135 | `socks5_connect`, `socks4_connect`, `http_connect` | — |
 | `hunt/constants.py` | 118 | — | — |
 | `hunt/custom_proxies.py` | 311 | `CustomProxiesMixin` | hunt.conn, hunt.constants |
-| `hunt/db.py` | 446 | `DbMixin` | hunt.db_writer |
+| `hunt/db.py` | 454 | `DbMixin` | hunt.db_writer, hunt.switch_history |
 | `hunt/db_writer.py` | 94 | — | — |
 | `hunt/domain_parser.py` | 58 | `normalize_domain_pattern` | — |
 | `hunt/download.py` | 62 | `curl_args`, `stream_download` | — |
@@ -65,9 +65,9 @@
 | `hunt/models.py` | 391 | `ProxyRating` | — |
 | `hunt/pac.py` | 208 | `render_pac`, `PacMixin` | hunt.constants |
 | `hunt/proxy_http.py` | 56 | `ProxyHttpMixin` | — |
-| `hunt/proxy_ping.py` | 232 | `ProxyPingMixin` | hunt.conn, hunt.constants |
-| `hunt/proxy_routing.py` | 223 | `ProxyRouteMixin` | hunt.models, hunt.switch_history |
-| `hunt/proxy_runner.py` | 270 | `ProxyRunner` | hunt.conn, hunt.models, hunt.proxy_http, hunt.proxy_routing +1 |
+| `hunt/proxy_ping.py` | 237 | `ProxyPingMixin` | hunt.conn, hunt.constants, hunt.switch_history |
+| `hunt/proxy_routing.py` | 219 | `ProxyRouteMixin` | hunt.models |
+| `hunt/proxy_runner.py` | 297 | `ProxyRunner` | hunt.conn, hunt.models, hunt.proxy_http, hunt.proxy_routing +1 |
 | `hunt/proxy_sources.py` | 415 | `ProxySourcesMixin` | hunt.constants, hunt.download |
 | `hunt/router.py` | 53 | `Router` | — |
 | `hunt/routing.py` | 377 | `RoutingMixin` | hunt.constants |
@@ -77,13 +77,13 @@
 | `hunt/scheduler_guard.py` | 114 | `SchedulerGuardMixin` | hunt.schedule_entry |
 | `hunt/scheduler_persistence.py` | 104 | `SchedulerPersistenceMixin` | hunt.constants, hunt.schedule_entry |
 | `hunt/server.py` | 312 | `HuntServer` | hunt.constants, hunt.handlers, hunt.handlers.admin, hunt.handlers.core +16 |
-| `hunt/snapshot.py` | 448 | `SnapshotMixin` | hunt.constants, hunt.geo, hunt.models |
+| `hunt/snapshot.py` | 461 | `SnapshotMixin` | hunt.constants, hunt.geo, hunt.models |
 | `hunt/socks5_runner.py` | 160 | `Socks5Runner` | hunt.models |
-| `hunt/state.py` | 186 | `HuntState` | hunt.actions, hunt.backup, hunt.blacklist, hunt.blocklists +30 |
+| `hunt/state.py` | 188 | `HuntState` | hunt.actions, hunt.backup, hunt.blacklist, hunt.blocklists +30 |
 | `hunt/state_download.py` | 84 | `StateDownloadMixin` | hunt.constants |
-| `hunt/state_persistence.py` | 241 | `StatePersistenceMixin` | hunt.constants, hunt.geo, hunt.models, hunt.state_working |
+| `hunt/state_persistence.py` | 256 | `StatePersistenceMixin` | hunt.constants, hunt.geo, hunt.models, hunt.state_working |
 | `hunt/state_working.py` | 101 | `StateWorkingMixin` | hunt.constants, hunt.geo, hunt.models |
-| `hunt/switch_history.py` | 109 | `record_switch`, `effective_from_chain`, `record_effective_upstream`, `enrich_switch_history` | hunt.switch_history_stats |
+| `hunt/switch_history.py` | 124 | `record_switch`, `effective_from_chain`, `note_served_upstream`, `record_upstream_switch`, `enrich_switch_history` | hunt.switch_history_stats |
 | `hunt/switch_history_stats.py` | 73 | — | — |
 | `hunt/task_executor.py` | 264 | `TaskExecutor` | hunt.constants, hunt.schedule_entry |
 | `hunt/traffic_stats.py` | 111 | `TrafficStats` | — |
@@ -218,12 +218,12 @@
 
 **Зависимости:** `hunt.conn`, `hunt.constants`
 
-### `hunt/db.py` (446 строк)
+### `hunt/db.py` (454 строк)
 *Functional split of the huntproxy backend.*
 **Публичные:**
 - `DbMixin` (class)
 
-**Зависимости:** `hunt.db_writer`
+**Зависимости:** `hunt.db_writer`, `hunt.switch_history`
 
 ### `hunt/db_writer.py` (94 строк)
 *SQLite connection helpers for hunt — extracted from db.py.*
@@ -388,21 +388,21 @@
 - `ProxyHttpMixin` (class)
 
 
-### `hunt/proxy_ping.py` (232 строк)
+### `hunt/proxy_ping.py` (237 строк)
 *Continuous proxy ping — measures latency through the currently active*
 **Публичные:**
 - `ProxyPingMixin` (class)
 
-**Зависимости:** `hunt.conn`, `hunt.constants`
+**Зависимости:** `hunt.conn`, `hunt.constants`, `hunt.switch_history`
 
-### `hunt/proxy_routing.py` (223 строк)
+### `hunt/proxy_routing.py` (219 строк)
 *Proxy route selection — extracted from proxy_runner.py.*
 **Публичные:**
 - `ProxyRouteMixin` (class)
 
-**Зависимости:** `hunt.models`, `hunt.switch_history`
+**Зависимости:** `hunt.models`
 
-### `hunt/proxy_runner.py` (270 строк)
+### `hunt/proxy_runner.py` (297 строк)
 *Functional split of the huntproxy backend.*
 **Публичные:**
 - `ProxyRunner` (class)
@@ -470,7 +470,7 @@
 
 **Зависимости:** `hunt.constants`, `hunt.handlers`, `hunt.handlers.admin`, `hunt.handlers.core`, `hunt.handlers.hunt`, `hunt.handlers.interception`, `hunt.handlers.interception_selective`, `hunt.handlers.pac`, `hunt.handlers.pool`, `hunt.handlers.proxy`, `hunt.handlers.routing`, `hunt.handlers.sources`, `hunt.handlers.traffic`, `hunt.handlers.version`, `hunt.proxy_runner`, `hunt.router`, `hunt.socks5_runner`, `hunt.state`, `hunt.transparent_runner`, `hunt.web_legacy`
 
-### `hunt/snapshot.py` (448 строк)
+### `hunt/snapshot.py` (461 строк)
 *Functional split of the huntproxy backend.*
 **Публичные:**
 - `SnapshotMixin` (class)
@@ -484,7 +484,7 @@
 
 **Зависимости:** `hunt.models`
 
-### `hunt/state.py` (186 строк)
+### `hunt/state.py` (188 строк)
 *Functional split of the huntproxy backend.*
 **Публичные:**
 - `HuntState` (class)
@@ -498,7 +498,7 @@
 
 **Зависимости:** `hunt.constants`
 
-### `hunt/state_persistence.py` (241 строк)
+### `hunt/state_persistence.py` (256 строк)
 *State persistence methods — extracted from state.py.*
 **Публичные:**
 - `StatePersistenceMixin` (class)
@@ -512,12 +512,13 @@
 
 **Зависимости:** `hunt.constants`, `hunt.geo`, `hunt.models`
 
-### `hunt/switch_history.py` (109 строк)
+### `hunt/switch_history.py` (124 строк)
 *Proxy switch history enrichment — extracted from proxy_runner.py.*
 **Публичные:**
 - `record_switch` (def)
 - `effective_from_chain` (def)
-- `record_effective_upstream` (def)
+- `note_served_upstream` (def)
+- `record_upstream_switch` (def)
 - `enrich_switch_history` (def)
 
 **Зависимости:** `hunt.switch_history_stats`
@@ -686,7 +687,7 @@
 | `hunt/check_ssl.py` | `hunt.constants` |
 | `hunt/check_validation.py` | `hunt.check_validation_helpers`, `hunt.constants` |
 | `hunt/custom_proxies.py` | `hunt.conn`, `hunt.constants` |
-| `hunt/db.py` | `hunt.db_writer` |
+| `hunt/db.py` | `hunt.db_writer`, `hunt.switch_history` |
 | `hunt/favorites.py` | `hunt.constants` |
 | `hunt/fraudscore.py` | `hunt.conn`, `hunt.constants` |
 | `hunt/handlers/admin.py` | `hunt.handlers` |
@@ -715,8 +716,8 @@
 | `hunt/main.py` | `hunt.constants`, `hunt.interception_reconcile`, `hunt.logging_config`, `hunt.scheduler`, `hunt.server`, `hunt.state` |
 | `hunt/manual_hunt.py` | `hunt.constants` |
 | `hunt/pac.py` | `hunt.constants` |
-| `hunt/proxy_ping.py` | `hunt.conn`, `hunt.constants` |
-| `hunt/proxy_routing.py` | `hunt.models`, `hunt.switch_history` |
+| `hunt/proxy_ping.py` | `hunt.conn`, `hunt.constants`, `hunt.switch_history` |
+| `hunt/proxy_routing.py` | `hunt.models` |
 | `hunt/proxy_runner.py` | `hunt.conn`, `hunt.models`, `hunt.proxy_http`, `hunt.proxy_routing`, `hunt.switch_history` |
 | `hunt/proxy_sources.py` | `hunt.constants`, `hunt.download` |
 | `hunt/routing.py` | `hunt.constants` |

@@ -45,7 +45,7 @@ app (`web/index.html:318-324`).
   поллеры (`startPollers`, `:150-164`): events 2с, traffic 2с, ping 1с,
   direct/channel 3с, canary 30с, version 60с. `pollEvents` рассылает
   `CustomEvent('hunt-events')`. `pollPing` (`:281`) показывает **итоговый**
-  пинг клиентского маршрута; `pollChannel` (`:253`) параллельно показывает
+  пинг апстрима пула (жёсткий выбор/авто/фолбэк; в auto — пометка «авто»); `pollChannel` (`:253`) параллельно показывает
   пинг канала в чипе «Канал: host:port · Nms» (`:269`).
 
 ## Кэширование

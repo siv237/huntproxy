@@ -258,7 +258,7 @@
       </div>
       <div class="topbar-right">
         <div class="traffic-counter" id="ping-badge" data-i18n-title="topbar.pingTitle" title="Proxy ping">
-          <div class="tc-col" style="min-width:52px">
+          <div class="tc-col tc-num tc-num-ping">
             <span class="tc-label" data-i18n="topbar.ping">Ping</span>
             <span class="tc-value" id="ping-value" style="color:var(--success)">—</span>
           </div>
@@ -269,23 +269,23 @@
             </svg>
           </div>
           <div class="tc-divider"></div>
-          <div class="tc-col" style="max-width:220px;overflow:hidden">
-            <span class="tc-label" id="ping-proxy" style="color:var(--text-secondary)">—</span>
-            <span class="tc-value" id="ping-geo" style="font-size:11px;font-weight:600;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">—</span>
+          <div class="tc-col tc-num tc-num-upstream">
+            <span class="tc-label tc-ellipsis" id="ping-proxy" style="color:var(--text-secondary)">—</span>
+            <span class="tc-value tc-ellipsis" id="ping-geo" style="font-size:11px;font-weight:600;color:var(--text-primary)">—</span>
           </div>
         </div>
         <div class="traffic-counter" id="traffic-counter" data-i18n-title="topbar.trafficCounter" title="Live proxy traffic">
-          <div class="tc-col">
+          <div class="tc-col tc-num tc-num-rate">
             <span class="tc-label">↑ <span data-i18n="topbar.trafficOut">Out</span></span>
             <span class="tc-value" id="traffic-out">—</span>
           </div>
           <div class="tc-divider"></div>
-          <div class="tc-col">
+          <div class="tc-col tc-num tc-num-rate">
             <span class="tc-label">↓ <span data-i18n="topbar.trafficIn">In</span></span>
             <span class="tc-value" id="traffic-in">—</span>
           </div>
           <div class="tc-divider"></div>
-          <div class="tc-col">
+          <div class="tc-col tc-num tc-num-total">
             <span class="tc-label" data-i18n="topbar.trafficTotal">Total</span>
             <span class="tc-value" id="traffic-total">—</span>
           </div>

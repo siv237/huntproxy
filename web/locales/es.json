@@ -52,7 +52,8 @@
     "pingTitle": "Ping de proxy en vivo",
     "pingDirect": "directo",
     "pingFail": "error",
-    "pingFallback": "fallback"
+    "pingFallback": "fallback",
+    "pingAuto": "auto"
   },
   "sidebar": {
     "allSystemsOperational": "Todos los sistemas operativos",

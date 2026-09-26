@@ -346,29 +346,43 @@ class SnapshotMixin:
         return proxies
 
     def get_live_traffic(self) -> dict:
-            """Return total traffic bytes (last 24h) and request count."""
+            """Live byte counters for the topbar speed + rolling totals.
+
+            in_bytes/out_bytes are monotonic counters bumped per relay chunk,
+            so the UI can compute a real-time rate while a transfer is in
+            flight (request rows only reach the DB when the request finishes,
+            buffered in batches). total_bytes/requests come from the hourly
+            rollup, not from a 24h SQL scan on every 2s poll.
+            """
             cutoff = time.time() - 86400
+            total_in = total_out = requests = 0
             try:
-                conn = self._stats_db()
-                row = conn.execute(
-                    "SELECT COALESCE(SUM(bytes_in), 0) as in_bytes, "
-                    "COALESCE(SUM(bytes_out), 0) as out_bytes, "
-                    "COUNT(*) as requests "
-                    "FROM traffic_log WHERE ts > ?",
-                    (cutoff,)
-                ).fetchone()
-                conn.close()
-                in_bytes = int(row["in_bytes"] or 0)
-                out_bytes = int(row["out_bytes"] or 0)
-                return {
-                    "in_bytes": in_bytes,
-                    "out_bytes": out_bytes,
-                    "total_bytes": in_bytes + out_bytes,
-                    "requests": int(row["requests"] or 0),
-                }
+                agg = getattr(self, "_traffic_stats", None)
+                if agg is not None and getattr(agg, "ready", False):
+                    total_in, total_out, ok, requests = (
+                        agg.totals(cutoff)[1], agg.totals(cutoff)[2],
+                        agg.totals(cutoff)[3], agg.totals(cutoff)[0])
+                else:
+                    conn = self._stats_db()
+                    row = conn.execute(
+                        "SELECT COALESCE(SUM(bytes_in), 0) as in_bytes, "
+                        "COALESCE(SUM(bytes_out), 0) as out_bytes, "
+                        "COUNT(*) as requests FROM traffic_log WHERE ts > ?",
+                        (cutoff,)).fetchone()
+                    conn.close()
+                    total_in = int(row["in_bytes"] or 0)
+                    total_out = int(row["out_bytes"] or 0)
+                    requests = int(row["requests"] or 0)
             except Exception as e:
                 logger.error("DB live traffic query: %s", e)
-                return {"in_bytes": 0, "out_bytes": 0, "total_bytes": 0, "requests": 0}
+            return {
+                "in_bytes": total_in,
+                "out_bytes": total_out,
+                "total_bytes": total_in + total_out,
+                "requests": requests,
+                "live_in_bytes": int(getattr(self, "_live_bytes_in", 0)),
+                "live_out_bytes": int(getattr(self, "_live_bytes_out", 0)),
+            }
 
     def _get_scheduler_snapshot(self) -> dict:
             sched = getattr(self, "scheduler", None)

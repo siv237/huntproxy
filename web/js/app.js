@@ -207,8 +207,8 @@ const app = {
     try {
       const t = await api.trafficLive();
       const now = Date.now();
-      const inB = t.in_bytes || 0;   // bytes_in = client→upstream = upload
-      const outB = t.out_bytes || 0; // bytes_out = upstream→client = download
+      const inB = t.live_in_bytes != null ? t.live_in_bytes : (t.in_bytes || 0);
+      const outB = t.live_out_bytes != null ? t.live_out_bytes : (t.out_bytes || 0);
       const totalB = t.total_bytes || 0;
 
       let inRate = 0;
@@ -219,6 +219,12 @@ const app = {
         outRate = Math.max(0, (outB - this._lastTraffic.outBytes) / delta);
       }
       this._lastTraffic = { ts: now, inBytes: inB, outBytes: outB, totalBytes: totalB };
+      // Light smoothing (~5s window): live per-chunk counters make the rate
+      // real-time, this keeps the number readable instead of jumping.
+      this._inRate = this._inRate == null ? inRate : this._inRate * 0.6 + inRate * 0.4;
+      this._outRate = this._outRate == null ? outRate : this._outRate * 0.6 + outRate * 0.4;
+      inRate = this._inRate;
+      outRate = this._outRate;
 
       const inEl = document.getElementById('traffic-in');   // ↓ In = download = out_bytes
       const outEl = document.getElementById('traffic-out'); // ↑ Out = upload = in_bytes
@@ -335,7 +341,9 @@ const app = {
       badge.style.cursor = clickable ? 'pointer' : 'default';
       const srcLabel = src === 'direct' ? '↔' : '⬢';
       if (proxyEl) {
-        const kindSuffix = p.upstream_kind === 'fallback' ? ' · ' + t('topbar.pingFallback') : '';
+        let kindSuffix = '';
+        if (p.upstream_kind === 'fallback') kindSuffix = ' · ' + t('topbar.pingFallback');
+        else if (p.upstream_kind === 'pool') kindSuffix = ' · ' + t('topbar.pingAuto');
         proxyEl.textContent = src === 'direct'
           ? (srcLabel + ' ' + t('topbar.pingDirect'))
           : (srcLabel + ' ' + (p.proxy_addr || '') + kindSuffix + (ok ? '' : ' — ' + (last.error || t('topbar.pingFail'))));

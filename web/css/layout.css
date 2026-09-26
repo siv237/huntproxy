@@ -297,6 +297,23 @@
   color: var(--text-primary);
 }
 
+/* Fixed-width value cells: the digits must never resize the badge while
+   speeds jump between B/s, KB/s and MB/s (tabular-nums keeps digits even). */
+.traffic-counter .tc-num {
+  flex: 0 0 auto;
+  overflow: hidden;
+}
+.traffic-counter .tc-num-rate { width: 78px; }
+.traffic-counter .tc-num-total { width: 72px; }
+.traffic-counter .tc-num-ping { width: 56px; }
+.traffic-counter .tc-num-upstream { width: 220px; }
+.traffic-counter .tc-ellipsis {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .traffic-counter .tc-divider {
   width: 1px;
   height: 20px;
